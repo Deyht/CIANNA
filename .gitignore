@@ -1,0 +1,18 @@
+# Object files
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Executables
+fwd
+train
+
+# results data
+step_*.dat
+fwd_step_*.dat
+*.log
+*.dat
+input.dat
