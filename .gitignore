@@ -9,6 +9,7 @@
 # Executables
 fwd
 train
+main
 
 # results data
 step_*.dat
