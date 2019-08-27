@@ -15,4 +15,5 @@ step_*.dat
 fwd_step_*.dat
 *.log
 *.dat
+*.nvvp
 input.dat

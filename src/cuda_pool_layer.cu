@@ -43,9 +43,6 @@ void cuda_forward_pool_layer(layer* current)
 		
 	p_param = (pool_param*) current->param;
 	
-	//cuda_print_table_transpose(current->input, p_param->prev_depth, batch_size*(p_param->prev_size_w*p_param->prev_size_h));
-	
-
 	//late declaration of CUDA kernel sizes
 	dim3 threadsPerBlock(8, 8, 8);
 	//create numBlocks regarding the layer dimensions
@@ -55,58 +52,39 @@ void cuda_forward_pool_layer(layer* current)
     
 	pooling_kernel<<< numBlocks , threadsPerBlock >>>(current->input, current->output, p_param->pool_map,
 		p_param->p_size, p_param->prev_size_w, p_param->nb_area_w, p_param->nb_maps * batch_size);
-	
-	//cuda_print_table_transpose(p_param->pool_map, p_param->nb_maps, batch_size*(p_param->nb_area_w*p_param->nb_area_h));
-	//printf("pool output\n");
-	//cuda_print_table_transpose(current->output, p_param->nb_maps, batch_size*(p_param->nb_area_w*p_param->nb_area_h));
 }
 
 
 void cuda_backward_pool_layer(layer* current)
-{
-	p_param = (pool_param*) current->param;	
-	
+{	
 	if(current->previous != NULL)
 	{
 		if(current->previous->type == CONV)
-		{	
-			/*cuda_print_table_transpose(p_param->pool_map, p_param->nb_maps, p_param->nb_area_w 
-			* p_param->nb_area_h * batch_size);*/
-			
+		{
 			//array must be set to 0 as deltah_pool do not erase previous values
 			cudaMemset(current->previous->delta_o, 0.0, p_param->prev_depth * p_param->prev_size_w 
 				* p_param->prev_size_h * batch_size*sizeof(real));
+		
 			cu_blocks = (batch_size*(p_param->nb_maps * p_param->nb_area_w * p_param->nb_area_h) 
 				+ cu_threads - 1) / cu_threads;
 				
 			if(p_param->next_layer_type == DENSE)
 			{
-				deltah_pool<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, p_param->pool_map, p_param->p_size, length, batch_size, p_param->nb_maps * p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w);
+				deltah_pool<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, 
+					p_param->pool_map, p_param->p_size, length, batch_size, p_param->nb_maps 
+					* p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w * p_param->nb_area_h, 
+					p_param->nb_area_w);
 			}
 			else
 			{
-				deltah_pool_cont<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, p_param->pool_map, p_param->p_size, length, batch_size, p_param->nb_maps * p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w);
+				deltah_pool_cont<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o,
+					p_param->pool_map, p_param->p_size, length, batch_size, p_param->nb_maps 
+					* p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w);
 			}
 		}
 		
-		//printf("previous activ\n");
-		//cuda_print_table_transpose(current->previous->output, p_param->prev_depth, p_param->prev_size_w 
-		//	* p_param->prev_size_h * batch_size);
-		
-		//printf("unpool_delta_o pre activation\n");
-		//cuda_print_table_transpose(current->previous->delta_o, p_param->prev_depth, p_param->prev_size_w 
-		//	* p_param->prev_size_h * batch_size);
-		
 		current->previous->deriv_activation(current->previous);
-		
-		
-		//printf("Activated pooled rerolled table\n");
-		//cuda_print_table_transpose(current->previous->delta_o, p_param->prev_depth, p_param->prev_size_w 
-		//	* p_param->prev_size_h * batch_size);
-		
-		
 	}
-	
 }
 
 
@@ -133,7 +111,6 @@ __global__ void  pooling_kernel(real *input, real *output, real* pool_map, int p
 					y_max = y;
 				}
 		pool_map[pos_out] = real(x_max*pool_size + y_max);
-		//printf("pos_out = %d, x_max = %d, y_max = %d \n, out_value = %f\n", pos_out, x_max, y_max, pool_map[pos_out]);
 		output[pos_out] = input[pos + x_max*w_size + y_max];
 	}
 }
@@ -145,10 +122,7 @@ __global__ void deltah_pool(real* cu_deltah, real* cu_deltah_unpool, real* pool_
 
 	if(i > batch_size*image_size)
 		return;
-	/*
-	im_id = pos/image_size;
-	pos += im_id;*/
-	
+
 	map_id = i / (map_size*batch_size);
 	image_id = i % (map_size*batch_size) / map_size;
 	map_col =  i % (map_size*batch_size) % map_size / column_length;
@@ -162,27 +136,6 @@ __global__ void deltah_pool(real* cu_deltah, real* cu_deltah_unpool, real* pool_
 		*cu_deltah_unpool = cu_deltah[i];
 	else
 		*cu_deltah_unpool = 0.0;
-	/*
-	if(i < len*image_size)
-	{
-		//add mask of locations
-		cu_deltah_unpool += (i/column_length) * column_length * pool_size * pool_size 
-			+ (i%column_length) * (pool_size) + (int(pool_map[i])/pool_size) * column_length 
-			* pool_size + (int(pool_map[i])%pool_size);
-		
-		*cu_deltah_unpool = cu_deltah[pos];
-	}
-	else if(i < batch_size*image_size)
-	{
-		cu_deltah[pos] = 0.0;
-		//add mask of locations
-		cu_deltah_unpool += (i/column_length) * column_length * pool_size * pool_size 
-			+ (i%column_length) * pool_size + (int(pool_map[i])/pool_size) * column_length 
-			* pool_size + (int(pool_map[i])%pool_size);
-			
-		*cu_deltah_unpool = cu_deltah[pos];
-	}
-	*/
 }
 
 __global__ void deltah_pool_cont(real* cu_deltah, real* cu_deltah_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length)

@@ -37,22 +37,18 @@ void conv_define_activation_param(layer *current)
 			break;
 			
 		case LOGISTIC:
-			//could add a dedicated cuda kernel or conversion to compute it
-			printf("Logistic activation function must not be used for conv layer\n");
-			exit(EXIT_FAILURE);
-			/*
 			current->activ_param = (logistic_param*) malloc(sizeof(logistic_param));
-			((logistic_param*)current->activ_param)->size = c_param->nb_area_w * 
-				c_param->nb_area_h * c_param->nb_filters * batch_size;
-			((logistic_param*)current->activ_param)->dim = c_param->nb_area_w * c_param->nb_area_h;
+			((logistic_param*)current->activ_param)->size = c_param->nb_area_w 
+				* c_param->nb_area_h *  c_param->nb_filters * batch_size;
+			((logistic_param*)current->activ_param)->dim = ((logistic_param*)current->activ_param)->size;
 			((logistic_param*)current->activ_param)->beta = 1.0;
-			((logistic_param*)current->activ_param)->saturation = 16.0;
-			*/
+			((logistic_param*)current->activ_param)->saturation = 14.0;
+			c_param->bias_value = -1.0;
 			break;
 			
 		case SOFTMAX:
 			//could add a dedicated cuda kernel or conversion to compute it
-			printf("Logistic activation function must not be used for conv layer\n");
+			printf("Softmax activation function must not be used for conv layer\n");
 			/*
 			current->activ_param = (softmax_param*) malloc(sizeof(softmax_param));
 			((softmax_param*)current->activ_param)->block_size = c_param->nb_area_w * c_param->nb_area_h;
@@ -76,6 +72,7 @@ void conv_define_activation_param(layer *current)
 //Used to allocate a convolutionnal layer
 void conv_create(layer *current, layer* previous, int f_size, int nb_filters, int stride, int padding, int activation)
 {
+	int i;
 	//allocate the space holder for conv layer parameters
 	c_param = (conv_param*) malloc(sizeof(conv_param));
 	
@@ -163,8 +160,11 @@ void conv_create(layer *current, layer* previous, int f_size, int nb_filters, in
 
 	conv_define_activation_param(current);
 	
+	//set bias value for the current layer, this value will not move during training
+	for(i = 1; i <= c_param->nb_area_w * c_param->nb_area_h* batch_size; i++)
+		c_param->im2col_input[i*c_param->flat_f_size] = c_param->bias_value;
+	
 	xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0);
-	//c_param->filters[0] = -2.0;
 	
 	//associate the conv specific functions to the layer
 	switch(compute_method)

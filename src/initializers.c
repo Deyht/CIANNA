@@ -28,10 +28,6 @@ void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding)
 	int size;
 	int limit;
 	
-	/*FILE* f;
-	
-	f = fopen("weights.txt", "a");
-	*/
 	size = dim_in*dim_out;
 	if(bias_padding)
 	{
@@ -46,26 +42,12 @@ void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding)
 			tab[i] = 0.0;
 		else
 		{
-			//tab[i] = 1.0;
 			tab[i] = random_normal()*sqrt(2.0/(dim_in+dim_out));
-			/*if((i%(dim_in+1+bias_padding)) == 0 && i < (dim_in+bias_padding)*(dim_in+bias_padding))
-				tab[i] = 1.0;
-			else
-				tab[i] = 0.0;*/
 		}
 	}
 	if(bias_padding)
 		tab[size-1] = 1.0;
-	/*
-	fprintf(f, "\n");
-	for(i = 0; i < dim_out; i++)
-	{
-		for(int j = 0; j < dim_in+bias_padding; j++)
-			fprintf(f, "%g ", tab[j + i*(dim_in+bias_padding)]);
-		fprintf(f,"\n");
-	}
-	fclose(f);
-	*/
+
 }
 
 

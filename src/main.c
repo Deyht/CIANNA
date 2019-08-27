@@ -16,11 +16,11 @@ real* input;
 int input_width = 4, input_height = 1, input_depth = 1;
 int output_dim;
 real* target;
-int batch_size = 13;
+int batch_size = 256;
 int nb_batch;
 int length;
-real learning_rate = 0.0002;
-real momentum = 0.4;
+real learning_rate = 0.0005;
+real momentum = 0.0;
 int compute_method = C_CUDA;
 
 int nb_layers;
@@ -38,7 +38,7 @@ void confmat(layer *net_layer)
 	int proxy_count = 0;
 	int o;
 	
-	printf("\nConfMat (test set)\n");
+	printf("\nConfMat (valid set)\n");
 	
 	o = ((dense_param*)net_layer[nb_layers-1].param)->nb_neurons;
 	
@@ -53,7 +53,7 @@ void confmat(layer *net_layer)
 	{
 		case C_CUDA:
 			#ifdef CUDA
-			cuda_confmat(train_data, train_target, train_size, mat, net_layer);
+			cuda_confmat(valid_data, valid_target, valid_size, mat, net_layer);
 			#endif
 			break;
 			
@@ -90,7 +90,7 @@ void confmat(layer *net_layer)
 		count += mat[i][i];
 	
 	printf("\nNumb extracted : %d\n", proxy_count);
-	printf("Correct : %f%%\n", count/train_size*100);
+	printf("Correct : %f%%\n", count/valid_size*100);
 	
 	free(temp);
 	free(rapp_err);
@@ -105,7 +105,6 @@ int main()
 	int i, j, k;
 	
 	int input_dim;
-	float dump;
 	
 	layer net_layer[7];	
 	nb_layers = 7;
@@ -128,12 +127,33 @@ int main()
 	train_data = (real**) malloc(nb_batch*sizeof(real*));
 	train_target = (real**) malloc(nb_batch*sizeof(real*));
 	
+	test_data = (real**) malloc(((test_size - 1) / batch_size + 1)*sizeof(real*));
+	test_target = (real**) malloc(((test_size - 1) / batch_size + 1)*sizeof(real*));
+	
+	valid_data = (real**) malloc(((valid_size - 1) / batch_size + 1)*sizeof(real*));
+	valid_target = (real**) malloc(((valid_size - 1) / batch_size + 1)*sizeof(real*));
+	
 	
 	for(i = 0; i < nb_batch; i++)
 	{
-		train_data[i] = (real*) malloc(batch_size * (input_dim + 1) * sizeof(real));
-		train_target[i] = (real*) malloc(batch_size * output_dim * sizeof(real));
+		train_data[i] = (real*) calloc(batch_size * (input_dim + 1), sizeof(real));
+		train_target[i] = (real*) calloc(batch_size * output_dim, sizeof(real));
 	}
+	
+	for(i = 0; i < (test_size - 1) / batch_size + 1; i++)
+	{
+		test_data[i] = (real*) calloc(batch_size * (input_dim + 1), sizeof(real));
+		test_target[i] = (real*) calloc(batch_size * output_dim, sizeof(real));
+	}
+	
+	for(i = 0; i < (valid_size - 1) / batch_size + 1; i++)
+	{
+		valid_data[i] = (real*) calloc(batch_size * (input_dim + 1), sizeof(real));
+		valid_target[i] = (real*) calloc(batch_size * output_dim, sizeof(real));
+	}
+	
+	
+	
 	
 	for(i = 0; i < nb_batch; i++)
 	{
@@ -143,18 +163,31 @@ int main()
 				continue;
 			for(k = 0; k < input_dim; k ++)
 				fscanf(f, "%f", &train_data[i][j*(input_dim+1) + k]);
-			train_data[i][j*(input_dim+1) + input_dim] = 0.1;
+			train_data[i][j*(input_dim+1) + input_dim] = 0.1; 
+			//bias value should be adapted somehow based on 1st layer
 		}
 	}
-	for(i = 0; i < test_size; i++)
+	for(i = 0; i < (test_size - 1) / batch_size + 1; i++)
 	{
-		for(j = 0; j < input_dim; j++)
-			fscanf(f, "%f", &dump);
+		for(j = 0; j < batch_size; j++)
+		{
+			if(i*batch_size + j >= test_size)
+				continue;
+			for(k = 0; k < input_dim; k ++)
+				fscanf(f, "%f", &test_data[i][j*(input_dim+1) + k]);
+			test_data[i][j*(input_dim+1) + input_dim] = 0.1;
+		}
 	}
-	for(i = 0; i < valid_size; i++)
+	for(i = 0; i < (valid_size - 1) / batch_size + 1; i++)
 	{
-		for(j = 0; j < input_dim; j++)
-			fscanf(f, "%f", &dump);
+		for(j = 0; j < batch_size; j++)
+		{
+			if(i*batch_size + j >= valid_size)
+				continue;
+			for(k = 0; k < input_dim; k ++)
+				fscanf(f, "%f", &valid_data[i][j*(input_dim+1) + k]);
+			valid_data[i][j*(input_dim+1) + input_dim] = 0.1;
+		}
 	}
 	
 	for(i = 0; i < nb_batch; i++)
@@ -165,6 +198,28 @@ int main()
 				continue;
 			for(k = 0; k < output_dim; k ++)
 				fscanf(f, "%f", &train_target[i][j*(output_dim) + k]);
+		}
+	}
+	
+	for(i = 0; i < (test_size - 1) / batch_size + 1; i++)
+	{
+		for(j = 0; j < batch_size; j++)
+		{
+			if(i*batch_size + j >= test_size)
+				continue;
+			for(k = 0; k < output_dim; k ++)
+				fscanf(f, "%f", &test_target[i][j*(output_dim) + k]);
+		}
+	}
+	
+	for(i = 0; i < (valid_size - 1) / batch_size + 1; i++)
+	{
+		for(j = 0; j < batch_size; j++)
+		{
+			if(i*batch_size + j >= valid_size)
+				continue;
+			for(k = 0; k < output_dim; k ++)
+				fscanf(f, "%f", &valid_target[i][j*(output_dim) + k]);
 		}
 	}
 
@@ -185,10 +240,14 @@ int main()
 
 	cuda_convert_batched_table(train_data, nb_batch, batch_size, (input_dim + 1));
 	cuda_convert_batched_table(train_target, nb_batch, batch_size, output_dim);
+	
+	cuda_convert_batched_table(test_data, (test_size - 1) / batch_size + 1, batch_size, (input_dim + 1));
+	cuda_convert_batched_table(test_target, (test_size - 1) / batch_size + 1, batch_size, output_dim);
+	
+	cuda_convert_batched_table(valid_data, (valid_size - 1) / batch_size + 1, batch_size, (input_dim + 1));
+	cuda_convert_batched_table(valid_target, (valid_size - 1) / batch_size + 1, batch_size, output_dim);
 
 	#endif
-	
-	//cuda_print_table(train_data[nb_batch-1], batch_size * (input_dim + 1), 28);
 	
 	
 	/*
@@ -210,64 +269,54 @@ int main()
 	dense_create(&net_layer[5], &net_layer[4], output_dim, SOFTMAX);
 	*/
 	
-	//LeNet-5
+	//Modified LeNet-5
+	
 	conv_create(&net_layer[0], NULL, 5, 6, 1, 4, RELU);
 	pool_create(&net_layer[1], &net_layer[0], 2);
 	conv_create(&net_layer[2], &net_layer[1], 5, 16, 1, 0, RELU);
 	pool_create(&net_layer[3], &net_layer[2], 2);
-	dense_create(&net_layer[4], &net_layer[3], 120, RELU);
-	dense_create(&net_layer[5], &net_layer[4], 84, RELU);
+	dense_create(&net_layer[4], &net_layer[3], 256, RELU);
+	dense_create(&net_layer[5], &net_layer[4], 128, RELU);
 	dense_create(&net_layer[6], &net_layer[5], output_dim, SOFTMAX);
 	
 	
+	/*
+	dense_create(&net_layer[0], NULL, 200, LOGISTIC);
+	dense_create(&net_layer[1], &net_layer[0], 200, LOGISTIC);
+	dense_create(&net_layer[2], &net_layer[1], output_dim, SOFTMAX);
+	*/
+	
 	printf("Start learning phase ...\n");
 	//confmat(net_layer);
-	
-	for(i = 0; i < 200; i++)
+
+	for(i = 0; i < 10; i++)
 	{
 		printf("loop : %d\n", i);
+		
 		for(k = 0; k < nb_batch; k++)
 		{
 			if(k == nb_batch-1)
-			{
 				length = train_size%batch_size;
-			}
 			else
 				length = batch_size;
 			
 			//Loop on all batch for one epoch
 			input = train_data[k];
 			target = train_target[k];
-			//forward
+		
 			for(j = 0; j < nb_layers; j++)
-			{
-				//printf("\t layer : %d\n", j);
 				net_layer[j].forward(&net_layer[j]);
-			}
-			//cuda_print_table(net_layer[nb_layers-1].output, batch_size*11,11);
 			
-				
-			//backward
-			//printf("output_error\n");
 			output_error(&net_layer[nb_layers-1]);
-			
-			//cuda_print_table_transpose(net_layer[nb_layers-1].output, batch_size, 11);
-			//cuda_print_table_transpose(net_layer[nb_layers-1].delta_o, batch_size, 11);
-			
 			for(j = 0; j < nb_layers; j++)
-			{
-				//printf("\t layer : %d\n", nb_layers-1-j);
 				net_layer[nb_layers-1-j].backprop(&net_layer[nb_layers-1-j]);
-			}
 			
-			/*
-			if(k == 1)
-				exit(EXIT_SUCCESS);
-			*/
 		}
 		confmat(net_layer);
-		//cuda_print_table(((conv_param*)net_layer[0].param)->filters, (5*5+1)*4,4);
-		//cuda_print_table(net_layer[nb_layers-1].output, batch_size*11,11);
+		
+		learning_rate *= 0.98;
+		//should add a better adaptive learning rate
+
 	}
 
 	exit(EXIT_SUCCESS);

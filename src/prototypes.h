@@ -75,6 +75,7 @@ void cuda_convert_table(real **tab, int size);
 void cuda_convert_batched_table(real **tab, int nb_batch, int batch_size, int size);
 void cuda_print_table(real* tab, int size, int return_every);
 void cuda_print_table_transpose(real* tab, int line_size, int column_size);
+void cuda_convert_network(layer** network);
 void cuda_confmat(real** data, real** target_data, int nb_data, float** out_mat, layer *net_layer);
 
 
@@ -93,6 +94,10 @@ void cuda_convert_conv_layer(layer *current);
 //cuda_pool_layer.cu
 void cuda_pool_define(layer *current);
 void cuda_convert_pool_layer(layer *current);
+
+//timer.c
+void init_timer(struct timeval* tstart);
+real ellapsed_time(struct timeval tstart);
 	
 //######################################
 

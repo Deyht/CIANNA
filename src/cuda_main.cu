@@ -52,11 +52,10 @@ __global__ void cuda_update_weights(real *weights, real* update, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
-	if(i >= size)
-		return;
-	
-	weights[i] -= update[i];
-
+	if(i < size)
+	{
+		weights[i] -= update[i];
+	}
 }
 
 
@@ -141,7 +140,6 @@ __device__ int cuda_argmax(real* tab, int pos, int len, int size, int format)
 	return imax;
 }
 
-
 __global__ void add_confmat(real *out, real *targ, float *mat, int len, int batch_size, int o_dim)
 {
 	//For CNN the output 
@@ -152,7 +150,6 @@ __global__ void add_confmat(real *out, real *targ, float *mat, int len, int batc
 		arg1 = cuda_argmax(targ, i, batch_size, o_dim, 0);
 		arg2 = cuda_argmax(out, i, batch_size, o_dim+1, 0);
 		//Row major
-		//if(out[i + arg2*batch_size] > 0.99)
 		atomicAdd(&(mat[arg2+o_dim*arg1]), 1);
 	}
 }
@@ -170,9 +167,9 @@ void cuda_confmat(real** data, real** target_data, int nb_data, float** out_mat,
 	cudaMemset(mat, 0.0, o*o*sizeof(float));
 	
 	
-	for(k = 0; k < nb_batch; k++)
+	for(k = 0; k < (nb_data - 1) / batch_size + 1; k++)
 	{
-		if(k == nb_batch-1)
+		if(k == (nb_data - 1) / batch_size)
 		{
 			length = nb_data%batch_size;
 		}
@@ -185,7 +182,6 @@ void cuda_confmat(real** data, real** target_data, int nb_data, float** out_mat,
 		//forward
 		for(j = 0; j < nb_layers; j++)
 		{
-			//printf("\t layer : %d\n", j);
 			net_layer[j].forward(&net_layer[j]);
 		}
 		cu_blocks = (batch_size + cu_threads - 1) / cu_threads;

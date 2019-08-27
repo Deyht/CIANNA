@@ -41,6 +41,10 @@ struct layer
 	void (*deriv_activation)(layer *parent);
 	void *activ_param;
 	
+	//utility
+	real time_fwd;
+	real time_back;
+	
 };
 
 

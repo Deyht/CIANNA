@@ -119,6 +119,8 @@ void cuda_linear_output_error(layer *current)
 
 void cuda_ReLU_activation(layer *current)
 {
+
+	//printf("relu activation\n");
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	//to update for new formalism
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
@@ -217,7 +219,7 @@ void cuda_logistic_activation(layer *current)
 	logistic_param *param = (logistic_param*)current->activ_param;
 	
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
-	logistic_activation_kernel<<< cu_blocks, cu_threads >>>(current->output, param->beta,  param->saturation, param->dim*length,  param->dim, param->size);
+	logistic_activation_kernel<<< cu_blocks, cu_threads >>>(current->output, param->beta, param->saturation, param->size,  param->dim, param->size);
 }
 
 __global__ void logistic_activation_kernel(real *tab, real beta, real saturation, int len, int dim, int size)
@@ -231,13 +233,12 @@ __global__ void logistic_activation_kernel(real *tab, real beta, real saturation
 	{
 		i += i / dim;
 		tab[i] = -beta*tab[i];
-			if(tab[i] > saturation)
-				tab[i] = saturation;
-			tab[i] = 1.0/(1.0 + expf(tab[i]));
+		if(tab[i] > saturation)
+			tab[i] = saturation;
+		tab[i] = 1.0/(1.0 + expf(tab[i]));
 	}
 	else
 	{
-		i += i / dim;
 		tab[i] = 0.0;
 	}
 }
@@ -249,7 +250,7 @@ void cuda_logistic_deriv(layer *previous)
 	//to update for new formalism
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
 	logistic_deriv_kernel <<< cu_blocks, cu_threads >>>(previous->delta_o, previous->output, param->beta,
-		(param->dim+1)*length, param->dim, param->size);
+		param->size, param->dim, param->size);
 }
 
 
@@ -283,8 +284,6 @@ void cuda_logistic_output_error(layer* current)
 }
 
 //#####################################################
-
-
 
 
 
@@ -374,12 +373,7 @@ __global__ void softmax_output_error_kernel(real *delta_o, real *output, real *t
 	{
 		pos = i - i/(dim+1);
 		delta_o[i] = (output[i] - target[pos]);
-		//printf("i = %d , pos = %d\n %f = %f - %f\n", i, pos, delta_o[i], output[i], target[i]);
 	}
-	/*
-	else
-		delta_o[i] = 0.0;
-	*/
 }
 
 

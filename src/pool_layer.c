@@ -85,7 +85,6 @@ void pool_create(layer *current, layer* previous, int pool_size)
 	
 	//No weights initialization in a pool layer
 	
-	
 	//associate the conv specific functions to the layer
 	switch(compute_method)
 	{

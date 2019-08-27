@@ -29,12 +29,11 @@ void dense_define_activation_param(layer *current)
 			break;
 			
 		case LOGISTIC:
-			printf("Logistic activ_param def\n");
 			current->activ_param = (logistic_param*) malloc(sizeof(logistic_param));
 			((logistic_param*)current->activ_param)->size = (d_param->nb_neurons+1)*batch_size;
 			((logistic_param*)current->activ_param)->dim = d_param->nb_neurons;
 			((logistic_param*)current->activ_param)->beta = 1.0;
-			((logistic_param*)current->activ_param)->saturation = 16.0;
+			((logistic_param*)current->activ_param)->saturation = 14.0;
 			d_param->bias_value = -1.0;
 			break;
 			
@@ -116,8 +115,8 @@ void dense_create(layer *current, layer* previous, int nb_neurons, int activatio
 	current->param = d_param;
 	
 	dense_define_activation_param(current);
+	
 	xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1);
-	//d_param->weights[0] = -2.0;
 	
 	switch(compute_method)
 	{

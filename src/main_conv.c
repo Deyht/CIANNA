@@ -33,7 +33,6 @@ void confmat(layer *net_layer)
 	float** mat;
 	float* temp;
 	real count;
-	//int arg1, arg2;
 	real *rapp_err, *rapp_err_rec;
 	int proxy_count = 0;
 	int o;
@@ -223,7 +222,6 @@ int main()
 				net_layer[nb_layers-1-j].backprop(&net_layer[nb_layers-1-j]);
 			}
 		}
-		//confmat(net_layer);
 	}
 
 	exit(EXIT_SUCCESS);
