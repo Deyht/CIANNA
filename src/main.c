@@ -16,7 +16,7 @@ real* input;
 int input_width = 4, input_height = 1, input_depth = 1;
 int output_dim;
 real* target;
-int batch_size = 256;
+int batch_size = 2;
 int nb_batch;
 int length;
 real learning_rate = 0.0005;
@@ -110,7 +110,7 @@ int main()
 	nb_layers = 7;
 	
 	//Common randomized seed based on time at execution
-	srand(time(NULL));
+	//srand(time(NULL));
 	
 	#ifdef CUDA
 	init_cuda();
@@ -289,7 +289,7 @@ int main()
 	printf("Start learning phase ...\n");
 	//confmat(net_layer);
 
-	for(i = 0; i < 10; i++)
+	for(i = 0; i < 40; i++)
 	{
 		printf("loop : %d\n", i);
 		
@@ -306,7 +306,8 @@ int main()
 		
 			for(j = 0; j < nb_layers; j++)
 				net_layer[j].forward(&net_layer[j]);
-			
+			/*if(k == 1)
+				exit(1);*/
 			output_error(&net_layer[nb_layers-1]);
 			for(j = 0; j < nb_layers; j++)
 				net_layer[nb_layers-1-j].backprop(&net_layer[nb_layers-1-j]);
@@ -314,7 +315,7 @@ int main()
 		}
 		confmat(net_layer);
 		
-		learning_rate *= 0.98;
+		learning_rate *= 0.99;
 		//should add a better adaptive learning rate
 
 	}

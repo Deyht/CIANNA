@@ -162,7 +162,7 @@ void conv_create(layer *current, layer* previous, int f_size, int nb_filters, in
 	
 	//set bias value for the current layer, this value will not move during training
 	for(i = 1; i <= c_param->nb_area_w * c_param->nb_area_h* batch_size; i++)
-		c_param->im2col_input[i*c_param->flat_f_size] = c_param->bias_value;
+		c_param->im2col_input[i*(c_param->flat_f_size) - 1] = c_param->bias_value;
 	
 	xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0);
 	
