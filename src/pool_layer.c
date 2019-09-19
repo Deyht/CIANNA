@@ -8,8 +8,14 @@ static pool_param *p_param;
 
 
 
-void pool_create(layer *current, layer* previous, int pool_size)
+void pool_create(layer* previous, int pool_size)
 {
+	layer* current;
+	
+	current = (layer*) malloc(sizeof(layer));
+	net_layers[nb_layers] = current;
+	nb_layers++;
+
 	p_param = (pool_param*) malloc(sizeof(pool_param));
 
 	current->type = POOL;

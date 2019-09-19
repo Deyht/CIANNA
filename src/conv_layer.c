@@ -70,9 +70,15 @@ void conv_define_activation_param(layer *current)
 
 
 //Used to allocate a convolutionnal layer
-void conv_create(layer *current, layer* previous, int f_size, int nb_filters, int stride, int padding, int activation)
+void conv_create(layer *previous, int f_size, int nb_filters, int stride, int padding, int activation)
 {
 	int i;
+	layer *current;
+	
+	current = (layer*) malloc(sizeof(layer));
+	net_layers[nb_layers] = current;
+	nb_layers++;
+	
 	//allocate the space holder for conv layer parameters
 	c_param = (conv_param*) malloc(sizeof(conv_param));
 	

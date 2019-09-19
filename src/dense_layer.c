@@ -17,7 +17,6 @@ void dense_define_activation_param(layer *current);
 void dense_define_activation_param(layer *current)
 {
 	d_param = (dense_param*) current->param;
-	printf("IN\n");
 	switch(current->activation_type)
 	{
 		case RELU:
@@ -52,12 +51,16 @@ void dense_define_activation_param(layer *current)
 			break;
 	
 	}
-	printf("OUT\n");
 }
 
 
-void dense_create(layer *current, layer* previous, int nb_neurons, int activation)
+void dense_create(layer* previous, int nb_neurons, int activation)
 {
+	layer* current;
+	
+	current = (layer*) malloc(sizeof(layer));
+	net_layers[nb_layers] = current;
+	nb_layers++;
 	
 	d_param = (dense_param*) malloc(sizeof(dense_param));
 	

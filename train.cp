@@ -54,12 +54,12 @@ echo "#####  End of CUDA compilation  #####"
 
 #compiling all the program
 gcc $compile_opt -std=c99 -c \
-defs.h prototypes.h structs.h main.c conv_layer.c dense_layer.c pool_layer.c activ_functions.c initializers.c -lm $arg
+defs.h prototypes.h structs.h main.c conv_layer.c dense_layer.c pool_layer.c activ_functions.c initializers.c vars.c auxil.c -lm $arg
 echo "#####  End of main program compilation  #####"
 
 #linking the main program (with cuda if needed)
 gcc $compile_opt -std=c99 -o \
-../main $cuda_obj main.o conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o -lm $arg
+../main $cuda_obj main.o conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o -lm $arg
 echo "#####  End of link edition and executable creation  #####"
 
 rm *.o *.gch

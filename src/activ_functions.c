@@ -4,13 +4,13 @@
 //#####################################################
 
 
-void output_error(layer* current)
+void output_deriv_error(layer* current)
 {
 	switch(compute_method)
 	{
 		case C_CUDA:
 			#ifdef CUDA
-			cuda_output_error(current);
+			cuda_deriv_output_error(current);
 			#endif
 			break;
 		
@@ -24,6 +24,28 @@ void output_error(layer* current)
 			exit(EXIT_FAILURE);
 			break;
 	}	
+}
+
+void output_error_fct(layer* current)
+{
+	switch(compute_method)
+	{
+		case C_CUDA:
+			#ifdef CUDA
+			cuda_output_error_fct(current);
+			#endif
+			break;
+		
+		case C_BLAS:
+			#ifdef BLAS
+			printf("BLAS computation do not exist yet\n");
+			#endif
+			break;
+		default:
+			printf("default computaiton do not exist yet\n");
+			exit(EXIT_FAILURE);
+			break;
+	}
 }
 
 

@@ -20,6 +20,14 @@ enum compute_method{C_NAIV, C_BLAS, C_CUDA};
 //                  Global
 //############################################
 
+typedef struct Dataset
+{
+	real **input;
+	real **target;
+	int size;
+	int nb_batch;
+} Dataset;
+
 typedef struct layer layer;
 struct layer
 {
