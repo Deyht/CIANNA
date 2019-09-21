@@ -38,7 +38,7 @@ extern layer *net_layers[100];
 //######################################
 
 void init_network(int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method);
-void init_dataset(Dataset *data, int nb_elem);
+Dataset create_dataset(int nb_elem);
 void enable_confmat(void);
 void compute_error(Dataset data);
 void train_network(Dataset train_set, Dataset valid_set, int nb_epochs, int control_interv, real u_learning_rate, real u_momentum, real u_decay);

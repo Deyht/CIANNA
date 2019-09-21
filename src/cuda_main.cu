@@ -64,6 +64,7 @@ void cuda_convert_dataset(Dataset data)
 {
 	cuda_convert_batched_table(data.input, data.nb_batch, input_dim + 1);
 	cuda_convert_batched_table(data.target, data.nb_batch, output_dim);
+	data.localization = DEVICE;
 }
 
 __global__ void cuda_update_weights(real *weights, real* update, int size)

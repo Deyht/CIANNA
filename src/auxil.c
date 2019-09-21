@@ -12,8 +12,10 @@ void init_network(int u_input_dim[3], int u_output_dim, int u_batch_size, int u_
 	compute_method = u_compute_method;
 	
 	output_error = (real*) calloc(batch_size*output_dim,sizeof(real));
+	#ifdef CUDA
 	if(compute_method == C_CUDA)
 		cuda_create_table(&output_error_cuda, batch_size*output_dim);
+	#endif
 }
 
 void enable_confmat(void)
@@ -22,20 +24,23 @@ void enable_confmat(void)
 }
 
 
-void init_dataset(Dataset *data, int nb_elem)
+Dataset create_dataset(int nb_elem)
 {
 	int i;
+	Dataset data;
 
-	data->size = nb_elem;
-	data->nb_batch = (data->size - 1) / batch_size + 1;
-	data->input = (real**) malloc(data->nb_batch*sizeof(real*));
-	data->target = (real**) malloc(data->nb_batch*sizeof(real*));
+	data.size = nb_elem;
+	data.nb_batch = (data.size - 1) / batch_size + 1;
+	data.input = (real**) malloc(data.nb_batch*sizeof(real*));
+	data.target = (real**) malloc(data.nb_batch*sizeof(real*));
+	data.localization = HOST;
 	
-	for(i = 0; i < data->nb_batch; i++)
+	for(i = 0; i < data.nb_batch; i++)
 	{
-		data->input[i] = (real*) calloc(batch_size * (input_dim + 1), sizeof(real));
-		data->target[i] = (real*) calloc(batch_size * output_dim, sizeof(real));
+		data.input[i] = (real*) calloc(batch_size * (input_dim + 1), sizeof(real));
+		data.target[i] = (real*) calloc(batch_size * output_dim, sizeof(real));
 	}
+	return data;
 }
 
 int argmax(real *tab, int size)
@@ -85,9 +90,10 @@ void compute_error(Dataset data)
 		for(j = 0; j < o; j++)
 			mat[j] = &(temp[j*o]);
 			
+		#ifdef CUDA
 		if(compute_method == C_CUDA)
 			cuda_create_table(&cuda_mat, o*o);
-
+		#endif
 	}
 	
 	total_error = 0.0;
@@ -158,8 +164,10 @@ void compute_error(Dataset data)
 	
 	if(compute_method == C_CUDA)
 	{
+		#ifdef CUDA
 		cuda_get_table(&cuda_mat, mat, o*o);
 		cuda_free_table(cuda_mat);
+		#endif
 	}
 	
 	if(confusion_matrix)

@@ -1,6 +1,7 @@
+
+
+
 #include "prototypes.h"
-
-
 
 
 int main()
@@ -30,9 +31,9 @@ int main()
 	
 	init_network(dims, out_dim, 512, C_CUDA);
 	
-	init_dataset(&train, train_size);
-	init_dataset(&test, test_size);
-	init_dataset(&valid, valid_size);
+	train = create_dataset(train_size);
+	test = create_dataset(test_size);
+	valid = create_dataset(valid_size);
 	
 	for(i = 0; i < train.nb_batch; i++)
 	{
