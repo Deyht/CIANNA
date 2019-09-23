@@ -19,17 +19,13 @@ int main()
 	//srand(time(NULL));
 	
 	
-	#ifdef CUDA
-	init_cuda();
-	#endif
-	
 	f = fopen("input.dat", "r+");
 
 	fscanf(f, "%d %d %d %dx%dx%d %d", &train_size, &test_size, &valid_size, &dims[0], &dims[1],
 		&dims[2], &out_dim);
 		
 	
-	init_network(dims, out_dim, 512, C_CUDA);
+	init_network(dims, out_dim, 256, C_CUDA);
 	
 	train = create_dataset(train_size);
 	test = create_dataset(test_size);

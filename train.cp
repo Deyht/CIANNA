@@ -6,7 +6,7 @@ gcc_compile_dir="/usr/bin/gcc"
 openblas_include_dir="/opt/OpenBLAS/include/"
 openblas_lib_dir="/opt/OpenBLAS/lib"
 cuda_lib_path="/usr/local/cuda-10.1/lib64"
-compile_opt="-O3 -Wall -Werror -Wno-unused-result -fmax-errors=2 -fbounds-check"
+compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -fmax-errors=2 -fbounds-check"
 
 ######################################################
 
@@ -62,7 +62,7 @@ gcc $compile_opt -std=c99 -o \
 ../main $cuda_obj main.o conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o -lm $arg
 echo "#####  End of link edition and executable creation  #####"
 
-rm *.o *.gch
+#rm *.o *.gch
 
 cd ..
 

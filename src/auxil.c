@@ -3,6 +3,10 @@
 
 void init_network(int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method)
 {
+	#ifdef CUDA
+	init_cuda();
+	#endif
+
 	input_width = u_input_dim[0]; 
 	input_height = u_input_dim[1];
 	input_depth = u_input_dim[2];
@@ -219,6 +223,7 @@ void train_network(Dataset train_set, Dataset valid_set, int nb_epochs, int cont
 	momentum = u_momentum;
 	decay = u_decay;
 	
+	
 	for(i = 0; i < nb_epochs; i++)
 	{
 		//Loop on all batch for one epoch
@@ -236,6 +241,7 @@ void train_network(Dataset train_set, Dataset valid_set, int nb_epochs, int cont
 			for(k = 0; k < nb_layers; k++)
 				net_layers[k]->forward(net_layers[k]);
 			//cuda_print_table_transpose(net_layers[nb_layers-1]->output, batch_size, output_dim+1);
+			//cuda_print_table_transpose(target, batch_size, output_dim);
 
 			output_deriv_error(net_layers[nb_layers-1]);
 			//Propagate error through all layers

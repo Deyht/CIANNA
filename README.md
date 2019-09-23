@@ -1,5 +1,5 @@
-# ANNA
-ANNA - Artificial Neural Network by/for Astrophysicists - is a deep learning framework developed to address astrophysical problems. Fonctionnalities and optimizations are added as they are identified as relevant for astrophysical problems solving.
+# CIANNA
+CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysicists - is a deep learning framework developed to address astrophysical problems. Fonctionnalities and optimizations are added as they are identified as relevant for astrophysical problems solving.
 
 Main developper : David Cornu, FR - UTINAM / Univ. Franche Comté
 
