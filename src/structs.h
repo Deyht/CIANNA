@@ -24,6 +24,8 @@ typedef struct Dataset
 {
 	real **input;
 	real **target;
+	real **input_device;
+	real **target_device;
 	int size;
 	int nb_batch;
 	int localization;
@@ -73,8 +75,11 @@ typedef struct dense_param
 	
 	real* weights;
 	real* update;
+	real* dropout_mask;
+	void* block_state;
 	
 	real bias_value;
+	real dropout_rate;
 
 } dense_param;
 

@@ -22,7 +22,6 @@ __global__ void im2col_kernel_v3(real* output, real* input, int image_size, int 
 
 __global__ void im2col_kernel_v3back(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int depth, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
 
-
 void cuda_conv_define(layer *current)
 {
 	current->forward = cuda_forward_conv_layer;
@@ -120,7 +119,7 @@ void cuda_forward_conv_layer(layer *current)
 	depth_padding = depth_padding;
 	
 	//cuda im2col conversion kernel -> one of the most complex function, go see details above
-	dim3 threadsPerBlock2(8, 8, 8);
+	dim3 threadsPerBlock2(2, 4, 4);
 	//create numBlocks regarding the layer dimensions
     dim3 numBlocks2((batch_size + threadsPerBlock2.x - 1) / threadsPerBlock2.x,
     	(c_param->prev_depth + threadsPerBlock2.y - 1) / threadsPerBlock2.y,
@@ -199,7 +198,7 @@ void cuda_backward_conv_layer(layer *current)
 		image_size = image_size;
 		depth_padding = depth_padding;
 		
-		dim3 threadsPerBlock2(8, 8, 8);
+		dim3 threadsPerBlock2(2, 4, 4);
 		//create numBlocks regarding the layer dimensions
 		dim3 numBlocks2((batch_size + threadsPerBlock2.x - 1) / threadsPerBlock2.x,
 			(c_param->nb_filters + threadsPerBlock2.y - 1) / threadsPerBlock2.y,
@@ -273,6 +272,7 @@ __global__ void im2col_kernel_v3(real* output, real* input, int image_size, int 
 	}
 }
 
+
 __global__ void im2col_kernel_v3back(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int depth, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
@@ -280,6 +280,10 @@ __global__ void im2col_kernel_v3back(real* output, real* input, int image_size, 
 	int z = blockIdx.z*blockDim.z + threadIdx.z;
 	
 	int w, h, x, y;
+	int im_times_b_size = image_size * batch_size;
+	int f_size_square = f_size*f_size;
+	int padding_square = padding*padding;
+	int nb_w_times_flat_f_size = nb_area_w * flat_f_size;
 	
 	if( i < batch_size)
 	{
@@ -288,8 +292,8 @@ __global__ void im2col_kernel_v3back(real* output, real* input, int image_size, 
 		
 		if(d < depth)
 		{
-			input += d * (image_size * batch_size);
-			output += d * f_size*f_size;
+			input += d * (im_times_b_size);
+			output += d * f_size_square;
 			if(z < image_size)
 			{
 				w = z % w_size + padding;
@@ -297,7 +301,7 @@ __global__ void im2col_kernel_v3back(real* output, real* input, int image_size, 
 				for(x = 0; x < f_size; x += stride)
 					for(y = 0; y < f_size; y+= stride)
 						if((w-x) >= 0 && (h-y) >= 0 && (w-x) < nb_area_w && (h-y) < nb_area_w)
-							output[(w-x) * flat_f_size + padding * padding + (h-y) * nb_area_w * flat_f_size + x + y*f_size] = input[z];
+							output[(w-x) * flat_f_size + padding_square + (h-y) * nb_w_times_flat_f_size + x + y*f_size] = input[z];
 			}
 		}
 	}

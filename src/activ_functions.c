@@ -48,6 +48,29 @@ void output_error_fct(layer* current)
 	}
 }
 
+/*
+void print_activ_param(FILE *f, int type)
+{
+	switch(type)
+	{
+		case LOGISTIC:
+			fprintf(f,"(LOGI)");
+			break;
+		
+		case SOFTMAX:
+			fprintf(f,"(SMAX)");
+			break;
+	
+		case LINEAR:
+			fprintf(f,"(LIN)");
+			break;
+	
+		case RELU:
+		default:
+			fprintf(f,"(RELU)");
+			break;
+	}	
+}*/
 
 
 //#####################################################

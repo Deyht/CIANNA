@@ -4,6 +4,7 @@
 int input_width = 4, input_height = 1, input_depth = 1;
 int input_dim = 4;
 int output_dim;
+int out_size;
 int batch_size = 10;
 real learning_rate = 0.3;
 real momentum = 0.6;
@@ -20,5 +21,6 @@ real* output_error_cuda;
 
 int nb_layers = 0;
 layer *net_layers[100];
+FILE* f_save;
 
 

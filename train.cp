@@ -10,12 +10,12 @@ compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -fmax-errors=2 -fbounds-
 
 ######################################################
 
-
+	
 for i in $*
 do
 	if [ $i  = "CUDA" ]
 	then
-		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart "
+		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart -arch=sm_60"
 		arg="$arg -D CUDA -lcublas -lcudart -L $cuda_lib_path "
 		cuda_obj="cuda_main.o cuda_conv_layer.o cuda_dense_layer.o cuda_pool_layer.o cuda_activ_functions.o"
 		USE_CUDA=1
@@ -45,6 +45,7 @@ cd ./src
 
 if [ $USE_CUDA ]
 then
+
 #compiling the cuda part if needed
 nvcc --compiler-bindir $gcc_compile_dir -Xcompiler "$compile_opt" \
 -O3 -c cuda_main.cu cuda_activ_functions.cu cuda_conv_layer.cu cuda_pool_layer.cu cuda_dense_layer.cu $cuda_arg -lm

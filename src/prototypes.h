@@ -13,6 +13,7 @@
 extern int input_width, input_height, input_depth;
 extern int input_dim;
 extern int output_dim;
+extern int out_size;
 extern int batch_size;
 extern real learning_rate;
 extern real momentum;
@@ -29,6 +30,7 @@ extern real *output_error_cuda;
 
 extern int nb_layers;
 extern layer *net_layers[100];
+extern FILE* f_save;
 
 //######################################
 
@@ -38,11 +40,11 @@ extern layer *net_layers[100];
 //######################################
 
 void init_network(int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method);
-Dataset create_dataset(int nb_elem);
+Dataset create_dataset(int nb_elem, real bias);
 void enable_confmat(void);
-void compute_error(Dataset data);
+void compute_error(Dataset data, int saving, int repeat);
 void train_network(Dataset train_set, Dataset valid_set, int nb_epochs, int control_interv, real u_learning_rate, real u_momentum, real u_decay);
-
+void forward_network(Dataset test_set, int train_step, const char *pers_file_name, int repeat);
 
 //######################################
 //       CUDA public prototypes
@@ -57,7 +59,8 @@ void output_deriv_error(layer* current);
 void output_error_fct(layer* current);
 
 //dense_layer.c
-void dense_create(layer* previous, int nb_neurons, int activation);
+void dense_create(layer* previous, int nb_neurons, int activation, real drop_rate);
+void print_dense_param(FILE *f, layer *current);
 
 //conv_layer.c
 void conv_create(layer* previous, int f_size, int nb_filters, int stride, int padding, int activation);
@@ -89,16 +92,18 @@ extern real cu_alpha, cu_beta;
 extern cublasHandle_t cu_handle;
 __global__ void cuda_update_weights(real *weights, real* updates, int size);
 __device__ int cuda_argmax(real* tab, int dim_out);
+__global__ void im2col_kernel_nested(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int depth, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
 #endif
 void init_cuda(void);
 void cuda_free_table(real* tab);
 void cuda_convert_table(real **tab, int size);
-void cuda_convert_dataset(Dataset data);
+void cuda_convert_dataset(Dataset *data);
 void cuda_create_table(real **tab, int size);
 void cuda_get_table(real **cuda_table, real **table, int size);
 void cuda_print_table(real* tab, int size, int return_every);
 void cuda_print_table_transpose(real* tab, int line_size, int column_size);
 void cuda_confmat(real *out, real* mat);
+void cuda_shuffle(Dataset data, Dataset duplicate, real *index_shuffle, real *index_shuffle_device);
 
 void cuda_convert_network(layer** network);
 void cuda_deriv_output_error(layer *current);

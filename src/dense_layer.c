@@ -54,7 +54,7 @@ void dense_define_activation_param(layer *current)
 }
 
 
-void dense_create(layer* previous, int nb_neurons, int activation)
+void dense_create(layer* previous, int nb_neurons, int activation, real drop_rate)
 {
 	layer* current;
 	
@@ -67,6 +67,7 @@ void dense_create(layer* previous, int nb_neurons, int activation)
 	current->type = DENSE;
 	current->activation_type = activation;
 	d_param->nb_neurons = nb_neurons;
+	d_param->dropout_rate = drop_rate;
 	
 	current->previous = previous;
 	
@@ -110,9 +111,11 @@ void dense_create(layer* previous, int nb_neurons, int activation)
 
 	d_param->weights = (real*) malloc(d_param->in_size*(nb_neurons+1)*sizeof(real));
 	d_param->update = (real*) calloc(d_param->in_size*(nb_neurons+1), sizeof(real));
+	d_param->dropout_mask = (real*) calloc(d_param->nb_neurons, sizeof(real));
 	
 	current->output = (real*) calloc((nb_neurons+1)*batch_size, sizeof(real));
 	current->delta_o = (real*) calloc((nb_neurons+1)*batch_size, sizeof(real));
+	
 	
 	//must be before the association functions
 	current->param = d_param;
@@ -141,6 +144,16 @@ void dense_create(layer* previous, int nb_neurons, int activation)
 	#endif
 }
 
+/*
+void print_dense_param(FILE *f, layer *current)
+{
+	d_param = (dense_param*)current->param;	
+	
+	fprintf(f,"D");
+	fprintf(f, "%d", (d_param->nb_neurons);
+	print_activ_param(f, current->activation_type);
+}
+*/
 
 
 

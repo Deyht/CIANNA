@@ -195,7 +195,16 @@ void conv_create(layer *previous, int f_size, int nb_filters, int stride, int pa
 	
 }
 
-
+/*
+void print_dense_param(FILE *f, layer *current)
+{
+	c_param = (conv_param*)current->param;	
+	
+	fprintf(f,"C");
+	fprintf(f, "%df%d", c_param->nb_filers, c_param->f_size);
+	print_activ_param(f, current->activation_type);
+}
+*/
 
 
 

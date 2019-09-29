@@ -63,10 +63,11 @@ static PyObject* py_create_dataset(PyObject* self, PyObject* args)
 	int i, j, k, l, m;
 	Dataset *data = NULL;
 	const char *dataset_type;
+	double bias = 0.1;
 	PyArrayObject *py_data = NULL, *py_target = NULL;
-	int size;
+	int size, flat = 0;
 
-	if(!PyArg_ParseTuple(args, "siOO", &dataset_type, &size, &py_data, &py_target))
+	if(!PyArg_ParseTuple(args, "siOOd|i", &dataset_type, &size, &py_data, &py_target, &bias, &flat))
 	    return Py_None;
 	    
 	printf("test\n");
@@ -90,7 +91,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject* args)
 	
 	
 	printf("input dim :%d\n", input_dim);
-	*data = create_dataset(size);
+	*data = create_dataset(size, bias);
 	
 	printf("%d \n", data->nb_batch);
 	
@@ -102,7 +103,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject* args)
 	
 	if(py_data != NULL && py_target != NULL)
 	{
-		printf("loading\n");
+		printf("loading input\n");
 		for(i = 0; i < data->nb_batch; i++)
 			for(j = 0; j < batch_size; j++)
 			{
@@ -112,11 +113,15 @@ static PyObject* py_create_dataset(PyObject* self, PyObject* args)
 				{
 					for(l = 0; l < input_height; l++)
 						for(m = 0; m < input_width; m++)
-							data->input[i][j*(input_dim+1) + k*input_height*input_width + l*input_width + m] = *(double*)(py_data->data + (i*batch_size*input_depth*input_height + j*input_depth*input_height + k*input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
+						{
+							if(!flat)
+	data->input[i][j*(input_dim+1) + k*input_height*input_width + l*input_width + m] = *(double*)(py_data->data + (i*batch_size*input_depth*input_height + j*input_depth*input_height + k*input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
+							else
+	data->input[i][j*(input_dim+1) + k*input_height*input_width + l*input_width + m] = *(double*)(py_data->data + (i*batch_size + j)*py_data->strides[0] + (k*input_height*input_width + l*input_width + m)*py_data->strides[1]);	
+						}
 				}
-				data->input[i][j*(input_dim+1) + input_dim] = 0.1;
 			}
-		
+		printf("loading target\n");
 		for(i = 0; i < data->nb_batch; i++)
 			for(j = 0; j < batch_size; j++)
 			{
@@ -132,7 +137,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject* args)
 	if(compute_method == C_CUDA)
 	{
 		printf("Converting dataset to GPU device (CUDA)\n");
-		cuda_convert_dataset(*data);
+		cuda_convert_dataset(data);
 	}
 	#endif
 	
@@ -147,11 +152,12 @@ static PyObject* py_dense_create(PyObject* self, PyObject *args, PyObject *kwarg
 {	
 	int nb_neurons, prev_layer, i_activ = RELU;
 	const char *activation = "RELU";
-	static char *kwlist[] = {"nb_neurons", "activation", "prev_layer", NULL};
+	double drop_rate = 0.0;
+	static char *kwlist[] = {"nb_neurons", "activation", "prev_layer", "drop_rate", NULL};
 	layer* prev;
 	
 	prev_layer = nb_layers - 1;
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "i|si", kwlist, &nb_neurons, &activation, &prev_layer))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "i|sid", kwlist, &nb_neurons, &activation, &prev_layer, &drop_rate))
 	    return Py_None;
 
 	if(strcmp(activation, "RELU") == 0)
@@ -169,7 +175,7 @@ static PyObject* py_dense_create(PyObject* self, PyObject *args, PyObject *kwarg
 	else
 		prev = net_layers[prev_layer];
 		
-	dense_create(prev, nb_neurons, i_activ);
+	dense_create(prev, nb_neurons, i_activ, drop_rate);
 	
 	printf("Added dense layer, L:%d\n", nb_layers-1);
 	
@@ -238,19 +244,21 @@ static PyObject* py_pool_create(PyObject* self, PyObject *args, PyObject *kwargs
 // Network global functions
 //############################################################
 
-static PyObject* py_train_network(PyObject* self, PyObject *args)
+static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	int py_nb_epoch, py_control_interv = 1, py_confmat = 0;
 	double py_learning_rate=0.0002, py_momentum = 0.0, py_decay = 0.0;
-	//static char *kwlist[] = {"train", "valid", "nb_epoch", "learning_rate", "control_interv", "momentum", "decay", "confmat", NULL};
+	static char *kwlist[] = {"nb_epoch", "learning_rate", "control_interv", "momentum", "decay", "confmat", NULL};
 	
 	
-	if(!PyArg_ParseTuple(args, "id|iddi", &py_nb_epoch, &py_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|iddi", kwlist, &py_nb_epoch, &py_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat))
 	    return Py_None;
 
-	if(py_confmat)
+	if(py_confmat == 1)
+	{
+		printf("Enable confmat\n");
 		enable_confmat();
-	
+	}
 	
 	train_network(train_set, valid_set, py_nb_epoch, py_control_interv, 
 		py_learning_rate, py_momentum, py_decay);
@@ -258,6 +266,22 @@ static PyObject* py_train_network(PyObject* self, PyObject *args)
 	return Py_None;
 }
 
+
+static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	const char* pers_file_name = NULL;
+	int step = -1;
+	int repeat = 1;
+	static char *kwlist[] = {"step", "file_name", "repeat", NULL};
+	
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|isi", kwlist, &step, &pers_file_name, &repeat))
+	    return Py_None;
+	
+	
+	forward_network(test_set, step, pers_file_name, repeat);
+	
+	return Py_None;
+}
 
 
 
@@ -270,7 +294,8 @@ static PyMethodDef CIANNAMethods[] = {
     { "dense_create", (PyCFunction)py_dense_create, METH_VARARGS | METH_KEYWORDS, "Add a dense layer to the network" },
     { "conv_create",(PyCFunction)py_conv_create, METH_VARARGS | METH_KEYWORDS, "Add a convolutional layer to the network" },
     { "pool_create",(PyCFunction)py_pool_create, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },
-    { "train_network", py_train_network, METH_VARARGS, "Launch a training phase with the specified arguments" },
+    { "train_network", (PyCFunction)py_train_network, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
+    { "forward_network", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },
     { NULL, NULL, 0, NULL }
 };
 

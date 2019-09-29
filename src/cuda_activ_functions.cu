@@ -133,16 +133,19 @@ void cuda_linear_deriv(layer *previous)
 
 void cuda_linear_deriv_output_error(layer *current)
 {	
-	cu_blocks = ( *((int*)current->activ_param) + cu_threads - 1) / cu_threads;
+	linear_param *param = (linear_param*)current->activ_param;
+	//printf("%d %d\n",param->size, param->dim);
+	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
 	quadratic_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output,
-		target, *((int*)current->activ_param), *((int*)current->activ_param), *((int*)current->activ_param));
+		target, (param->dim+1)*length, param->dim, param->size);
 }
 
 void cuda_linear_output_error(layer *current)
 {	
-	cu_blocks = (*((int*)current->activ_param) + cu_threads - 1) / cu_threads;
+	linear_param *param = (linear_param*)current->activ_param;
+	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
 	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(output_error, current->output,
-		target, *((int*)current->activ_param), *((int*)current->activ_param), *((int*)current->activ_param));
+		target, (param->dim+1)*length, param->dim, param->size);
 }
 
 
@@ -239,10 +242,15 @@ __global__ void quadratic_deriv_output_error_kernel(real *delta_o, real *output,
 	if(i >= size)
 		return;
 	
-	if(i < len && i%dim != 0)
+	if(i < len && (i+1)%(dim+1) != 0)
 	{
-		pos = i - i/dim;
+		pos = i - i/(dim+1);
 		delta_o[i] = (output[i] - target[pos]);
+		if(delta_o[i] > 0.5)
+			delta_o[i] = 0.5;
+		else if(delta_o[i] < -0.5)
+			delta_o[i] = -0.5;
+		
 	}
 	else
 	{
@@ -260,9 +268,9 @@ __global__ void quadratic_output_error_kernel(real *output_error, real *output, 
 	if(i >= size)
 		return;
 	
-	if(i < len && i%dim != 0)
+	if(i < len && (i+1)%(dim+1) != 0)
 	{
-		pos = i - i/dim;
+		pos = i - i/(dim+1);
 		output_error[pos] = 0.5*(output[i] - target[pos])*(output[i] - target[pos]);
 	}
 }

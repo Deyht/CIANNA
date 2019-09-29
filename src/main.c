@@ -25,11 +25,11 @@ int main()
 		&dims[2], &out_dim);
 		
 	
-	init_network(dims, out_dim, 256, C_CUDA);
+	init_network(dims, out_dim, 128, C_CUDA);
 	
-	train = create_dataset(train_size);
-	test = create_dataset(test_size);
-	valid = create_dataset(valid_size);
+	train = create_dataset(train_size, 0.1);
+	test = create_dataset(test_size,0.1);
+	valid = create_dataset(valid_size, 0.1);
 	
 	for(i = 0; i < train.nb_batch; i++)
 	{
@@ -39,7 +39,7 @@ int main()
 				continue;
 			for(k = 0; k < input_dim; k ++)
 				fscanf(f, "%f", &train.input[i][j*(input_dim+1) + k]);
-			train.input[i][j*(input_dim+1) + input_dim] = 0.1; 
+			train.input[i][j*(input_dim+1) + input_dim] = 0.1;
 			//bias value should be adapted somehow based on 1st layer
 		}
 	}
@@ -116,9 +116,9 @@ int main()
 	
 	
 	#ifdef CUDA
-	cuda_convert_dataset(train);
-	cuda_convert_dataset(test);
-	cuda_convert_dataset(valid);
+	cuda_convert_dataset(&train);
+	cuda_convert_dataset(&test);
+	cuda_convert_dataset(&valid);
 	#endif
 	
 	/*
@@ -146,9 +146,9 @@ int main()
 	pool_create(net_layers[nb_layers-1], 2);
 	conv_create(net_layers[nb_layers-1], 5, 16, 1, 0, RELU);
 	pool_create(net_layers[nb_layers-1], 2);
-	dense_create(net_layers[nb_layers-1], 256, RELU);
-	dense_create(net_layers[nb_layers-1], 128, RELU);
-	dense_create(net_layers[nb_layers-1], output_dim, SOFTMAX);
+	dense_create(net_layers[nb_layers-1], 256, RELU, 0.5);
+	dense_create(net_layers[nb_layers-1], 128, RELU, 0.5);
+	dense_create(net_layers[nb_layers-1], output_dim, SOFTMAX, 0.0);
 	
 	
 	/*
@@ -161,7 +161,7 @@ int main()
 	
 	enable_confmat();
 	
-	train_network(train, valid, 40, 1, 0.0004, 0.6, 0.003);
+	train_network(train, valid, 40, 1, 0.0004, 0.0, 0.003);
 
 	exit(EXIT_SUCCESS);
 }
