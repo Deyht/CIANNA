@@ -129,7 +129,6 @@ void cuda_forward_conv_layer(layer *current)
 	
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
-
 }
 
 

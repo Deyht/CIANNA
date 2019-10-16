@@ -1,5 +1,11 @@
 ######################################################
-#               EDIT FOR YOUR INSTALL                #
+#            COMPILER DEFINES STRUCTURES             #
+######################################################
+
+defines_variables="-D MAX_LAYERS_NB=100 -D MAX_NETWOKRS_NB=10 -D CUDA_THREADS_PER_BLOCKS=64"
+
+######################################################
+#                  LIBRARY LOCATIONS                 #
 ######################################################
 
 gcc_compile_dir="/usr/bin/gcc"
@@ -48,19 +54,19 @@ then
 
 #compiling the cuda part if needed
 nvcc --compiler-bindir $gcc_compile_dir -Xcompiler "$compile_opt" \
--O3 -c cuda_main.cu cuda_activ_functions.cu cuda_conv_layer.cu cuda_pool_layer.cu cuda_dense_layer.cu $cuda_arg -lm
+-O3 -c cuda_main.cu cuda_activ_functions.cu cuda_conv_layer.cu cuda_pool_layer.cu cuda_dense_layer.cu $cuda_arg $defines_variables -lm
 fi
 echo "#####  End of CUDA compilation  #####"
 
 
 #compiling all the program
 gcc $compile_opt -std=c99 -c \
-defs.h prototypes.h structs.h main.c conv_layer.c dense_layer.c pool_layer.c activ_functions.c initializers.c vars.c auxil.c -lm $arg
+defs.h prototypes.h structs.h main.c conv_layer.c dense_layer.c pool_layer.c activ_functions.c initializers.c vars.c auxil.c -lm $arg $defines_variables
 echo "#####  End of main program compilation  #####"
 
 #linking the main program (with cuda if needed)
 gcc $compile_opt -std=c99 -o \
-../main $cuda_obj main.o conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o -lm $arg
+../main $cuda_obj main.o conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o -lm $arg $defines_variables
 echo "#####  End of link edition and executable creation  #####"
 
 #rm *.o *.gch
