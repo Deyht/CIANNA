@@ -32,11 +32,14 @@ typedef struct Dataset
 } Dataset;
 
 typedef struct layer layer;
+typedef struct network network;
+
 struct layer
 {
 	int type;
 	int activation_type;
 	int initializer;
+	network *c_network;
 	
 	void *param;
 	real *input; //usually contain adress of previous->output
@@ -56,6 +59,34 @@ struct layer
 	real time_fwd;
 	real time_back;
 	
+};
+
+struct network
+{
+	layer *net_layers[MAX_LAYERS_NB];
+
+	int id;
+	int compute_method;
+	int nb_layers;
+	
+	real learning_rate;
+	real momentum;
+	
+	Dataset train, test, valid;
+	
+	int input_width, input_height, input_depth;
+	int input_dim;
+	int output_dim;
+	int out_size;
+	int batch_size;
+	int epoch;
+	
+	real* input;
+	real* target;
+	int length;
+	real* output_error;
+	real* output_error_cuda;
+
 };
 
 

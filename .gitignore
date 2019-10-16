@@ -19,5 +19,5 @@ fwd_step_*.dat
 *.nvvp
 input.dat
 ./fwd_res/*
-./src/build/*
+./src/build
 

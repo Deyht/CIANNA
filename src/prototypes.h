@@ -8,29 +8,9 @@
 //         Public variables
 //######################################
 
-//to re organise base on file declaration
-
-extern int input_width, input_height, input_depth;
-extern int input_dim;
-extern int output_dim;
-extern int out_size;
-extern int batch_size;
-extern real learning_rate;
-extern real momentum;
-extern real decay;
-extern int compute_method;
-extern int confusion_matrix;
-
-extern real *input;
-extern real *target;
-extern int nb_batch;
-extern int length;
-extern real *output_error;
-extern real *output_error_cuda;
-
-extern int nb_layers;
-extern layer *net_layers[100];
-extern FILE* f_save;
+extern network *networks[MAX_NETWOKRS_NB];
+extern int nb_networks;
+extern int is_init;
 
 //######################################
 
@@ -39,19 +19,20 @@ extern FILE* f_save;
 //       auxil.c prototypes
 //######################################
 
-void init_network(int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method);
-Dataset create_dataset(int nb_elem, real bias);
-void enable_confmat(void);
-void compute_error(Dataset data, int saving, int repeat);
-void train_network(Dataset train_set, Dataset valid_set, int nb_epochs, int control_interv, real u_learning_rate, real u_momentum, real u_decay);
-void forward_network(Dataset test_set, int train_step, const char *pers_file_name, int repeat);
-
-//######################################
-//       CUDA public prototypes
-//######################################
+void init_network(int network_number, int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method);
+Dataset create_dataset(network *net, int nb_elem, real bias);
+void free_dataset(Dataset data);
+void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat);
+void save_network(network *net, char *filename);
+void load_network(network *net, char *filename, int epoch);
+void train_network(network* net, int nb_epochs, int control_interv, real u_begin_learning_rate,
+	real u_end_learning_rate, real u_momentum, real u_decay, int show_confmat, int save_net);
+void forward_testset(network *net, int train_step, const char *pers_file_name, int repeat);
 
 
 //activations function
+void print_activ_param(FILE *f, int type);
+int load_activ_param(char *type);
 void define_activation(layer* current);
 void linear_activation(layer *current);
 void linear_deriv(layer *current);
@@ -59,14 +40,19 @@ void output_deriv_error(layer* current);
 void output_error_fct(layer* current);
 
 //dense_layer.c
-void dense_create(layer* previous, int nb_neurons, int activation, real drop_rate);
-void print_dense_param(FILE *f, layer *current);
+void dense_create(network *net, layer* previous, int nb_neurons, int activation, real drop_rate, FILE *f_load);
+void dense_save(FILE *f, layer *current);
+void dense_load(network *net, FILE* f);
 
 //conv_layer.c
-void conv_create(layer* previous, int f_size, int nb_filters, int stride, int padding, int activation);
+void conv_create(network *net, layer *previous, int f_size, int nb_filters, int stride, int padding, int activation, FILE *f_load);
+void conv_save(FILE *f, layer *current);
+void conv_load(network *net, FILE *f);
 
 //pool_layer.c
-void pool_create(layer* previous, int pool_size);
+void pool_create(network *net, layer* previous, int pool_size);
+void pool_save(FILE *f, layer *current);
+void pool_load(network *net, FILE *f);
 
 //initializers
 void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding);
@@ -85,7 +71,7 @@ void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding);
 //when compiled by gcc act as regular prototype C natively
 extern "C"
 {
-//only make sence sources compiles with nvcc
+//only make since sources compiles with nvcc
 //cuda_main.cu
 extern int cu_threads;
 extern real cu_alpha, cu_beta;
@@ -97,13 +83,15 @@ __global__ void im2col_kernel_nested(real* output, real* input, int image_size, 
 void init_cuda(void);
 void cuda_free_table(real* tab);
 void cuda_convert_table(real **tab, int size);
-void cuda_convert_dataset(Dataset *data);
+void cuda_convert_dataset(network *net, Dataset *data);
+void cuda_free_dataset(Dataset *data);
 void cuda_create_table(real **tab, int size);
 void cuda_get_table(real **cuda_table, real **table, int size);
+void cuda_put_table(real **cuda_table, real **table, int size);
 void cuda_print_table(real* tab, int size, int return_every);
 void cuda_print_table_transpose(real* tab, int line_size, int column_size);
-void cuda_confmat(real *out, real* mat);
-void cuda_shuffle(Dataset data, Dataset duplicate, real *index_shuffle, real *index_shuffle_device);
+void cuda_confmat(network *net, real* mat);
+void cuda_shuffle(network *net, Dataset data, Dataset duplicate, real *index_shuffle, real *index_shuffle_device);
 
 void cuda_convert_network(layer** network);
 void cuda_deriv_output_error(layer *current);

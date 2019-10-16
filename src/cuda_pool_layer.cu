@@ -24,21 +24,21 @@ void cuda_convert_pool_layer(layer *current)
 	p_param = (pool_param*)current->param;
 
 	cuda_convert_table(&(p_param->pool_map), p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
-		* batch_size);
+		* current->c_network->batch_size);
 	cuda_convert_table(&(current->output), p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
-		* batch_size);
+		* current->c_network->batch_size);
 	
 	cuda_convert_table(&(current->delta_o), p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps
-		* batch_size);
+		* current->c_network->batch_size);
 	
 	cuda_convert_table(&(p_param->temp_delta_o), p_param->prev_size_w * p_param->prev_size_h 
-		* p_param->prev_depth * batch_size);
+		* p_param->prev_depth * current->c_network->batch_size);
 }
 
 
 void cuda_forward_pool_layer(layer* current)
 {
-	if(length == 0)
+	if(current->c_network->length == 0)
 		return;
 		
 	p_param = (pool_param*) current->param;
@@ -48,10 +48,11 @@ void cuda_forward_pool_layer(layer* current)
 	//create numBlocks regarding the layer dimensions
     dim3 numBlocks((p_param->nb_area_w + threadsPerBlock.x - 1) / threadsPerBlock.x,
     	(p_param->nb_area_h +  threadsPerBlock.y - 1) / threadsPerBlock.y,
-    	(batch_size * p_param->nb_maps + threadsPerBlock.z - 1) / threadsPerBlock.z);
+    	(current->c_network->batch_size * p_param->nb_maps + threadsPerBlock.z - 1) / threadsPerBlock.z);
     
-	pooling_kernel<<< numBlocks , threadsPerBlock >>>(current->input, current->output, p_param->pool_map,
-		p_param->p_size, p_param->prev_size_w, p_param->nb_area_w, p_param->nb_maps * batch_size);
+	pooling_kernel<<< numBlocks , threadsPerBlock >>>(current->input, current->output, 
+		p_param->pool_map, p_param->p_size, p_param->prev_size_w, p_param->nb_area_w, 
+		p_param->nb_maps * current->c_network->batch_size);
 }
 
 
@@ -63,23 +64,24 @@ void cuda_backward_pool_layer(layer* current)
 		{
 			//array must be set to 0 as deltah_pool do not erase previous values
 			cudaMemset(current->previous->delta_o, 0.0, p_param->prev_depth * p_param->prev_size_w 
-				* p_param->prev_size_h * batch_size*sizeof(real));
+				* p_param->prev_size_h * current->c_network->batch_size*sizeof(real));
 		
-			cu_blocks = (batch_size*(p_param->nb_maps * p_param->nb_area_w * p_param->nb_area_h) 
-				+ cu_threads - 1) / cu_threads;
+			cu_blocks = (current->c_network->batch_size*(p_param->nb_maps * p_param->nb_area_w 
+				* p_param->nb_area_h) + cu_threads - 1) / cu_threads;
 				
 			if(p_param->next_layer_type == DENSE)
 			{
 				deltah_pool<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, 
-					p_param->pool_map, p_param->p_size, length, batch_size, p_param->nb_maps 
-					* p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w * p_param->nb_area_h, 
-					p_param->nb_area_w);
+					p_param->pool_map, p_param->p_size, current->c_network->length, 
+					current->c_network->batch_size, p_param->nb_maps * p_param->nb_area_w 
+					* p_param->nb_area_h, p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w);
 			}
 			else
 			{
 				deltah_pool_cont<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o,
-					p_param->pool_map, p_param->p_size, length, batch_size, p_param->nb_maps 
-					* p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w);
+					p_param->pool_map, p_param->p_size, current->c_network->length, 
+					current->c_network->batch_size, p_param->nb_maps * p_param->nb_area_w 
+					* p_param->nb_area_h, p_param->nb_area_w);
 			}
 		}
 		
@@ -130,7 +132,8 @@ __global__ void deltah_pool(real* cu_deltah, real* cu_deltah_unpool, real* pool_
 	
 	cu_deltah_unpool += (map_id * (map_size*batch_size) + image_id * map_size) * pool_size * pool_size;
 	cu_deltah_unpool += map_col * column_length * pool_size * pool_size + map_pos * pool_size;
-	cu_deltah_unpool += + (int(pool_map[i])/pool_size) * column_length * pool_size + (int(pool_map[i])%pool_size);
+	cu_deltah_unpool += + (int(pool_map[i])/pool_size) * column_length * pool_size 
+		+ (int(pool_map[i])%pool_size);
 	
 	if(i < len*image_size)
 		*cu_deltah_unpool = cu_deltah[i];

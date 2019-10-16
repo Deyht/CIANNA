@@ -45,19 +45,21 @@ void cuda_convert_dense_layer(layer *current)
 		switch(current->previous->type)
 		{	
 			case CONV:
-				cuda_convert_table(&(d_param->flat_input), d_param->in_size*batch_size);
-				cuda_convert_table(&(d_param->flat_delta_o), 
-					(((conv_param*)current->previous->param)->nb_area_w * 
-					((conv_param*)current->previous->param)->nb_area_h * 
-					((conv_param*)current->previous->param)->nb_filters + 1) * batch_size);
+				cuda_convert_table(&(d_param->flat_input), d_param->in_size*current->c_network->batch_size);
+				cuda_convert_table(&(d_param->flat_delta_o),
+					(((conv_param*)current->previous->param)->nb_area_w 
+						* ((conv_param*)current->previous->param)->nb_area_h 
+						* ((conv_param*)current->previous->param)->nb_filters + 1) 
+						* current->c_network->batch_size);
 				break;
 				
 			case POOL:
-				cuda_convert_table(&(d_param->flat_input), d_param->in_size*batch_size);
-				cuda_convert_table(&(d_param->flat_delta_o), 
-					(((pool_param*)current->previous->param)->nb_area_w * 
-					((pool_param*)current->previous->param)->nb_area_h * 
-					((pool_param*)current->previous->param)->nb_maps + 1) * batch_size);
+				cuda_convert_table(&(d_param->flat_input), d_param->in_size * current->c_network->batch_size);
+				cuda_convert_table(&(d_param->flat_delta_o),
+					(((pool_param*)current->previous->param)->nb_area_w 
+						* ((pool_param*)current->previous->param)->nb_area_h 
+						* ((pool_param*)current->previous->param)->nb_maps + 1) 
+						* current->c_network->batch_size);
 				break;
 				
 			case DENSE:
@@ -74,8 +76,8 @@ void cuda_convert_dense_layer(layer *current)
 	cu_blocks = (d_param->nb_neurons);
 	init_block_state<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)d_param->block_state);
 	
-	cuda_convert_table(&(current->output), (d_param->nb_neurons+1)*batch_size);
-	cuda_convert_table(&(current->delta_o), (d_param->nb_neurons+1)*batch_size);
+	cuda_convert_table(&(current->output), (d_param->nb_neurons+1) * current->c_network->batch_size);
+	cuda_convert_table(&(current->delta_o), (d_param->nb_neurons+1) * current->c_network->batch_size);
 }
 
 
@@ -83,22 +85,24 @@ void cuda_forward_dense_layer(layer *current)
 {
 	int nb_area_w, nb_area_h, depth;
 	
-	if(length == 0)
+	if(current->c_network->length == 0)
 		return;
 	
 	d_param = (dense_param*) current->param;
 	
 	if(current->previous == NULL)
 	{
-		current->input = input;
-		cublasgemm(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, d_param->nb_neurons+1, batch_size, d_param->in_size, 
-			&cu_alpha, d_param->weights, d_param->nb_neurons+1, current->input, d_param->in_size, &cu_beta, 
+		current->input = current->c_network->input;
+		cublasgemm(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, d_param->nb_neurons+1, 
+			current->c_network->batch_size, d_param->in_size, &cu_alpha, d_param->weights, 
+			d_param->nb_neurons+1, current->input, d_param->in_size, &cu_beta, 
 			current->output, d_param->nb_neurons+1);
 	}
 	else if(current->previous->type == DENSE)
 	{
-		cublasgemm(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, d_param->nb_neurons+1, batch_size, d_param->in_size, 
-			&cu_alpha, d_param->weights, d_param->nb_neurons+1, current->input, d_param->in_size, &cu_beta, 
+		cublasgemm(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, d_param->nb_neurons+1, 
+			current->c_network->batch_size, d_param->in_size, &cu_alpha, d_param->weights, 
+			d_param->nb_neurons+1, current->input, d_param->in_size, &cu_beta, 
 			current->output, d_param->nb_neurons+1);
 	}
 	else if(current->previous->type != DENSE)
@@ -120,14 +124,16 @@ void cuda_forward_dense_layer(layer *current)
 				break;
 		}
 		
-		cu_blocks = ((nb_area_w * nb_area_h * depth + 1) * batch_size + cu_threads - 1) / cu_threads;
+		cu_blocks = ((nb_area_w * nb_area_h * depth + 1) 
+			* current->c_network->batch_size + cu_threads - 1) / cu_threads;
 		flat_dense<<< cu_blocks, cu_threads >>>(current->input, d_param->flat_input, d_param->bias_value, 
-			nb_area_w * nb_area_h , nb_area_w * nb_area_h * depth + 1, depth, batch_size, 
-			(nb_area_w * nb_area_h * depth + 1) * batch_size);
+			nb_area_w * nb_area_h , nb_area_w * nb_area_h * depth + 1, depth, current->c_network->batch_size, 
+			(nb_area_w * nb_area_h * depth + 1) * current->c_network->batch_size);
 		
-		cublasgemm(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, d_param->nb_neurons+1, batch_size, 
-			d_param->in_size, &cu_alpha, d_param->weights, d_param->nb_neurons+1, d_param->flat_input,
-			d_param->in_size, &cu_beta, current->output, d_param->nb_neurons+1);
+		cublasgemm(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, d_param->nb_neurons+1, 
+			current->c_network->batch_size, d_param->in_size, &cu_alpha, d_param->weights, 
+			d_param->nb_neurons+1, d_param->flat_input, d_param->in_size, &cu_beta, 
+			current->output, d_param->nb_neurons+1);
 	}
 	
 	cu_blocks = (d_param->nb_neurons);
@@ -137,11 +143,12 @@ void cuda_forward_dense_layer(layer *current)
 	
 
 	dim3 threadsPerBlock(8, 32);
-	dim3 numBlocks((batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
+	dim3 numBlocks((current->c_network->batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
 			(d_param->nb_neurons + threadsPerBlock.y - 1) / threadsPerBlock.y);
+			
 	if(d_param->dropout_rate > 0.01)
-		dropout_apply<<<numBlocks, threadsPerBlock>>>(current->output, batch_size, d_param->nb_neurons,
-			d_param->dropout_mask);
+		dropout_apply<<<numBlocks, threadsPerBlock>>>(current->output, current->c_network->batch_size, 
+			d_param->nb_neurons, d_param->dropout_mask);
 }
 
 
@@ -152,10 +159,10 @@ void cuda_backward_dense_layer(layer* current)
 	d_param = (dense_param*) current->param;	
 	
 	dim3 threadsPerBlock(8, 32);
-	dim3 numBlocks((batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
+	dim3 numBlocks((current->c_network->batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
 			(d_param->nb_neurons + threadsPerBlock.y - 1) / threadsPerBlock.y);
 	if(d_param->dropout_rate > 0.01)
-		dropout_apply<<<numBlocks, threadsPerBlock>>>(current->delta_o, batch_size, d_param->nb_neurons,
+		dropout_apply<<<numBlocks, threadsPerBlock>>>(current->delta_o, current->c_network->batch_size, d_param->nb_neurons,
 			d_param->dropout_mask);
 	
 	//######################## ERROR PROPAGATION ########################
@@ -163,9 +170,9 @@ void cuda_backward_dense_layer(layer* current)
 	//skip error prop if previous is the input layer
 	if(current->previous != NULL)
 	{	
-		cublasgemm(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, d_param->in_size, batch_size, d_param->nb_neurons+1,
-			&cu_alpha, d_param->weights, d_param->nb_neurons+1, current->delta_o, d_param->nb_neurons+1,
-			&cu_beta, d_param->flat_delta_o, d_param->in_size);
+		cublasgemm(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, d_param->in_size, current->c_network->batch_size,
+			d_param->nb_neurons+1, &cu_alpha, d_param->weights, d_param->nb_neurons+1, current->delta_o,
+			d_param->nb_neurons+1, &cu_beta, d_param->flat_delta_o, d_param->in_size);
 		//if previous layer is dense then flat_delta_o = previous->delta_o
 		
 		if(current->previous->type == POOL || current->previous->type == CONV)
@@ -187,10 +194,12 @@ void cuda_backward_dense_layer(layer* current)
 			}
 			
 			//Need to unroll delta_o to already be in the proper format for deriv calculation
-			cu_blocks = (nb_area_w * nb_area_h * depth * batch_size + cu_threads - 1) / cu_threads;
+			cu_blocks = (nb_area_w * nb_area_h * depth 
+				* current->c_network->batch_size + cu_threads - 1) / cu_threads;
 			reroll_batch<<< cu_blocks, cu_threads >>>(d_param->flat_delta_o, current->previous->delta_o,
-				nb_area_w * nb_area_h, nb_area_w * nb_area_h * depth + 1, depth, batch_size, nb_area_w 
-				* nb_area_h * depth * batch_size);
+				nb_area_w * nb_area_h, nb_area_w * nb_area_h * depth + 1, depth, 
+				current->c_network->batch_size, nb_area_w * nb_area_h * depth 
+				* current->c_network->batch_size);
 		}
 		
 		current->previous->deriv_activation(current->previous);
@@ -200,19 +209,19 @@ void cuda_backward_dense_layer(layer* current)
 	//########################  WEIGHTS UPDATE   ########################
 	
 	//based on the recovered delta_o provided by the next layer propagation
-	//cuda_print_table(current->delta_o, batch_size*(d_param->nb_neurons+1), d_param->nb_neurons+1);
-	
 	if(current->previous != NULL && current->previous->type != DENSE)
 	{
 		cublasgemm(cu_handle, CUBLAS_OP_N, CUBLAS_OP_T, d_param->nb_neurons+1, d_param->in_size,
-			batch_size, &learning_rate,	current->delta_o, d_param->nb_neurons+1, d_param->flat_input,
-			d_param->in_size, &momentum, d_param->update, d_param->nb_neurons+1);
+			current->c_network->batch_size, &current->c_network->learning_rate,	current->delta_o,
+			d_param->nb_neurons+1, d_param->flat_input, d_param->in_size, &current->c_network->momentum, 
+			d_param->update, d_param->nb_neurons+1);
 	}
 	else
 	{		
 		cublasgemm(cu_handle, CUBLAS_OP_N, CUBLAS_OP_T, d_param->nb_neurons+1, d_param->in_size,
-			batch_size, &learning_rate,	current->delta_o, d_param->nb_neurons+1, current->input,
-			d_param->in_size, &momentum, d_param->update, d_param->nb_neurons+1);
+			current->c_network->batch_size, &current->c_network->learning_rate,	current->delta_o, 
+			d_param->nb_neurons+1, current->input, d_param->in_size, &current->c_network->momentum,
+			d_param->update, d_param->nb_neurons+1);
 	}
 
 	cu_blocks = (d_param->in_size*(d_param->nb_neurons+1) + cu_threads - 1) / cu_threads;

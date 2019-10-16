@@ -1,7 +1,7 @@
 #include "prototypes.h"
 
 static int cu_blocks;
-int cu_threads = 128;
+int cu_threads = CUDA_THREADS_PER_BLOCKS;
 real cu_alpha = 1.0, cu_beta = 0.0;
 cublasHandle_t cu_handle;
 
@@ -46,7 +46,12 @@ void cuda_get_table(real **cuda_table, real **table, int size)
 	cudaMemcpy(*table, *cuda_table, size*sizeof(real), cudaMemcpyDeviceToHost);
 }
 
-void cuda_convert_batched_table(real **tab, int nb_batch, int size)
+void cuda_put_table(real **cuda_table, real **table, int size)
+{
+	cudaMemcpy(*cuda_table, *table, size*sizeof(real), cudaMemcpyHostToDevice);
+}
+
+void cuda_convert_batched_table(real **tab, int batch_size, int nb_batch, int size)
 {
 	int i;
 	real* temp_tab;
@@ -60,16 +65,30 @@ void cuda_convert_batched_table(real **tab, int nb_batch, int size)
 	}
 }
 
-void cuda_convert_dataset(Dataset *data)
+void cuda_convert_dataset(network *net, Dataset *data)
 {
-	cuda_convert_batched_table(data->input, data->nb_batch, input_dim + 1);
-	cuda_convert_batched_table(data->target, data->nb_batch, output_dim);
+	cuda_convert_batched_table(data->input, net->batch_size, data->nb_batch, net->input_dim + 1);
+	cuda_convert_batched_table(data->target, net->batch_size, data->nb_batch, net->output_dim);
 	cudaMalloc(&(data->input_device), data->nb_batch*sizeof(real*));
 	cudaMemcpy(data->input_device, data->input, data->nb_batch*sizeof(real*),cudaMemcpyHostToDevice);
 	cudaMalloc(&(data->target_device), data->nb_batch*sizeof(real*));
 	cudaMemcpy(data->target_device, data->target, data->nb_batch*sizeof(real*),cudaMemcpyHostToDevice);
 	data->localization = DEVICE;
 }
+
+void cuda_free_dataset(Dataset *data)
+{
+	int i;
+	
+	for(i = 0; i < data->nb_batch; i++)
+	{
+		cudaFree(data->input[i]);
+		cudaFree(data->target[i]);
+	}
+	cudaFree(data->input_device);
+	cudaFree(data->target_device);
+}
+
 
 __global__ void cuda_update_weights(real *weights, real* update, int size)
 {
@@ -163,10 +182,10 @@ __global__ void add_confmat(real *out, real *targ, real *mat, int len, int o_dim
 	}
 }
 
-void cuda_confmat(real *out, real* mat)
+void cuda_confmat(network *net, real* mat)
 {
-	cu_blocks = (length + cu_threads - 1) / cu_threads;
-	add_confmat<<< cu_blocks, cu_threads>>>(out, target, mat, length, output_dim);
+	cu_blocks = (net->length + cu_threads - 1) / cu_threads;
+	add_confmat<<< cu_blocks, cu_threads>>>(net->net_layers[net->nb_layers-1]->output, net->target, mat, net->length, net->output_dim);
 }
 
 __global__ void shfl_kern(real **in, real **targ, real** train_dupl, real** targ_dupl,
@@ -210,7 +229,7 @@ __global__ void get_back_shuffle(real **in, real **targ, real** train_dupl, real
 }
 
 
-void cuda_shuffle(Dataset data, Dataset duplicate, real *index_shuffle, real *index_shuffle_device)
+void cuda_shuffle(network *net, Dataset data, Dataset duplicate, real *index_shuffle, real *index_shuffle_device)
 {
 	int i, j;
 	real temp;
@@ -227,10 +246,12 @@ void cuda_shuffle(Dataset data, Dataset duplicate, real *index_shuffle, real *in
 	
 	cu_blocks = (data.size + cu_threads - 1) / cu_threads;
 	shfl_kern<<< cu_blocks, cu_threads>>>(data.input_device, data.target_device, duplicate.input_device, 
-		duplicate.target_device, index_shuffle_device, data.size, batch_size, input_dim+1, output_dim);
+		duplicate.target_device, index_shuffle_device, data.size, net->batch_size, 
+		net->input_dim+1, net->output_dim);
 
 	get_back_shuffle<<< cu_blocks, cu_threads>>>(data.input_device, data.target_device,
-		duplicate.input_device, duplicate.target_device, data.size, batch_size, input_dim+1, output_dim);
+		duplicate.input_device, duplicate.target_device, data.size, net->batch_size, 
+		net->input_dim+1, net->output_dim);
 
 }
 

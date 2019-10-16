@@ -1,61 +1,91 @@
 #include "prototypes.h"
 
 
-void init_network(int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method)
+void init_network(int network_number, int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method)
 {
 
-	srand(time(NULL));
-	#ifdef CUDA
-	init_cuda();
-	#endif
-
-	input_width = u_input_dim[0]; 
-	input_height = u_input_dim[1];
-	input_depth = u_input_dim[2];
-	input_dim = input_width*input_height*input_depth;
-	output_dim = u_output_dim;
-	batch_size = u_batch_size;
-	compute_method = u_compute_method;
+	networks[network_number] = (network*) malloc(sizeof(network));
+	networks[network_number]->id = network_number;
+	nb_networks++;
 	
-	output_error = (real*) calloc(batch_size*output_dim,sizeof(real));
+	if(!is_init)
+	{
+		srand(time(NULL));
+		#ifdef CUDA
+		init_cuda();
+		#endif
+		is_init = 1;
+	}
+
+	networks[network_number]->input_width = u_input_dim[0]; 
+	networks[network_number]->input_height = u_input_dim[1];
+	networks[network_number]->input_depth = u_input_dim[2];
+	networks[network_number]->input_dim = u_input_dim[0]*u_input_dim[1]*u_input_dim[2];
+	networks[network_number]->output_dim = u_output_dim;
+	networks[network_number]->batch_size = u_batch_size;
+	networks[network_number]->compute_method = u_compute_method;
+	networks[network_number]->nb_layers = 0;
+	networks[network_number]->epoch = 0;
+	
+	networks[network_number]->output_error = (real*) calloc(networks[network_number]->batch_size*
+		networks[network_number]->output_dim,sizeof(real));
 	#ifdef CUDA
-	if(compute_method == C_CUDA)
-		cuda_create_table(&output_error_cuda, batch_size*output_dim);
+	if(u_compute_method == C_CUDA)
+		cuda_create_table(&networks[network_number]->output_error_cuda, 
+			networks[network_number]->batch_size*networks[network_number]->output_dim);
 	#endif
 }
 
-void enable_confmat(void)
-{
-	confusion_matrix = 1;
-}
 
-
-Dataset create_dataset(int nb_elem, real bias)
+Dataset create_dataset(network *net, int nb_elem, real bias)
 {
 	int i,j;
 	Dataset data;
 
 	data.size = nb_elem;
-	data.nb_batch = (data.size - 1) / batch_size + 1;
+	data.nb_batch = (data.size - 1) / net->batch_size + 1;
 	data.input = (real**) malloc(data.nb_batch*sizeof(real*));
 	data.target = (real**) malloc(data.nb_batch*sizeof(real*));
 	data.localization = HOST;
 	
 	for(i = 0; i < data.nb_batch; i++)
 	{
-		data.input[i] = (real*) calloc(batch_size * (input_dim + 1), sizeof(real));
-		data.target[i] = (real*) calloc(batch_size * output_dim, sizeof(real));
+		data.input[i] = (real*) calloc(net->batch_size * (net->input_dim + 1), sizeof(real));
+		data.target[i] = (real*) calloc(net->batch_size * net->output_dim, sizeof(real));
 	}
 	
 	for(i = 0; i < data.nb_batch; i++)
 	{
-		for(j = 0; j < batch_size; j++)
+		for(j = 0; j < net->batch_size; j++)
 		{
-			data.input[i][j*(input_dim+1)+input_dim] = bias;
+			data.input[i][j*(net->input_dim+1) + net->input_dim] = bias;
 		}
 	}
 	
 	return data;
+}
+
+void free_dataset(Dataset data)
+{
+	int i;
+		
+	if(data.localization == HOST)
+	{
+		for(i = 0; i < data.nb_batch; i++)
+		{
+			free(data.input[i]);
+			free(data.target[i]);
+		}
+	}
+	#ifdef CUDA
+	else
+	{
+		cuda_free_dataset(&data);
+	}
+	#endif
+	
+	free(data.input);
+	free(data.target);
 }
 
 int argmax(real *tab, int size)
@@ -80,8 +110,86 @@ int argmax(real *tab, int size)
 	return imax;
 }
 
+void save_network(network *net, char *filename)
+{
+	int i;
+	FILE* f;
+	
+	f = fopen(filename, "w+");
+	fprintf(f, "%dx%dx%d\n", net->input_width, net->input_height, net->input_depth);
+	for(i = 0; i < net->nb_layers; i++)
+	{
+		switch(net->net_layers[i]->type)
+		{
+			case CONV:
+				conv_save(f, net->net_layers[i]);
+				break;
+			
+			case POOL:
+				pool_save(f, net->net_layers[i]);
+				break;
+		
+			case DENSE:
+			default:
+				dense_save(f, net->net_layers[i]);
+				break;
+		}
+	}
+	
+	fclose(f);
+}
 
-void compute_error(Dataset data, int saving, int repeat)
+void load_network(network *net, char *filename, int epoch)
+{
+	FILE* f = NULL;
+	int width, height, depth;
+	char layer_type;
+	
+	net->epoch = epoch;
+	
+	f = fopen(filename, "r+");
+	if(f == NULL)
+	{
+		printf("ERROR : cannot load/find %s file\n", filename);
+		exit(EXIT_FAILURE);
+	}
+	fscanf(f, "%dx%dx%d\n", &width, &height, &depth);
+	
+	if(net->input_width != width || net->input_height != height || net->input_depth != depth)
+	{
+		printf("ERROR : Wrong image format to load the network\nExpect : W = %d, H = %d, D = %d\n",width, height, depth);
+		exit(EXIT_FAILURE);
+	}
+	
+	do
+	{
+		if(fscanf(f, "%c", &layer_type) == EOF)
+			break;
+		
+		switch(layer_type)
+		{
+			case 'C':
+				conv_load(net, f);
+				break;
+			
+			case 'P':
+				pool_load(net, f);
+				break;
+		
+			case 'D':
+				dense_load(net, f);
+				break;
+			default:
+				break;
+		}
+	}while(1);
+	
+	fclose(f);
+}
+
+
+
+void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat)
 {
 	int j, k, l, r;
 	float** mat = NULL; 
@@ -94,8 +202,10 @@ void compute_error(Dataset data, int saving, int repeat)
 	real total_error;
 	real* temp_error = NULL;
 	real* output_save = NULL;
+	FILE *f_save;
+	char f_save_name[100];
 	
-	o = output_dim;
+	o = net->output_dim;
 	
 	if(confusion_matrix)
 	{
@@ -108,7 +218,7 @@ void compute_error(Dataset data, int saving, int repeat)
 			mat[j] = &(temp[j*o]);
 		
 		#ifdef CUDA
-		if(compute_method == C_CUDA)
+		if(net->compute_method == C_CUDA)
 		{
 			cuda_create_table(&cuda_mat, o*o);
 		}
@@ -117,92 +227,96 @@ void compute_error(Dataset data, int saving, int repeat)
 	
 	if(saving == 1)
 	{
-		printf("before_switch\n");
-		output_save = (real*) calloc(batch_size*out_size,sizeof(real));	
+		output_save = (real*) calloc(net->batch_size*net->out_size,sizeof(real));
+		sprintf(f_save_name, "fwd_res/net%d_%04d.dat", net->id, net->epoch);
+		f_save = fopen(f_save_name, "w+");
 	}
 	
 	for(r = 0; r < repeat; r++)
 	{
-	total_error = 0.0;
-	
-	for(j = 0; j < data.nb_batch; j++)
-	{
-		if(compute_method == C_CUDA)
+		total_error = 0.0;
+		
+		for(j = 0; j < data.nb_batch; j++)
 		{
-			temp_error = output_error;
-			output_error = output_error_cuda;
-		}
-		
-		//##########################################################
-		
-		if(j == data.nb_batch - 1 && data.size%batch_size > 0)
-		{
-			length = data.size%batch_size;
-		}
-		else
-			length = batch_size;
-		
-		//Loop on all batch for one epoch
-		input = data.input[j];
-		target = data.target[j];
-		//forward
-		for(k = 0; k < nb_layers; k++)
-		{
-			net_layers[k]->forward(net_layers[k]);
-		}
-		output_error_fct(net_layers[nb_layers-1]);
-		
-		//##########################################################
-		
-		#ifdef CUDA
-		if(compute_method == C_CUDA)
-		{
-			cuda_get_table(&output_error, &temp_error, batch_size*output_dim);
-			output_error = temp_error;	
-			if(saving == 1)
+			if(net->compute_method == C_CUDA)
 			{
-				cuda_get_table(&(net_layers[nb_layers-1]->output), &output_save, batch_size*out_size);
-				for(k = 0; k < length; k++)
+				temp_error = net->output_error;
+				net->output_error = net->output_error_cuda;
+			}
+			
+			//##########################################################
+			
+			if(j == data.nb_batch - 1 && data.size%net->batch_size > 0)
+			{
+				net->length = data.size%net->batch_size;
+			}
+			else
+				net->length = net->batch_size;
+			
+			//Loop on all batch for one epoch
+			net->input = data.input[j];
+			net->target = data.target[j];
+			//forward
+			for(k = 0; k < net->nb_layers; k++)
+			{
+				net->net_layers[k]->forward(net->net_layers[k]);
+			}
+			output_error_fct(net->net_layers[net->nb_layers-1]);
+			
+			//##########################################################
+			
+			#ifdef CUDA
+			if(net->compute_method == C_CUDA)
+			{
+				cuda_get_table(&net->output_error, &temp_error, net->batch_size*net->output_dim);
+				net->output_error = temp_error;	
+				if(saving == 1)
 				{
-					for(l = 0; l < out_size; l++)
-						fprintf(f_save, "%g ", output_save[k*out_size + l]);
-					fprintf(f_save, "\n");
-					
+					cuda_get_table(&(net->net_layers[net->nb_layers-1]->output), &output_save, 
+						net->batch_size*net->out_size);
+					for(k = 0; k < net->length; k++)
+					{
+						for(l = 0; l < net->out_size; l++)
+							fprintf(f_save, "%g ", output_save[k*net->out_size + l]);
+						fprintf(f_save, "\n");
+						
+					}
+				}
+				
+			}
+			#endif
+			
+			pos = 0;
+			for(k = 0; k < net->length; k++)
+			{
+				for(l = 0; l < net->output_dim; l++)
+				{
+					pos++;
+					total_error += net->output_error[pos];
+				}
+				
+				if(confusion_matrix && net->compute_method != C_CUDA)
+				{
+					arg1 = argmax(&(net->target[k*net->output_dim]), net->output_dim);
+					arg2 = argmax(&(net->net_layers[net->nb_layers-1]->output[k*(net->output_dim+1)]),
+						net->output_dim);
+					mat[arg1][arg2]++;
+
 				}
 			}
 			
-		}
-		#endif
-		
-		pos = 0;
-		for(k = 0; k < length; k++)
-		{
-			for(l = 0; l < output_dim; l++)
+			if(confusion_matrix && net->compute_method == C_CUDA)
 			{
-				pos++;
-				total_error += output_error[pos];
-			}
-			
-			if(confusion_matrix && compute_method != C_CUDA)
-			{
-				arg1 = argmax(&(target[k*output_dim]), output_dim);
-				arg2 = argmax(&(net_layers[nb_layers-1]->output[k*(output_dim+1)]), output_dim);
-				mat[arg1][arg2]++;
-
+				#ifdef CUDA
+				cuda_confmat(net, cuda_mat);
+				#endif
 			}
 		}
+		printf("Cumulated error: \t %g\n", total_error/data.size);
 		
-		if(confusion_matrix && compute_method == C_CUDA)
-		{
-			#ifdef CUDA
-			cuda_confmat(net_layers[nb_layers-1]->output, cuda_mat);
-			#endif
-		}
 	}
-	printf("Cumulated error: \t %g\n", total_error/data.size);
 	
-	}
-	if(confusion_matrix && compute_method == C_CUDA)
+	if(confusion_matrix && net->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
 		cuda_get_table(&cuda_mat, mat, o*o);
@@ -214,6 +328,7 @@ void compute_error(Dataset data, int saving, int repeat)
 	{
 		if(output_save != NULL)
 			free(output_save);
+		fclose(f_save);
 	}
 	
 	if(confusion_matrix)
@@ -257,188 +372,160 @@ void compute_error(Dataset data, int saving, int repeat)
 }
 
 
-void train_network(Dataset train_set, Dataset valid_set, int nb_epochs, int control_interv, real u_learning_rate, real u_momentum, real u_decay)
+void train_network(network* net, int nb_epochs, int control_interv, real u_begin_learning_rate, real u_end_learning_rate, real u_momentum, real u_decay, int show_confmat, int save_net)
 {
 	int i, j, k;
+	real begin_learn_rate;
+	real end_learn_rate;
+	real decay;
+	char net_save_file_name[200];
 	Dataset shuffle_duplicate;
 	real *index_shuffle, *index_shuffle_device;
-	
-	shuffle_duplicate = create_dataset(train_set.size, 0.1);
-	index_shuffle = (real*)  calloc(train_set.size,sizeof(real));
-	for(i = 0; i < train_set.size; i++)
+		
+	shuffle_duplicate = create_dataset(net, net->train.size, 0.1);
+	index_shuffle = (real*) calloc(net->train.size,sizeof(real));
+	for(i = 0; i < net->train.size; i++)
 		index_shuffle[i] = i;
 	#ifdef CUDA
-	if(compute_method == C_CUDA)
+	if(net->compute_method == C_CUDA)
 	{
-		index_shuffle_device = (real*)  calloc(train_set.size,sizeof(real));
-		cuda_convert_dataset(&shuffle_duplicate);
-		cuda_convert_table(&index_shuffle_device, train_set.size);
+		index_shuffle_device = (real*)  calloc(net->train.size,sizeof(real));
+		cuda_convert_dataset(net, &shuffle_duplicate);
+		cuda_convert_table(&index_shuffle_device, net->train.size);
 	}
 	#endif
 	
-	learning_rate = u_learning_rate;
-	momentum = u_momentum;
+	begin_learn_rate = u_begin_learning_rate;
+	end_learn_rate = u_end_learning_rate;
+	net->momentum = u_momentum;
 	decay = u_decay;
 	
-	switch(net_layers[nb_layers-1]->type)
+	switch(net->net_layers[net->nb_layers-1]->type)
 	{
 		case CONV:
-			out_size = ((conv_param*)net_layers[nb_layers-1]->param)->nb_filters * ((conv_param*)net_layers[nb_layers-1]->param)->nb_area_w * 
-				((conv_param*)net_layers[nb_layers-1]->param)->nb_area_h;
+			net->out_size = ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_filters *
+				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w * 
+				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h;
 			break;
 			
 		case POOL:
-			out_size = ((pool_param*)net_layers[nb_layers-1]->param)->prev_depth * ((pool_param*)net_layers[nb_layers-1]->param)->nb_area_w * 
-				((pool_param*)net_layers[nb_layers-1]->param)->nb_area_h;
+			net->out_size = ((pool_param*)net->net_layers[net->nb_layers-1]->param)->prev_depth *
+				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w * 
+				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h;
 			break;
 	
 		case DENSE:
 		default:
-			out_size = ((dense_param*)net_layers[nb_layers-1]->param)->nb_neurons+1;
+			net->out_size = ((dense_param*)net->net_layers[net->nb_layers-1]->param)->nb_neurons+1;
 			break;
 	}
 	
 	
 	for(i = 0; i < nb_epochs; i++)
 	{
+		net->epoch++;
+		printf("Epoch: %d\n", net->epoch);
+		
+		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*i);
+		printf("Learning rate : %g\n", net->learning_rate);
 		#ifdef CUDA
-		cuda_shuffle(train_set, shuffle_duplicate, index_shuffle, index_shuffle_device);
+		cuda_shuffle(net, net->train, shuffle_duplicate, index_shuffle, index_shuffle_device);
 		#endif
 		//Loop on all batch for one epoch
-		for(j = 0; j < train_set.nb_batch; j++)
+		for(j = 0; j < net->train.nb_batch; j++)
 		{
-			if(j == train_set.nb_batch-1 && train_set.size%batch_size > 0)
-				length = train_set.size%batch_size;
+			if(j == net->train.nb_batch-1 && net->train.size%net->batch_size > 0)
+				net->length = net->train.size%net->batch_size;
 			else
-				length = batch_size;
+				net->length = net->batch_size;
 			
-			input = train_set.input[j];
-			target = train_set.target[j];
+			net->input = net->train.input[j];
+			net->target = net->train.target[j];
 		
-			//printf("input\n");
-			//cuda_print_table_transpose(input, batch_size, output_dim+1);
-		
-			//Forward on all layers
-			for(k = 0; k < nb_layers; k++)
-				net_layers[k]->forward(net_layers[k]);
-			//printf("layer 1\n");
-			//cuda_print_table_transpose(((dense_param*)net_layers[0]->param)->weights, ((dense_param*)net_layers[0]->param)->in_size, ((dense_param*)net_layers[0]->param)->nb_neurons+1);
-			//cuda_print_table_transpose(net_layers[0]->output, batch_size, ((dense_param*)net_layers[0]->param)->nb_neurons+1);
-			//printf("layer 2\n");
-			//cuda_print_table_transpose(((dense_param*)net_layers[1]->param)->weights, ((dense_param*)net_layers[1]->param)->in_size, ((dense_param*)net_layers[1]->param)->nb_neurons+1);
-			//cuda_print_table_transpose(net_layers[nb_layers-1]->output, batch_size, output_dim+1);
-			//printf("targer\n");
-			//cuda_print_table_transpose(target, batch_size, output_dim);
+			for(k = 0; k < net->nb_layers; k++)
+				net->net_layers[k]->forward(net->net_layers[k]);
 			
-			output_deriv_error(net_layers[nb_layers-1]);
-			//printf("deriv\n");
-			//cuda_print_table_transpose(net_layers[nb_layers-1]->delta_o, batch_size, output_dim+1);
-			
-			//if(j == 2)
-			//	exit(1);
+			output_deriv_error(net->net_layers[net->nb_layers-1]);
 			
 			//Propagate error through all layers
-			for(k = 0; k < nb_layers; k++)
-				net_layers[nb_layers-1-k]->backprop(net_layers[nb_layers-1-k]);
+			for(k = 0; k < net->nb_layers; k++)
+				net->net_layers[net->nb_layers-1-k]->backprop(net->net_layers[net->nb_layers-1-k]);
 		}
 		
-		if((i+1) % control_interv == 0)
+		if(((net->epoch) % control_interv == 0) || (i == nb_epochs - 1))
 		{
-			printf("Epoch: %d\n", i+1);
-			compute_error(valid_set, 0, 1);
+			compute_error(net, net->valid, 0, show_confmat, 1);
 			printf("\n");
 		}
+		if(save_net > 0 && ((net->epoch) % save_net) == 0)
+		{
+			sprintf(net_save_file_name, "net_save/net%d_s%04d.dat", net->id, net->epoch);
+			printf("Saving network for epoch: %d\n", net->epoch);
+			save_network(net, net_save_file_name);
+		}
 		
-		learning_rate *= (1.0-decay);
 	}
 	
 	
-	#ifdef CUDA
-	if(compute_method == C_CUDA)
-	{
-		//add cuda free functions
-	}
-	#endif
+	free_dataset(shuffle_duplicate);
+	free(index_shuffle);
+	if(net->compute_method == C_CUDA)
+		cuda_free_table(index_shuffle_device);
 	
 }
 
 
-void forward_network(Dataset test_set, int train_step, const char *pers_file_name, int repeat)
+
+void forward_testset(network *net, int train_step, const char *pers_file_name, int repeat)
 {
 	char file_name[100];
+	FILE* f_save;
 	
 	//update out_size in case of forward with no training
-	switch(net_layers[nb_layers-1]->type)
+	switch(net->net_layers[net->nb_layers-1]->type)
 	{
 		case CONV:
-			out_size = ((conv_param*)net_layers[nb_layers-1]->param)->nb_filters * ((conv_param*)net_layers[nb_layers-1]->param)->nb_area_w * 
-				((conv_param*)net_layers[nb_layers-1]->param)->nb_area_h;
+			net->out_size = ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_filters 
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w 
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h;
 			break;
 			
 		case POOL:
-			out_size = ((pool_param*)net_layers[nb_layers-1]->param)->prev_depth * ((pool_param*)net_layers[nb_layers-1]->param)->nb_area_w * 
-				((pool_param*)net_layers[nb_layers-1]->param)->nb_area_h;
+			net->out_size = ((pool_param*)net->net_layers[net->nb_layers-1]->param)->prev_depth 
+				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w 
+				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h;
 			break;
 	
 		case DENSE:
 		default:
-			out_size = ((dense_param*)net_layers[nb_layers-1]->param)->nb_neurons+1;
+			net->out_size = ((dense_param*)net->net_layers[net->nb_layers-1]->param)->nb_neurons+1;
 			break;
 	}
 	
 	
-	if(train_step >= 0)
+	if(train_step <= 0)
 	{
-	
+		printf("Warning, can not forward %d step\n", train_step);
 	}
 	else
 	{
 		if(pers_file_name != NULL)
 			strcpy(file_name, pers_file_name);
 		else
-			sprintf(file_name,"fwd_res/fwd_step_end.txt");
+			sprintf(file_name,"fwd_res/net_%d_fwd_step_end.txt", net->id);
+			
+		printf("%s\n", file_name);
+		f_save = fopen(file_name, "w+");
+		
+		printf("before compute forward\n");
+		compute_error(net, net->test, 1, 0, repeat);
+		printf("after compute forward\n");
+		fclose(f_save);
 	}
-	
-	printf("%s\n", file_name);
-	f_save = fopen(file_name, "w+");
-	
-	printf("before compute forward\n");
-	compute_error(test_set, 1, repeat);
-	printf("after compute forward\n");
-	fclose(f_save);
 }
 
-/*
-void save_network(char *filename)
-{
-	int i;
-	FILE* f;
-	
-	f = fopen(filename, "w+");
-	fprintf("%dx%dx%d ", input_width, input_height, input_depth);
-	for(i = 0; i < nb_layers; i++)
-	{
-		switch(net_layers[i].type)
-		{
-			case CONV:
-				
-				
-				break;
-			
-			case POOL:
-			
-				break;
-		
-			case DENSE:
-			default:
-			
-				break;
-		}
-	}
-	
-	fclose(f);
-}
-*/
+
+
 
 
 

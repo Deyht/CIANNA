@@ -137,15 +137,15 @@ void cuda_linear_deriv_output_error(layer *current)
 	//printf("%d %d\n",param->size, param->dim);
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
 	quadratic_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output,
-		target, (param->dim+1)*length, param->dim, param->size);
+		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
 }
 
 void cuda_linear_output_error(layer *current)
 {	
 	linear_param *param = (linear_param*)current->activ_param;
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
-	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(output_error, current->output,
-		target, (param->dim+1)*length, param->dim, param->size);
+	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(current->c_network->output_error, 
+		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
 }
 
 
@@ -220,7 +220,7 @@ void cuda_ReLU_deriv_output_error(layer* current)
 	
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
 	quadratic_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output,
-		target, (param->dim+1)*length, param->dim, param->size);
+		current->c_network->target, (param->dim+1) * current->c_network->length, param->dim, param->size);
 	ReLU_deriv_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output, 
 		param->size, param->dim, param->leaking_factor, param->size);
 }
@@ -230,8 +230,9 @@ void cuda_ReLU_output_error(layer* current)
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
-	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(output_error, current->output,
-		target, (param->dim+1)*length, param->dim, param->size);
+	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(current->c_network->output_error, 
+		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, 
+		param->dim, param->size);
 }
 
 __global__ void quadratic_deriv_output_error_kernel(real *delta_o, real *output, real *target, int len, int dim, int size)
@@ -246,11 +247,6 @@ __global__ void quadratic_deriv_output_error_kernel(real *delta_o, real *output,
 	{
 		pos = i - i/(dim+1);
 		delta_o[i] = (output[i] - target[pos]);
-		if(delta_o[i] > 0.5)
-			delta_o[i] = 0.5;
-		else if(delta_o[i] < -0.5)
-			delta_o[i] = -0.5;
-		
 	}
 	else
 	{
@@ -351,8 +347,9 @@ void cuda_logistic_deriv_output_error(layer* current)
 	//to update for new formalism
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
 	quadratic_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output,
-		target, (param->dim+1)*length, param->dim, param->size);
-	logistic_deriv_kernel <<< cu_blocks, cu_threads >>>(current->delta_o, current->output, param->beta, (param->dim+1)*length, param->dim, param->size);
+		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
+	logistic_deriv_kernel <<< cu_blocks, cu_threads >>>(current->delta_o, current->output, param->beta,
+		(param->dim+1)*current->c_network->length, param->dim, param->size);
 	
 }
 
@@ -361,8 +358,9 @@ void cuda_logistic_output_error(layer* current)
 	logistic_param *param = (logistic_param*)current->activ_param;
 	//to update for new formalism
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
-	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(output_error, current->output,
-		target, (param->dim+1)*length, param->dim, param->size);	
+	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(current->c_network->output_error, 
+		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, 
+		param->dim, param->size);	
 }
 
 //#####################################################
@@ -378,8 +376,8 @@ void cuda_softmax_activation(layer *current)
 {
 	softmax_param *param = (softmax_param*)current->activ_param;
 	//to update for new formalism
-	cu_blocks = (batch_size + cu_threads - 1) / cu_threads;
-	softmax_activation_kernel<<< cu_blocks, cu_threads >>>(current->output, length, param->dim, batch_size);
+	cu_blocks = (current->c_network->batch_size + cu_threads - 1) / cu_threads;
+	softmax_activation_kernel<<< cu_blocks, cu_threads >>>(current->output, current->c_network->length, param->dim, current->c_network->batch_size);
 }
 
 __global__ void softmax_activation_kernel(real *tab, int len, int dim, int size)
@@ -437,8 +435,10 @@ void cuda_softmax_deriv_output_error(layer *current)
 	//use by default a cross entropy error
 	softmax_param *param = (softmax_param*)current->activ_param;
 	
-	cu_blocks = ((param->dim+1)*batch_size + cu_threads - 1) / cu_threads;
-	cross_entropy_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output, target, (param->dim+1)*length, param->dim, (param->dim+1)*batch_size);
+	cu_blocks = ((param->dim+1)*current->c_network->batch_size + cu_threads - 1) / cu_threads;
+	cross_entropy_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output,
+		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, 
+		(param->dim+1)*current->c_network->batch_size);
 		
 }
 
@@ -447,8 +447,10 @@ void cuda_softmax_output_error(layer *current)
 	//use by default a cross entropy error
 	softmax_param *param = (softmax_param*)current->activ_param;
 	
-	cu_blocks = ((param->dim+1)*batch_size + cu_threads - 1) / cu_threads;
-	cross_entropy_output_error_kernel<<< cu_blocks, cu_threads >>>(output_error, current->output, target, (param->dim+1)*length, param->dim, (param->dim+1)*batch_size);
+	cu_blocks = ((param->dim+1)*current->c_network->batch_size + cu_threads - 1) / cu_threads;
+	cross_entropy_output_error_kernel<<< cu_blocks, cu_threads >>>(current->c_network->output_error,
+		current->output, current->c_network->target, (param->dim+1)*current->c_network->length,
+		param->dim, (param->dim+1)*current->c_network->batch_size);
 		
 }
 

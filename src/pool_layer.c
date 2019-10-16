@@ -8,13 +8,14 @@ static pool_param *p_param;
 
 
 
-void pool_create(layer* previous, int pool_size)
+void pool_create(network *net, layer* previous, int pool_size)
 {
 	layer* current;
 	
 	current = (layer*) malloc(sizeof(layer));
-	net_layers[nb_layers] = current;
-	nb_layers++;
+	net->net_layers[net->nb_layers] = current;
+	current->c_network = net;
+	net->nb_layers++;
 
 	p_param = (pool_param*) malloc(sizeof(pool_param));
 
@@ -29,11 +30,11 @@ void pool_create(layer* previous, int pool_size)
 	if(previous == NULL)
 	{
 		//Case of the first layer
-		p_param->prev_size_w = input_width;
-		p_param->prev_size_h = input_height;
-		p_param->prev_depth = input_depth;
+		p_param->prev_size_w = net->input_width;
+		p_param->prev_size_h = net->input_height;
+		p_param->prev_depth = net->input_depth;
 		//input pointer must be set at the begining of forward
-		current->input = input;
+		current->input = net->input;
 		
 		printf("ERROR : Starting with a pooling layer is currently not allowed.\n");
 		exit(EXIT_FAILURE);
@@ -74,15 +75,15 @@ void pool_create(layer* previous, int pool_size)
 		exit(EXIT_FAILURE);
 	}
 	
-	p_param->pool_map = (real*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps * batch_size 
-		* sizeof(real));
-	current->output = (real*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps * batch_size 
-		* sizeof(real));
+	p_param->pool_map = (real*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
+		* net->batch_size * sizeof(real));
+	current->output = (real*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
+		* net->batch_size * sizeof(real));
 	
-	current->delta_o = (real*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps * batch_size 
-		* sizeof(real));
+	current->delta_o = (real*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
+		* net->batch_size * sizeof(real));
 	p_param->temp_delta_o = (real*) malloc(p_param->prev_size_w * p_param->prev_size_h 
-		* p_param->prev_depth * batch_size * sizeof(real));
+		* p_param->prev_depth * net->batch_size * sizeof(real));
 	
 	//No activation for this layer for now
 	current->activ_param = NULL;
@@ -92,7 +93,7 @@ void pool_create(layer* previous, int pool_size)
 	//No weights initialization in a pool layer
 	
 	//associate the conv specific functions to the layer
-	switch(compute_method)
+	switch(net->compute_method)
 	{
 		case C_CUDA:
 			#ifdef CUDA
@@ -114,6 +115,31 @@ void pool_create(layer* previous, int pool_size)
 	
 }
 
+void pool_save(FILE *f, layer *current)
+{
+	p_param = (pool_param*) current->param;
+	
+	fprintf(f, "P%d\n", p_param->p_size);
+	fprintf(f, "\n");
+}
+
+void pool_load(network *net, FILE *f)
+{
+	int p_size;
+	layer* previous;
+
+	printf("Loading pool layer, L:%d\n", net->nb_layers);
+	
+	fscanf(f, "%d", &p_size);
+	
+	if(net->nb_layers <= 0)
+		previous = NULL;
+	else
+		previous = net->net_layers[net->nb_layers-1];
+	
+	pool_create(net, previous, p_size);
+	
+}
 
 
 

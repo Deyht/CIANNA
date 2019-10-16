@@ -6,7 +6,7 @@
 
 void output_deriv_error(layer* current)
 {
-	switch(compute_method)
+	switch(current->c_network->compute_method)
 	{
 		case C_CUDA:
 			#ifdef CUDA
@@ -28,7 +28,7 @@ void output_deriv_error(layer* current)
 
 void output_error_fct(layer* current)
 {
-	switch(compute_method)
+	switch(current->c_network->compute_method)
 	{
 		case C_CUDA:
 			#ifdef CUDA
@@ -48,7 +48,7 @@ void output_error_fct(layer* current)
 	}
 }
 
-/*
+
 void print_activ_param(FILE *f, int type)
 {
 	switch(type)
@@ -70,7 +70,21 @@ void print_activ_param(FILE *f, int type)
 			fprintf(f,"(RELU)");
 			break;
 	}	
-}*/
+}
+
+int load_activ_param(char *type)
+{
+	if(strcmp(type, "(SMAX)") == 0)
+		return SOFTMAX;
+	else if(strcmp(type, "(LIN)") == 0)
+		return LINEAR;
+	else if(strcmp(type, "(LOGI)") == 0)
+		return LOGISTIC;
+	else if(strcmp(type, "(RELU)") == 0)
+		return RELU;
+	else
+		return RELU;
+}
 
 
 //#####################################################
