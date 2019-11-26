@@ -1,6 +1,7 @@
 ########################################################################################
 # CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysicists
 ########################################################################################
+
 CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysicists - is a deep learning framework developed to address astrophysical problems. Functionalities and optimizations are added as they are identified as relevant for astrophysical problems solving.
 
 Main developer : David Cornu, FR - UTINAM / Univ. Franche Comté
@@ -15,9 +16,9 @@ All rights reserved to the Author.
 
 
 
-############################################
-# /!\ /!\ /!\ /!\ WARNING /!\ /!\ /!\ /!\
-############################################
+#############################################################
+#        /!\ /!\ /!\ /!\ WARNING /!\ /!\ /!\ /!\
+#############################################################
 
 THIS FRAMEWORK IS NEITHER IN A STABLE NOR FINISHED STATE.
 IF YOU WHERE GRANTED ACCESS TO THIS REPOSITORY / CODE BY ANY OTHER WAY
@@ -26,9 +27,9 @@ THAN THROUGH A CONTACT WITH THE AUTHOR, PLEASE TAKE CONTACT BEFORE USING IT.
 If in need for any help, information, advises, ... please contact
 me at : david.cornu@utinam.cnrs.fr
 
-############################################
-# /!\ /!\ /!\ /!\ WARNING /!\ /!\ /!\ /!\
-############################################
+#############################################################
+#        /!\ /!\ /!\ /!\ WARNING /!\ /!\ /!\ /!\
+#############################################################
 
 
 
@@ -37,9 +38,10 @@ me at : david.cornu@utinam.cnrs.fr
 
 
 
-############################################
-#               INSTALLATION
-############################################
+#############################################################
+#                         INSTALLATION
+#############################################################
+
 WARNING : Currently, the framework only work using CUDA (version 9.2 minimum, 10.1 up 2 recommended).
 It will soon support basic CPU implementation and an OpenBLAS version, both with an OpenMP multi-thread support.
 
@@ -77,9 +79,9 @@ any code can be written with the interface with no need for new compilation.
 
 
 
-############################################
-#          VARIOUS RECOMMENDATIONS
-############################################
+#############################################################
+#                   VARIOUS RECOMMENDATIONS
+#############################################################
 
 There is currently no tutorial on how to use either the main C code or the Python interface.
 Users may have be given specific instructions by the author, or should have a good C (and CUDA) knowledge
@@ -88,11 +90,6 @@ to figure out how to use the framework by themselves.
 This framework take into account for various modern neural network optimizations. 
 However, since there is no automated gradient optimization, it will happen that the network gradient "explode" or"vanish". 
 Users must be aware of those issues and be able to identify them in order to make proper use of the framework.
-
-
-
-
-
 
 
 
