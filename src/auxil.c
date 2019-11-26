@@ -1,11 +1,12 @@
 #include "prototypes.h"
 
 
-void init_network(int network_number, int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method)
+void init_network(int network_number, int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method, int u_dynamic_load)
 {
 
 	networks[network_number] = (network*) malloc(sizeof(network));
 	networks[network_number]->id = network_number;
+	networks[network_number]->dynamic_load = u_dynamic_load;
 	nb_networks++;
 	
 	if(!is_init)
@@ -87,6 +88,7 @@ void free_dataset(Dataset data)
 	free(data.input);
 	free(data.target);
 }
+
 
 int argmax(real *tab, int size)
 {
@@ -187,6 +189,38 @@ void load_network(network *net, char *filename, int epoch)
 	fclose(f);
 }
 
+void host_only_shuffle(network *net, Dataset data)
+{
+	int i, j, k;
+	real temp;
+	int pos, pos2, batch, batch2;
+
+
+	for(i = 0; i < data.size - 1; i++)
+	{
+		j = i + (int)((rand() / ((double)RAND_MAX) ) * (double)(data.size-i));
+		pos = i%net->batch_size;
+		batch = i/net->batch_size;
+		pos2 = j%net->batch_size;
+		batch2 = j/net->batch_size;
+		
+		for(k = 0; k < net->input_dim+1; k++)
+		{
+			temp = data.input[batch][pos*(net->input_dim + 1) + k];
+			data.input[batch][pos*(net->input_dim + 1) + k] = data.input[batch2][pos2*(net->input_dim + 1) + k];
+			data.input[batch2][pos2*(net->input_dim + 1) + k] = temp;
+		}
+		
+		for(k = 0; k < net->output_dim; k++)
+		{
+			temp = data.target[batch][pos*net->output_dim + k];
+			
+			data.target[batch][pos*net->output_dim + k] = data.target[batch2][pos2*net->output_dim + k];
+			data.target[batch2][pos2*net->output_dim + k] = temp;
+		}
+	}
+}
+
 
 
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat)
@@ -204,7 +238,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	real* output_save = NULL;
 	FILE *f_save;
 	char f_save_name[100];
-	
+
 	o = net->output_dim;
 	
 	if(confusion_matrix)
@@ -230,6 +264,10 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		output_save = (real*) calloc(net->batch_size*net->out_size,sizeof(real));
 		sprintf(f_save_name, "fwd_res/net%d_%04d.dat", net->id, net->epoch);
 		f_save = fopen(f_save_name, "w+");
+		if(f_save == NULL)
+		{
+			printf("ERROR : can not oppen %s !\n", f_save_name);
+		}
 	}
 	
 	for(r = 0; r < repeat; r++)
@@ -253,9 +291,17 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			else
 				net->length = net->batch_size;
 			
-			//Loop on all batch for one epoch
-			net->input = data.input[j];
-			net->target = data.target[j];
+			if(net->dynamic_load)
+			{
+				cuda_put_table(&net->input, &(data.input[j]), net->batch_size*(net->input_dim+1));
+				cuda_put_table(&net->target, &(data.target[j]), net->batch_size*(net->output_dim));
+			}
+			else
+			{
+				net->input = data.input[j];
+				net->target = data.target[j];
+			}
+			
 			//forward
 			for(k = 0; k < net->nb_layers; k++)
 			{
@@ -330,7 +376,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			free(output_save);
 		fclose(f_save);
 	}
-	
+
 	if(confusion_matrix)
 	{
 		printf("\nConfMat (valid set)\n");
@@ -372,7 +418,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 }
 
 
-void train_network(network* net, int nb_epochs, int control_interv, real u_begin_learning_rate, real u_end_learning_rate, real u_momentum, real u_decay, int show_confmat, int save_net)
+void train_network(network* net, int nb_epochs, int control_interv, real u_begin_learning_rate, real u_end_learning_rate, real u_momentum, real u_decay, int show_confmat, int save_net, int shuffle_gpu)
 {
 	int i, j, k;
 	real begin_learn_rate;
@@ -380,20 +426,28 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 	real decay;
 	char net_save_file_name[200];
 	Dataset shuffle_duplicate;
-	real *index_shuffle, *index_shuffle_device;
-		
-	shuffle_duplicate = create_dataset(net, net->train.size, 0.1);
-	index_shuffle = (real*) calloc(net->train.size,sizeof(real));
-	for(i = 0; i < net->train.size; i++)
-		index_shuffle[i] = i;
-	#ifdef CUDA
-	if(net->compute_method == C_CUDA)
+	real *index_shuffle = NULL, *index_shuffle_device = NULL;
+	
+	if(net->dynamic_load)
 	{
-		index_shuffle_device = (real*)  calloc(net->train.size,sizeof(real));
-		cuda_convert_dataset(net, &shuffle_duplicate);
-		cuda_convert_table(&index_shuffle_device, net->train.size);
+		cuda_create_table(&(net->input), net->batch_size*(net->input_dim+1));
+		cuda_create_table(&(net->target), net->batch_size*(net->output_dim));
 	}
-	#endif
+	else
+	{
+		shuffle_duplicate = create_dataset(net, net->train.size, 0.1);
+		if(shuffle_gpu)
+		{
+			#ifdef CUDA
+			index_shuffle = (real*) calloc(net->train.size,sizeof(real));
+			for(i = 0; i < net->train.size; i++)
+				index_shuffle[i] = i;
+			index_shuffle_device = (real*)  calloc(net->train.size,sizeof(real));
+			cuda_convert_dataset(net, &shuffle_duplicate);
+			cuda_convert_table(&index_shuffle_device, net->train.size);
+			#endif
+		}
+	}
 	
 	begin_learn_rate = u_begin_learning_rate;
 	end_learn_rate = u_end_learning_rate;
@@ -428,9 +482,23 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 		
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*i);
 		printf("Learning rate : %g\n", net->learning_rate);
-		#ifdef CUDA
-		cuda_shuffle(net, net->train, shuffle_duplicate, index_shuffle, index_shuffle_device);
-		#endif
+		
+		
+		if(net->dynamic_load)
+		{
+			host_only_shuffle(net, net->train);
+		}
+		else
+		{
+			#ifdef CUDA
+			if(shuffle_gpu)
+				cuda_shuffle(net, net->train, shuffle_duplicate, index_shuffle, index_shuffle_device);
+			else
+				host_shuffle(net, net->train, shuffle_duplicate);
+			#endif
+		}
+		
+		
 		//Loop on all batch for one epoch
 		for(j = 0; j < net->train.nb_batch; j++)
 		{
@@ -439,8 +507,16 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 			else
 				net->length = net->batch_size;
 			
-			net->input = net->train.input[j];
-			net->target = net->train.target[j];
+			if(net->dynamic_load)
+			{
+				cuda_put_table(&net->input, &(net->train.input[j]), net->batch_size*(net->input_dim+1));
+				cuda_put_table(&net->target, &(net->train.target[j]), net->batch_size*(net->output_dim));
+			}
+			else
+			{
+				net->input = net->train.input[j];
+				net->target = net->train.target[j];
+			}
 		
 			for(k = 0; k < net->nb_layers; k++)
 				net->net_layers[k]->forward(net->net_layers[k]);
@@ -466,22 +542,32 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 		
 	}
 	
-	
-	free_dataset(shuffle_duplicate);
-	free(index_shuffle);
+	#ifdef CUDA
+	if(net->dynamic_load)
+	{
+		cuda_free_table(net->input);
+		cuda_free_table(net->target);
+	}
+	else if(shuffle_gpu)
+	{
+		cuda_free_dataset(&shuffle_duplicate);
+		free(index_shuffle);
+	}
+	else
+	{
+		free_dataset(shuffle_duplicate);
+	}
 	if(net->compute_method == C_CUDA)
 		cuda_free_table(index_shuffle_device);
-	
+	#endif
 }
 
 
 
-void forward_testset(network *net, int train_step, const char *pers_file_name, int repeat)
+void forward_testset(network *net, int train_step, int repeat)
 {
-	char file_name[100];
-	FILE* f_save;
-	
 	//update out_size in case of forward with no training
+	
 	switch(net->net_layers[net->nb_layers-1]->type)
 	{
 		case CONV:
@@ -502,6 +588,11 @@ void forward_testset(network *net, int train_step, const char *pers_file_name, i
 			break;
 	}
 	
+	if(net->dynamic_load)
+	{
+		cuda_create_table(&(net->input), net->batch_size*(net->input_dim+1));
+		cuda_create_table(&(net->target), net->batch_size*(net->output_dim));
+	}
 	
 	if(train_step <= 0)
 	{
@@ -509,18 +600,15 @@ void forward_testset(network *net, int train_step, const char *pers_file_name, i
 	}
 	else
 	{
-		if(pers_file_name != NULL)
-			strcpy(file_name, pers_file_name);
-		else
-			sprintf(file_name,"fwd_res/net_%d_fwd_step_end.txt", net->id);
-			
-		printf("%s\n", file_name);
-		f_save = fopen(file_name, "w+");
-		
 		printf("before compute forward\n");
 		compute_error(net, net->test, 1, 0, repeat);
 		printf("after compute forward\n");
-		fclose(f_save);
+	}
+	
+	if(net->dynamic_load)
+	{
+		cuda_free_table(net->input);
+		cuda_free_table(net->target);
 	}
 }
 

@@ -100,6 +100,19 @@ __global__ void cuda_update_weights(real *weights, real* update, int size)
 	}
 }
 
+__global__ void cuda_update_weights_dropout(real *weights, real* update, int size, real *drop_mask, int dim)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	int pos;
+	
+	if(i < size)
+	{
+		pos = i%dim;
+		if(pos != dim - 1) 
+			weights[i] -= drop_mask[pos]*update[i];
+	}
+}
+
 
 void cuda_print_table(real* tab, int size, int return_every)
 {
@@ -236,7 +249,7 @@ void cuda_shuffle(network *net, Dataset data, Dataset duplicate, real *index_shu
 
 	for(i = 0; i < data.size - 1; i++)
 	{
-		j = (i + rand() / ((real)RAND_MAX) *(data.size-i));
+		j = i + (int)((rand() / ((double)RAND_MAX) ) * (double)(data.size-i));
 		temp = index_shuffle[i];
 		index_shuffle[i] = index_shuffle[j];
 		index_shuffle[j] = temp;
@@ -254,6 +267,53 @@ void cuda_shuffle(network *net, Dataset data, Dataset duplicate, real *index_shu
 		net->input_dim+1, net->output_dim);
 
 }
+
+void host_shuffle(network *net, Dataset data, Dataset duplicate)
+{
+	int i, j, k;
+	real temp;
+	int pos, pos2, batch, batch2;
+
+	for(i = 0; i < data.nb_batch; i++)
+	{
+		cudaMemcpy(duplicate.input[i], data.input[i], net->batch_size*(net->input_dim + 1)*sizeof(real), cudaMemcpyDeviceToHost);
+		cudaMemcpy(duplicate.target[i], data.target[i], net->batch_size*(net->output_dim)*sizeof(real), cudaMemcpyDeviceToHost);
+	}
+	
+
+	for(i = 0; i < data.size - 1; i++)
+	{
+		j = i + (int)((rand() / ((double)RAND_MAX) ) * (double)(data.size-i));
+		pos = i%net->batch_size;
+		batch = i/net->batch_size;
+		pos2 = (int)(j)%net->batch_size;
+		batch2 = (int)(j)/net->batch_size;
+		
+		for(k = 0; k < net->input_dim+1; k++)
+		{
+			temp = duplicate.input[batch][pos*(net->input_dim + 1) + k];
+			duplicate.input[batch][pos*(net->input_dim + 1) + k] = 
+				duplicate.input[batch2][pos2*(net->input_dim + 1) + k];
+			duplicate.input[batch2][pos2*(net->input_dim + 1) + k] = temp;
+		}
+		
+		for(k = 0; k < net->output_dim; k++)
+		{
+			temp = duplicate.target[batch][pos*net->output_dim + k];
+			
+			duplicate.target[batch][pos*net->output_dim + k] = duplicate.target[batch2][pos2*net->output_dim + k];
+			duplicate.target[batch2][pos2*net->output_dim + k] = temp;
+		}
+	}
+	
+	for(i = 0; i < data.nb_batch; i++)
+	{
+		cudaMemcpy(data.input[i], duplicate.input[i], net->batch_size*(net->input_dim + 1)*sizeof(real), cudaMemcpyHostToDevice);
+		cudaMemcpy(data.target[i], duplicate.target[i], net->batch_size*(net->output_dim)*sizeof(real), cudaMemcpyHostToDevice);
+	}
+	
+}
+
 
 
 

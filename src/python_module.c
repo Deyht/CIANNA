@@ -12,28 +12,28 @@
 // Network paramaremeter and data management functions
 //############################################################
 
-static PyObject* py_init_network(PyObject* self, PyObject* args)
+static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	PyArrayObject *py_dims;
 	int i;
-	int dims[3] = {1,1,1}, out_dim, b_size, comp_int = C_CUDA, network_id = nb_networks;
+	int dims[3] = {1,1,1}, out_dim, b_size, comp_int = C_CUDA, network_id = nb_networks, dynamic_load = 0;
 	char string_comp[10];
 	const char *comp_meth = "C_CUDA";
+	static char *kwlist[] = {"dims", "out_dim", "b_size", "comp_meth", "network_id", "dynamic_load", NULL};
+
 	
 	b_size = 10;
 	
-	if(!PyArg_ParseTuple(args, "Oi|isi", &py_dims, &out_dim, &b_size, &comp_meth, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|isii", kwlist, &py_dims, &out_dim, &b_size, &comp_meth, &network_id, &dynamic_load))
 	    return Py_None;
 	
 	for(i = 0; i < py_dims->dimensions[0]; i++)
 	{
 		dims[i] = *(int *)(py_dims->data + i*py_dims->strides[0]);
 	}
-	printf("%s\n", comp_meth);
 	
 	if(strcmp(comp_meth,"C_CUDA") == 0)
 	{
-		printf("test 1\n");
 		comp_int = C_CUDA;
 		sprintf(string_comp, "CUDA");
 	}
@@ -48,61 +48,59 @@ static PyObject* py_init_network(PyObject* self, PyObject* args)
 		sprintf(string_comp, "NAIV");
 	}
 	
-    init_network(network_id, dims, out_dim, b_size, comp_int);
+    init_network(network_id, dims, out_dim, b_size, comp_int, dynamic_load);
     
 	printf("Network have been initialized with : \nInput dimensions: %dx%dx%d \nOutput dimension: %d \nBatch size: %d \nUsing %s compute methode\n\n", dims[0], dims[1], dims[2], out_dim, b_size, string_comp);
+	if(dynamic_load)
+		printf("Dynamic load ENABLED\n\n");
 	
     return Py_None;
 }
 
 
-static PyObject* py_create_dataset(PyObject* self, PyObject* args)
+static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	int i, j, k, l, m;
 	Dataset *data = NULL;
 	const char *dataset_type;
 	double bias = 0.1;
 	PyArrayObject *py_data = NULL, *py_target = NULL;
-	int size, flat = 0;
+	int size, flat = 0, on_gpu = 1;
 	int network_id = nb_networks-1;
+	static char *kwlist[] = {"dataset", "size", "input", "target", "bias", "flat", "network_id", NULL};
 
-	if(!PyArg_ParseTuple(args, "siOOd|ii", &dataset_type, &size, &py_data, &py_target, &bias, &flat, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOOd|iii", kwlist, &dataset_type, &size, &py_data, &py_target, &bias, &flat, &network_id))
 	    return Py_None;
 	    
-	printf("test\n");
+	if(networks[network_id]->dynamic_load)
+		on_gpu = 0;
 	
 	
 	if(strcmp(dataset_type,"TRAIN") == 0)
 	{
-		printf("setting training set\n");
+		printf("Setting training set\n");
 		data = &networks[network_id]->train;
 	}
 	else if(strcmp(dataset_type,"VALID") == 0)
 	{
-		printf("setting valid set\n");
+		printf("Setting valid set\n");
 		data = &networks[network_id]->valid;
 	}
 	else if(strcmp(dataset_type,"TEST") == 0)
 	{
-		printf("setting testing test\n");
+		printf("Setting testing test\n");
 		data = &networks[network_id]->test;
 	}
 	
 	
-	printf("input dim :%d\n", networks[network_id]->input_dim);
+	printf("input dim :%d,", networks[network_id]->input_dim);
 	*data = create_dataset(networks[network_id], size, bias);
 	
-	printf("%d \n", data->nb_batch);
-	
-	
-	printf("Creating dataset with size %d ...\n", data->size);
-	
-	printf("%ld %ld\n", py_data->dimensions[0], py_data->dimensions[1]); 
+	printf("Creating dataset with size %d (nb_batch = %d) ... ", data->size, data->nb_batch);
 	
 	
 	if(py_data != NULL && py_target != NULL)
 	{
-		printf("loading input\n");
 		for(i = 0; i < data->nb_batch; i++)
 			for(j = 0; j < networks[network_id]->batch_size; j++)
 			{
@@ -131,7 +129,6 @@ static PyObject* py_create_dataset(PyObject* self, PyObject* args)
 						}
 				}
 			}
-		printf("loading target\n");
 		for(i = 0; i < data->nb_batch; i++)
 			for(j = 0; j < networks[network_id]->batch_size; j++)
 			{
@@ -144,14 +141,16 @@ static PyObject* py_create_dataset(PyObject* self, PyObject* args)
 					* py_target->strides[1]);
 			}
 	}
+	printf("Done !\n");
 	
 	#ifdef CUDA
-	if(networks[network_id]->compute_method == C_CUDA)
+	if(networks[network_id]->compute_method == C_CUDA && on_gpu)
 	{
 		printf("Converting dataset to GPU device (CUDA)\n");
 		cuda_convert_dataset(networks[network_id], data);
 	}
 	#endif
+	printf("\n");
 	
 	return Py_None;
 }
@@ -275,16 +274,16 @@ static PyObject* py_load_network(PyObject* self, PyObject* args)
 
 static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_net = 0, network_id = nb_networks-1;
+	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_net = 0, network_id = nb_networks-1, shuffle_gpu = 1;
 	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0;
-	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "decay", "confmat", "save_each", "network", NULL};
+	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "decay", "confmat", "save_each", "network", "shuffle_gpu", NULL};
 	
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|diddiii", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_net, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|diddiiii", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_net, &network_id, &shuffle_gpu))
 	    return Py_None;
 	
 	train_network(networks[network_id], py_nb_epoch, py_control_interv, 
-		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_net);
+		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_net, shuffle_gpu);
 
 	return Py_None;
 }
@@ -292,17 +291,16 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 
 static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	const char* pers_file_name = NULL;
 	int step = -1, repeat = 1, network_id = nb_networks-1;
-	static char *kwlist[] = {"step", "file_name", "repeat","network_id", NULL};
+	static char *kwlist[] = {"step", "repeat","network_id", NULL};
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|isii", kwlist, &step, &pers_file_name, &repeat, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|iii", kwlist, &step, &repeat, &network_id))
 	    return Py_None;
 	
 	if(step == -1)
 		step = networks[network_id]->epoch;
 	
-	forward_testset(networks[network_id], step, pers_file_name, repeat);
+	forward_testset(networks[network_id], step,  repeat);
 	
 	return Py_None;
 }
@@ -313,8 +311,8 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 //############################################################
 
 static PyMethodDef CIANNAMethods[] = {
-    { "init_network", py_init_network, METH_VARARGS, "Initialize network basic sahpes and properties" },
-    { "create_dataset", py_create_dataset, METH_VARARGS, "Allocate dataset structure and return a corresponding object" },
+    { "init_network", (PyCFunction)py_init_network, METH_VARARGS | METH_KEYWORDS, "Initialize network basic sahpes and properties" },
+    { "create_dataset", (PyCFunction)py_create_dataset, METH_VARARGS | METH_KEYWORDS, "Allocate dataset structure and return a corresponding object" },
     { "dense_create", (PyCFunction)py_dense_create, METH_VARARGS | METH_KEYWORDS, "Add a dense layer to the network" },
     { "conv_create",(PyCFunction)py_conv_create, METH_VARARGS | METH_KEYWORDS, "Add a convolutional layer to the network" },
     { "pool_create",(PyCFunction)py_pool_create, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },
@@ -339,7 +337,7 @@ PyMODINIT_FUNC PyInit_CIANNA(void)
 	import_array();
 	
 	printf("############################################################\n\
-Importing CIANNA python module V-0.1, by D.Cornu\n\
+Importing CIANNA python module V-p.0.3, by D.Cornu\n\
 ############################################################\n\n");
 
 	PyObject *m;

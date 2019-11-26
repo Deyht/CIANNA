@@ -67,6 +67,7 @@ struct network
 
 	int id;
 	int compute_method;
+	int dynamic_load;
 	int nb_layers;
 	
 	real learning_rate;

@@ -4,137 +4,134 @@
 
 int main()
 {
-	FILE *f_cmds, *f_profiles;
-	int i, j, k, l;
-	int dims1[3];
-	int b_size;
+	FILE *f = NULL;
+	int i, j, k;
+	int train_size, test_size, valid_size;
+	int dims[3];
 	
-	int out_dim1;
+	int out_dim;
 	
-	int nb_obj = 145000;
-	int nb_test = 5000;
-	real dump;
-	
-	FILE *f_c_1, *f_c_2;
-	real *map1, *map2; 
-	int c_1_size, c_2_size;
-	
-	real *CMDs, *profiles;
-	
-	//#################################################################################
-	//               WARNING ! This file do not perform training :
-	//				For an example on how to use the framework see "main_old.c"
-	//#################################################################################
-
 	//Common randomized seed based on time at execution
 	srand(time(NULL));
 	
-	CMDs = (real*) calloc(nb_obj*64*64, sizeof(real));
-	profiles = (real*) calloc(nb_obj*100, sizeof(real));
 	
-	f_cmds = fopen("../raw_data/fancy/test3/CMDs.txt", "r+");
+	printf("############################################################\n\
+CIANNA V-0.5 (11/2019), by D.Cornu\n\
+############################################################\n\n");
 	
-	
-	for(i = 0; i < nb_obj*64*64; i++)
+	f = fopen("mnist.dat", "r+");
+	if(f == NULL)
 	{
-		fscanf(f_cmds, "%f", &dump);
-		CMDs[i] /= 1798.;
+		printf("ERROR: Can not open input file ...\n");
+		exit(1);
+	}
+
+	fscanf(f, "%d %d %d %dx%dx%d %d", &train_size, &test_size, &valid_size, &dims[0], &dims[1],
+		&dims[2], &out_dim);
+		
+	
+	init_network(0, dims, out_dim, 32, C_CUDA, 1);
+	
+	networks[0]->train = create_dataset(networks[0], train_size, 0.1);
+	networks[0]->test = create_dataset(networks[0], test_size, 0.1);
+	networks[0]->valid = create_dataset(networks[0], valid_size, 0.1);
+	
+	for(i = 0; i < networks[0]->train.nb_batch; i++)
+	{
+		for(j = 0; j < networks[0]->batch_size; j++)
+		{
+			if(i*networks[0]->batch_size + j >= networks[0]->train.size)
+				continue;
+			for(k = 0; k < networks[0]->input_dim; k ++)
+				fscanf(f, "%f", &networks[0]->train.input[i][j*(networks[0]->input_dim+1) + k]);
+			networks[0]->train.input[i][j*(networks[0]->input_dim+1) + networks[0]->input_dim] = 0.1;
+			//bias value should be adapted somehow based on 1st layer
+		}
 	}
 	
-	for(i = 0; i < nb_test*64*64; i++)
+	for(i = 0; i < networks[0]->test.nb_batch; i++)
 	{
-		fscanf(f_cmds, "%f", &CMDs[i]);
-		CMDs[i] /= 1798.;
+		for(j = 0; j < networks[0]->batch_size; j++)
+		{
+			if(i*networks[0]->batch_size + j >= networks[0]->test.size)
+				continue;
+			for(k = 0; k < networks[0]->input_dim; k ++)
+				fscanf(f, "%f", &networks[0]->test.input[i][j*(networks[0]->input_dim+1) + k]);
+			networks[0]->test.input[i][j*(networks[0]->input_dim+1) + networks[0]->input_dim] = 0.1;
+		}
+	}
+	
+	for(i = 0; i < networks[0]->valid.nb_batch; i++)
+	{
+		for(j = 0; j < networks[0]->batch_size; j++)
+		{
+			if(i*networks[0]->batch_size + j >= networks[0]->valid.size)
+				continue;
+			for(k = 0; k < networks[0]->input_dim; k ++)
+				fscanf(f, "%f", &networks[0]->valid.input[i][j*(networks[0]->input_dim+1) + k]);
+			networks[0]->valid.input[i][j*(networks[0]->input_dim+1) + networks[0]->input_dim] = 0.1;
+		}
 	}
 	
 	
-
-	fclose(f_cmds);
-	
-	
-	
-	f_profiles = fopen("../raw_data/fancy/test3/Profiles.txt", "r+");
-	
-	
-	for(i = 0; i < nb_obj*100; i++)
+	for(i = 0; i < networks[0]->train.nb_batch; i++)
 	{
-		fscanf(f_profiles, "%f", &dump);
-		profiles[i] /= 6.0;
+		for(j = 0; j < networks[0]->batch_size; j++)
+		{
+			if(i*networks[0]->batch_size + j >= networks[0]->train.size)
+				continue;
+			for(k = 0; k < networks[0]->output_dim; k ++)
+				fscanf(f, "%f", &networks[0]->train.target[i][j*(networks[0]->output_dim) + k]);
+		}
 	}
 	
-	for(i = 0; i < nb_test*100; i++)
+	for(i = 0; i < networks[0]->test.nb_batch; i++)
 	{
-		fscanf(f_profiles, "%f", &profiles[i]);
-		profiles[i] /= 6.0;
+		for(j = 0; j < networks[0]->batch_size; j++)
+		{
+			if(i*networks[0]->batch_size + j >= networks[0]->test.size)
+				continue;
+			for(k = 0; k < networks[0]->output_dim; k ++)
+				fscanf(f, "%f", &networks[0]->test.target[i][j*(networks[0]->output_dim) + k]);
+		}
 	}
 	
-	fclose(f_profiles);
+	for(i = 0; i < networks[0]->valid.nb_batch; i++)
+	{
+		for(j = 0; j < networks[0]->batch_size; j++)
+		{
+			if(i*networks[0]->batch_size + j >= networks[0]->valid.size)
+				continue;
+			for(k = 0; k < networks[0]->output_dim; k ++)
+				fscanf(f, "%f", &networks[0]->valid.target[i][j*(networks[0]->output_dim) + k]);
+		}
+	}
 
-
-	dims1[0] = 64; dims1[1] = 64; dims1[2] = 1;
-	out_dim1 = 100;
-
-	b_size = 16;
-	init_network(0, dims1, out_dim1, b_size, C_CUDA);
+	fclose(f);
 	
-	load_network(networks[0], "net_save_acitv_maps.dat", 400);
-	
-	networks[0]->test = create_dataset(networks[0], nb_test, 0.1);
-	
+	/*
+	//Must be converted if Dynamic load is off !
 	#ifdef CUDA
 	cuda_convert_dataset(networks[0], &networks[0]->train);
+	cuda_convert_dataset(networks[0], &networks[0]->test);
+	cuda_convert_dataset(networks[0], &networks[0]->valid);
 	#endif
+	*/
 	
-	f_c_1 = fopen("activ_map_1.txt", "w+");
-	f_c_2 = fopen("activ_map_2.txt", "w+");
-	
-	c_1_size = ((conv_param*)networks[0]->net_layers[0]->param)->nb_filters * ((conv_param*)networks[0]->net_layers[0]->param)->nb_area_w * ((conv_param*)networks[0]->net_layers[0]->param)->nb_area_h;
-	c_2_size = ((conv_param*)networks[0]->net_layers[2]->param)->nb_filters * ((conv_param*)networks[0]->net_layers[2]->param)->nb_area_w * ((conv_param*)networks[0]->net_layers[2]->param)->nb_area_h;
-	
-	
-	map1 = (real*) malloc(networks[0]->batch_size * c_1_size * sizeof(real));
-	map2 = (real*) malloc(networks[0]->batch_size * c_2_size * sizeof(real));
-	
-	for(j = 0; j < networks[0]->test.nb_batch; j++)
-	{
-
-		if(j == networks[0]->test.nb_batch - 1 && networks[0]->test.size%networks[0]->batch_size > 0)
-		{
-			networks[0]->length = networks[0]->test.size%networks[0]->batch_size;
-		}
-		else
-			networks[0]->length = networks[0]->batch_size;
-		
-		networks[0]->input = networks[0]->test.input[j];
-		networks[0]->target = networks[0]->test.target[j];
-		//forward
-		for(k = 0; k < 3; k++)
-		{
-			networks[0]->net_layers[k]->forward(networks[0]->net_layers[k]);
-		}
-		
-		cuda_get_table(&networks[0]->net_layers[0]->output, &map1, networks[0]->batch_size * c_1_size);
-		cuda_get_table(&networks[0]->net_layers[2]->output, &map2, networks[0]->batch_size * c_2_size);
-		
-		for(k = 0; k < networks[0]->batch_size; k++)
-		{
-			for(l = 0; l < c_1_size ; l++)
-				fprintf(f_c_1, "%g ", map1[l]);
-			fprintf(f_c_1, "\n");
-			
-			for(l = 0; l < c_2_size ; l++)
-				fprintf(f_c_2, "%g ", map2[l]);
-			fprintf(f_c_1, "\n");
-		}
-	}
-	
-	free(map1);
-	free(map2);
-	
-	fclose(f_c_1);
-	fclose(f_c_2);
+	conv_create(networks[0], NULL, 5, 8, 1, 4, RELU, NULL);
+	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
+	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 0, RELU, NULL);
+	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
+	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.1, NULL);
+	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.1, NULL);
+	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 
+		networks[0]->output_dim, SOFTMAX, 0.0, NULL);
 	
 	
+	
+	printf("Start learning phase ...\n");
+	
+	train_network(networks[0], 10, 1, 0.0003, 0.0001, 0.7, 0.009, 1, 5, 0);
 
 	exit(EXIT_SUCCESS);
 }
