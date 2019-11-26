@@ -1,6 +1,7 @@
 ########################################################################################
 # CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysicists
 ########################################################################################
+
 CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysicists - is a deep learning framework developed to address astrophysical problems. Functionalities and optimizations are added as they are identified as relevant for astrophysical problems solving.
 
 Main developer : David Cornu, FR - UTINAM / Univ. Franche Comté
@@ -40,6 +41,7 @@ me at : david.cornu@utinam.cnrs.fr
 ############################################
 #               INSTALLATION
 ############################################
+
 WARNING : Currently, the framework only work using CUDA (version 9.2 minimum, 10.1 up 2 recommended).
 It will soon support basic CPU implementation and an OpenBLAS version, both with an OpenMP multi-thread support.
 
