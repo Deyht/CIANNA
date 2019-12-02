@@ -47,6 +47,8 @@ It will soon support basic CPU implementation and an OpenBLAS version, both with
 
 
 1. Edit the shell script "train.cp" to update the few paths regarding your own system
+(Check the various paths, for cuda check all the references to cublas and nvcc, 
+also think to update the -arch parameter to fit your GPU architecture)
 
 2. Execute "train.cp" to compile the source code
 It can (and currently must) be associated with parameters to specify specific parts to compile
@@ -65,6 +67,7 @@ If you choose to work using the C language you must edit "src/main.c" and recomp
 
 4. OPTIONAL: You can build a Python interface to use the framework.
 To do so you must compile with the desire options using "train.cp".
+First check if any path or compile option need to be adapted for your need in the file "src/python_module_setup.py"
 Then you can go in the "src" directory and execute:
 $ Python3 python_module_setup.py build
 
