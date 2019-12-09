@@ -272,6 +272,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	
 	for(r = 0; r < repeat; r++)
 	{
+		printf("Fwd repeat step: %d /repeat", i, repeat);
 		total_error = 0.0;
 		
 		for(j = 0; j < data.nb_batch; j++)
