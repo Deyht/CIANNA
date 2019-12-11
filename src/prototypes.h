@@ -25,7 +25,7 @@ void free_dataset(Dataset data);
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat);
 void save_network(network *net, char *filename);
 void load_network(network *net, char *filename, int epoch);
-void train_network(network* net, int nb_epochs, int control_interv, real u_begin_learning_rate, real u_end_learning_rate, real u_momentum, real u_decay, int show_confmat, int save_net, int shuffle_gpu);
+void train_network(network* net, int nb_epochs, int control_interv, real u_begin_learning_rate, real u_end_learning_rate, real u_momentum, real u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every);
 void forward_testset(network *net, int train_step, int repeat);
 
 

@@ -51,7 +51,7 @@ void dense_define_activation_param(layer *current)
 				* current->c_network->batch_size;
 			((linear_param*)current->activ_param)->dim = d_param->nb_neurons;
 			//Change to expect output between 0 and 1
-			d_param->bias_value = 0.1;
+			d_param->bias_value = 0.5;
 			//d_param->bias_value = -1.0;
 			break;
 	

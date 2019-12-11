@@ -20,7 +20,6 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	char string_comp[10];
 	const char *comp_meth = "C_CUDA";
 	static char *kwlist[] = {"dims", "out_dim", "b_size", "comp_meth", "network_id", "dynamic_load", NULL};
-
 	
 	b_size = 10;
 	
@@ -274,16 +273,16 @@ static PyObject* py_load_network(PyObject* self, PyObject* args)
 
 static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_net = 0, network_id = nb_networks-1, shuffle_gpu = 1;
+	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_net = 0, network_id = nb_networks-1, shuffle_gpu = 1, shuffle_every=1;
 	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0;
-	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "decay", "confmat", "save_each", "network", "shuffle_gpu", NULL};
+	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "decay", "confmat", "save_each", "network", "shuffle_gpu", "shuffle_every", NULL};
 	
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|diddiiii", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_net, &network_id, &shuffle_gpu))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|diddiiiii", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_net, &network_id, &shuffle_gpu, &shuffle_every))
 	    return Py_None;
 	
 	train_network(networks[network_id], py_nb_epoch, py_control_interv, 
-		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_net, shuffle_gpu);
+		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_net, shuffle_gpu, shuffle_every);
 
 	return Py_None;
 }

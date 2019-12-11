@@ -272,7 +272,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	
 	for(r = 0; r < repeat; r++)
 	{
-		printf("Fwd repeat step: %d /repeat", i, repeat);
+		if(repeat > 1)
+		printf("Forward repeat step: %d /%d\n", r+1, repeat);
 		total_error = 0.0;
 		
 		for(j = 0; j < data.nb_batch; j++)
@@ -419,7 +420,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 }
 
 
-void train_network(network* net, int nb_epochs, int control_interv, real u_begin_learning_rate, real u_end_learning_rate, real u_momentum, real u_decay, int show_confmat, int save_net, int shuffle_gpu)
+void train_network(network* net, int nb_epochs, int control_interv, real u_begin_learning_rate, real u_end_learning_rate, real u_momentum, real u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every)
 {
 	int i, j, k;
 	real begin_learn_rate;
@@ -479,26 +480,25 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 	for(i = 0; i < nb_epochs; i++)
 	{
 		net->epoch++;
-		printf("Epoch: %d\n", net->epoch);
 		
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*i);
-		printf("Learning rate : %g\n", net->learning_rate);
 		
-		
-		if(net->dynamic_load)
+		if((net->epoch) % shuffle_every == 0)
 		{
-			host_only_shuffle(net, net->train);
-		}
-		else
-		{
-			#ifdef CUDA
-			if(shuffle_gpu)
-				cuda_shuffle(net, net->train, shuffle_duplicate, index_shuffle, index_shuffle_device);
+			if(net->dynamic_load)
+			{
+				host_only_shuffle(net, net->train);
+			}
 			else
-				host_shuffle(net, net->train, shuffle_duplicate);
-			#endif
+			{
+				#ifdef CUDA
+				if(shuffle_gpu)
+					cuda_shuffle(net, net->train, shuffle_duplicate, index_shuffle, index_shuffle_device);
+				else
+					host_shuffle(net, net->train, shuffle_duplicate);
+				#endif
+			}
 		}
-		
 		
 		//Loop on all batch for one epoch
 		for(j = 0; j < net->train.nb_batch; j++)
@@ -531,6 +531,8 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 		
 		if(((net->epoch) % control_interv == 0) || (i == nb_epochs - 1))
 		{
+			printf("Epoch: %d\n", net->epoch);
+			printf("Learning rate : %g\n", net->learning_rate);
 			compute_error(net, net->valid, 0, show_confmat, 1);
 			printf("\n");
 		}

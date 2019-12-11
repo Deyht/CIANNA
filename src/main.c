@@ -131,7 +131,7 @@ CIANNA V-0.5 (11/2019), by D.Cornu\n\
 	
 	printf("Start learning phase ...\n");
 	
-	train_network(networks[0], 10, 1, 0.0003, 0.0001, 0.7, 0.009, 1, 5, 0);
+	train_network(networks[0], 10, 1, 0.0003, 0.0001, 0.7, 0.009, 1, 5, 0, 1);
 
 	exit(EXIT_SUCCESS);
 }

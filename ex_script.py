@@ -32,7 +32,7 @@ cnn.dense_create(nb_neurons=256, activation="RELU", drop_rate=0.2)
 cnn.dense_create(nb_neurons=128, activation="RELU", drop_rate=0.2)
 cnn.dense_create(10, activation="SOFTMAX")
 
-cnn.train_network(nb_epoch=30, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.7, decay=0.009, save_each=0, shuffle_gpu=0, confmat=1)
+cnn.train_network(nb_epoch=30, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.7, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
 
 exit()
 
