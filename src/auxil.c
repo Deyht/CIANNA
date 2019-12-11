@@ -1,7 +1,7 @@
 #include "prototypes.h"
 
 
-void init_network(int network_number, int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method, int u_dynamic_load)
+void init_network(int network_number, int u_input_dim[3], int u_output_dim, real in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load)
 {
 
 	networks[network_number] = (network*) malloc(sizeof(network));
@@ -23,6 +23,7 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, int 
 	networks[network_number]->input_depth = u_input_dim[2];
 	networks[network_number]->input_dim = u_input_dim[0]*u_input_dim[1]*u_input_dim[2];
 	networks[network_number]->output_dim = u_output_dim;
+	networks[network_number]->input_bias = in_bias;
 	networks[network_number]->batch_size = u_batch_size;
 	networks[network_number]->compute_method = u_compute_method;
 	networks[network_number]->nb_layers = 0;
@@ -38,7 +39,7 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, int 
 }
 
 
-Dataset create_dataset(network *net, int nb_elem, real bias)
+Dataset create_dataset(network *net, int nb_elem)
 {
 	int i,j;
 	Dataset data;
@@ -59,7 +60,7 @@ Dataset create_dataset(network *net, int nb_elem, real bias)
 	{
 		for(j = 0; j < net->batch_size; j++)
 		{
-			data.input[i][j*(net->input_dim+1) + net->input_dim] = bias;
+			data.input[i][j*(net->input_dim+1) + net->input_dim] = net->input_bias;
 		}
 	}
 	
@@ -437,7 +438,7 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 	}
 	else
 	{
-		shuffle_duplicate = create_dataset(net, net->train.size, 0.1);
+		shuffle_duplicate = create_dataset(net, net->train.size);
 		if(shuffle_gpu)
 		{
 			#ifdef CUDA

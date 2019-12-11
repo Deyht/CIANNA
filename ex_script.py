@@ -2,7 +2,7 @@ import numpy as np
 #sys.path.append('/path/to/CIANNA/src/build/lib.linux-x86_64-X.X')
 import CIANNA as cnn
 
-cnn.init_network(np.array([28,28,1]),10,32,'C_CUDA', dynamic_load=1)
+cnn.init_network(np.array([28,28,1]),10,0.1,32,'C_CUDA', dynamic_load=1)
 
 print ("Reading inputs ... ", end = "", flush=True)
 #max_rows argument require python 3.7
@@ -20,9 +20,9 @@ target_valid = np.loadtxt("mnist.dat", skiprows=(80000*28 + 60000)+5,max_rows=10
 target_test = np.loadtxt("mnist.dat", skiprows=(80000*28 + 70000)+6,max_rows=10000)
 print ("Done !", flush=True)
 
-cnn.create_dataset("TRAIN", 60000, data_train, target_train, 0.1)
-cnn.create_dataset("VALID", 10000, data_valid, target_valid, 0.1)
-cnn.create_dataset("TEST", 10000, data_test, target_test, 0.1)
+cnn.create_dataset("TRAIN", 60000, data_train, target_train)
+cnn.create_dataset("VALID", 10000, data_valid, target_valid)
+cnn.create_dataset("TEST", 10000, data_test, target_test)
 
 cnn.conv_create(f_size=5, nb_filters=6, stride=1, padding=4, activation="RELU")
 cnn.pool_create(pool_size=2)

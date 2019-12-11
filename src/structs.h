@@ -69,6 +69,7 @@ struct network
 	int compute_method;
 	int dynamic_load;
 	int nb_layers;
+	real input_bias;
 	
 	real learning_rate;
 	real momentum;

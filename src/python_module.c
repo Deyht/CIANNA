@@ -16,14 +16,15 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 {
 	PyArrayObject *py_dims;
 	int i;
+	double bias = 0.1;
 	int dims[3] = {1,1,1}, out_dim, b_size, comp_int = C_CUDA, network_id = nb_networks, dynamic_load = 0;
 	char string_comp[10];
 	const char *comp_meth = "C_CUDA";
-	static char *kwlist[] = {"dims", "out_dim", "b_size", "comp_meth", "network_id", "dynamic_load", NULL};
+	static char *kwlist[] = {"dims", "out_dim", "bias", "b_size", "comp_meth", "network_id", "dynamic_load", NULL};
 	
 	b_size = 10;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|isii", kwlist, &py_dims, &out_dim, &b_size, &comp_meth, &network_id, &dynamic_load))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oid|isii", kwlist, &py_dims, &out_dim, &bias, &b_size, &comp_meth, &network_id, &dynamic_load))
 	    return Py_None;
 	
 	for(i = 0; i < py_dims->dimensions[0]; i++)
@@ -47,7 +48,7 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 		sprintf(string_comp, "NAIV");
 	}
 	
-    init_network(network_id, dims, out_dim, b_size, comp_int, dynamic_load);
+    init_network(network_id, dims, out_dim, bias, b_size, comp_int, dynamic_load);
     
 	printf("Network have been initialized with : \nInput dimensions: %dx%dx%d \nOutput dimension: %d \nBatch size: %d \nUsing %s compute methode\n\n", dims[0], dims[1], dims[2], out_dim, b_size, string_comp);
 	if(dynamic_load)
@@ -62,13 +63,12 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	int i, j, k, l, m;
 	Dataset *data = NULL;
 	const char *dataset_type;
-	double bias = 0.1;
 	PyArrayObject *py_data = NULL, *py_target = NULL;
 	int size, flat = 0, on_gpu = 1;
 	int network_id = nb_networks-1;
-	static char *kwlist[] = {"dataset", "size", "input", "target", "bias", "flat", "network_id", NULL};
+	static char *kwlist[] = {"dataset", "size", "input", "target", "flat", "network_id", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOOd|iii", kwlist, &dataset_type, &size, &py_data, &py_target, &bias, &flat, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOO|ii", kwlist, &dataset_type, &size, &py_data, &py_target, &flat, &network_id))
 	    return Py_None;
 	    
 	if(networks[network_id]->dynamic_load)
@@ -93,7 +93,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	
 	
 	printf("input dim :%d,", networks[network_id]->input_dim);
-	*data = create_dataset(networks[network_id], size, bias);
+	*data = create_dataset(networks[network_id], size);
 	
 	printf("Creating dataset with size %d (nb_batch = %d) ... ", data->size, data->nb_batch);
 	

@@ -19,8 +19,8 @@ extern int is_init;
 //       auxil.c prototypes
 //######################################
 
-void init_network(int network_number, int u_input_dim[3], int u_output_dim, int u_batch_size, int u_compute_method, int u_dynamic_load);
-Dataset create_dataset(network *net, int nb_elem, real bias);
+void init_network(int network_number, int u_input_dim[3], int u_output_dim, real in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load);
+Dataset create_dataset(network *net, int nb_elem);
 void free_dataset(Dataset data);
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat);
 void save_network(network *net, char *filename);

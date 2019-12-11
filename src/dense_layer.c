@@ -52,9 +52,7 @@ void dense_define_activation_param(layer *current)
 			((linear_param*)current->activ_param)->dim = d_param->nb_neurons;
 			//Change to expect output between 0 and 1
 			d_param->bias_value = 0.5;
-			//d_param->bias_value = -1.0;
 			break;
-	
 	}
 }
 
@@ -77,9 +75,6 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	d_param->dropout_rate = drop_rate;
 	
 	current->previous = previous;
-	
-	//WARNING : MUST ADAPT VALUE TO ACTIVATION FUNCTION !! IN REGARDE OF WEIGHTS
-	d_param->bias_value = 0.1;
 	
 	
 	if(previous == NULL)
@@ -129,6 +124,9 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	current->param = d_param;
 	
 	dense_define_activation_param(current);
+	
+	if(current->previous == NULL)
+		((dense_param*)current->param)->bias_value = net->input_bias;
 	
 	if(f_load == NULL)
 	{

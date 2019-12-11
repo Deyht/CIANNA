@@ -34,6 +34,7 @@ void conv_define_activation_param(layer *current)
 				c_param->nb_area_h * c_param->nb_filters * current->c_network->batch_size;
 			((ReLU_param*)current->activ_param)->dim = ((ReLU_param*)current->activ_param)->size;
 			((ReLU_param*)current->activ_param)->leaking_factor = 0.01;
+			c_param->bias_value = 0.1;
 			break;
 			
 		case LOGISTIC:
@@ -63,6 +64,7 @@ void conv_define_activation_param(layer *current)
 			((linear_param*)current->activ_param)->size = c_param->nb_area_w * 
 				c_param->nb_area_h * c_param->nb_filters * current->c_network->batch_size;
 			((linear_param*)current->activ_param)->dim = ((linear_param*)current->activ_param)->size;
+			c_param->bias_value = 0.5;
 			break;
 	
 	}
@@ -92,8 +94,6 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	c_param->nb_filters = nb_filters;
 	
 	current->previous = previous;
-	
-	c_param->bias_value = 0.1;
 	
 	//compute the number of areas to be convolved in the input image
 	if(previous == NULL)
@@ -165,6 +165,9 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	current->param = c_param;
 
 	conv_define_activation_param(current);
+	
+	if(current->previous == NULL)
+		((conv_param*)current->param)->bias_value = net->input_bias;
 	
 	//set bias value for the current layer, this value will not move during training
 	for(i = 1; i <= c_param->nb_area_w * c_param->nb_area_h * net->batch_size; i++)
