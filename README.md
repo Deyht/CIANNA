@@ -53,7 +53,7 @@ also think to update the -arch parameter to fit your GPU architecture)
 2. Execute "train.cp" to compile the source code
 It can (and currently must) be associated with parameters to specify specific parts to compile
 CUDA 	: compile additional cuda files
-OPEN_MP : add some multi-thread for some operations
+OPEN_MP : add multi-thread for some operations
 BLAS 	: add OpenBLAS gemm (mutli-threaded) operations
 
 Multiple parameters can be used at the same time ex:
@@ -87,7 +87,7 @@ any code can be written with the interface with no need for new compilation.
 #############################################################
 
 There is currently no tutorial on how to use either the main C code or the Python interface.
-Users may have be given specific instructions by the author, or should have a good C (and CUDA) knowledge
+Users could have be given specific instructions by the author, or should have a good C (and CUDA) knowledge
 to figure out how to use the framework by themselves.
 
 This framework take into account for various modern neural network optimizations. 
