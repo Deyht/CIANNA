@@ -18,7 +18,8 @@ extern int is_init;
 //######################################
 //       auxil.c prototypes
 //######################################
-
+void init_timing(struct timeval* tstart);
+float ellapsed_time(struct timeval tstart);
 void init_network(int network_number, int u_input_dim[3], int u_output_dim, real in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load);
 Dataset create_dataset(network *net, int nb_elem);
 void free_dataset(Dataset data);
@@ -117,9 +118,6 @@ void cuda_convert_conv_layer(layer *current);
 void cuda_pool_define(layer *current);
 void cuda_convert_pool_layer(layer *current);
 
-//timer.c
-void init_timer(struct timeval* tstart);
-real ellapsed_time(struct timeval tstart);
 	
 //######################################
 

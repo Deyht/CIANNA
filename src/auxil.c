@@ -1,6 +1,21 @@
 #include "prototypes.h"
 
 
+void init_timing(struct timeval* tstart)
+{
+    gettimeofday(tstart, NULL);
+}
+
+float ellapsed_time(struct timeval tstart)
+{
+    struct timeval tmp;
+    long long diff;
+    gettimeofday(&tmp, NULL);
+    diff = tmp.tv_usec - tstart.tv_usec;
+    diff += (tmp.tv_sec - tstart.tv_sec) * 1000000;
+    return ((float)diff*1.0e-6);
+}
+
 void init_network(int network_number, int u_input_dim[3], int u_output_dim, real in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load)
 {
 
@@ -237,6 +252,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	real total_error;
 	real* temp_error = NULL;
 	real* output_save = NULL;
+	struct timeval ep_timer;
+	float items_per_s = 0.0;
 	FILE *f_save;
 	char f_save_name[100];
 
@@ -273,6 +290,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	
 	for(r = 0; r < repeat; r++)
 	{
+		init_timing(&ep_timer);
 		if(repeat > 1)
 		printf("Forward repeat step: %d /%d\n", r+1, repeat);
 		total_error = 0.0;
@@ -361,6 +379,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				#endif
 			}
 		}
+		items_per_s = data.size/ellapsed_time(ep_timer);
+		printf("Net. forward perf.: %0.2f items/s\n", items_per_s);
 		printf("Cumulated error: \t %g\n", total_error/data.size);
 		
 	}
@@ -428,6 +448,8 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 	real end_learn_rate;
 	real decay;
 	char net_save_file_name[200];
+	struct timeval ep_timer;
+	float items_per_s = 0.0;
 	Dataset shuffle_duplicate;
 	real *index_shuffle = NULL, *index_shuffle_device = NULL;
 	
@@ -480,6 +502,7 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 	
 	for(i = 0; i < nb_epochs; i++)
 	{
+		init_timing(&ep_timer);
 		net->epoch++;
 		
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*i);
@@ -530,9 +553,12 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 				net->net_layers[net->nb_layers-1-k]->backprop(net->net_layers[net->nb_layers-1-k]);
 		}
 		
+		items_per_s = net->train.size/ellapsed_time(ep_timer); 
+		
 		if(((net->epoch) % control_interv == 0) || (i == nb_epochs - 1))
 		{
 			printf("Epoch: %d\n", net->epoch);
+			printf("Net. training perf.: %0.2f items/s\n", items_per_s);
 			printf("Learning rate : %g\n", net->learning_rate);
 			compute_error(net, net->valid, 0, show_confmat, 1);
 			printf("\n");
@@ -543,6 +569,7 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 			printf("Saving network for epoch: %d\n", net->epoch);
 			save_network(net, net_save_file_name);
 		}
+		
 		
 	}
 	

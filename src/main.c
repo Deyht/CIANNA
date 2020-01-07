@@ -30,7 +30,7 @@ CIANNA V-0.5 (11/2019), by D.Cornu\n\
 		&dims[2], &out_dim);
 		
 	
-	init_network(0, dims, out_dim, 0.1, 32, C_CUDA, 1);
+	init_network(0, dims, out_dim, 0.1, 256, C_CUDA, 1);
 	
 	networks[0]->train = create_dataset(networks[0], train_size);
 	networks[0]->test = create_dataset(networks[0], test_size);

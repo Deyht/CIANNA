@@ -333,6 +333,7 @@ static struct PyModuleDef CIANNA = {
 
 PyMODINIT_FUNC PyInit_CIANNA(void)
 {
+	setbuf(stdout, NULL);
 	import_array();
 	
 	printf("############################################################\n\
