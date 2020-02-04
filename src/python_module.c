@@ -114,14 +114,14 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	data->input[i][j*(networks[network_id]->input_dim+1) + k * 
 		networks[network_id]->input_height*networks[network_id]->input_width + l 
 		* networks[network_id]->input_width + m] 
-		= *(double*)(py_data->data + (i*networks[network_id]->batch_size 
+		= *(float*)(py_data->data + (i*networks[network_id]->batch_size 
 		* networks[network_id]->input_depth*networks[network_id]->input_height 
 		+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
 		+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
 							else
 	data->input[i][j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height
 		* networks[network_id]->input_width + l * networks[network_id]->input_width + m] 
-		= *(double*)(py_data->data + (i * networks[network_id]->batch_size + j) 
+		= *(float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
 		* py_data->strides[0] + (k*networks[network_id]->input_height 
 		* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
 		* py_data->strides[1]);	
@@ -135,7 +135,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 					continue;
 				for(k = 0; k < networks[network_id]->output_dim; k++)
 					data->target[i][j*networks[network_id]->output_dim + k] 
-					= *(double*)(py_target->data + i * (networks[network_id]->batch_size 
+					= *(float*)(py_target->data + i * (networks[network_id]->batch_size 
 					* py_target->strides[0]) + j * py_target->strides[0] + k 
 					* py_target->strides[1]);
 			}
