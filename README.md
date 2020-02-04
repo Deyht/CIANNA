@@ -46,37 +46,41 @@ WARNING : Currently, the framework only work using CUDA (version 9.2 minimum, 10
 It will soon support basic CPU implementation and an OpenBLAS version, both with an OpenMP multi-thread support.
 
 
-1. Edit the shell script "train.cp" to update the few paths regarding your own system
+1. Edit the shell script *train.cp* to update the few paths regarding your own system
 (Check the various paths, for cuda check all the references to cublas and nvcc, 
 also think to update the -arch parameter to fit your GPU architecture)
 
-2. Execute "train.cp" to compile the source code
+2. Execute *train.cp* to compile the source code
 It can (and currently must) be associated with parameters to specify specific parts to compile
 CUDA 	: compile additional cuda files
 OPEN_MP : add multi-thread for some operations
 BLAS 	: add OpenBLAS gemm (mutli-threaded) operations
 
 Multiple parameters can be used at the same time ex:
-$ ./train.cp CUDA OPEN_MP BLAS
+```
+./train.cp CUDA OPEN_MP BLAS
+```
 
-NB: These parameters "allow" the use of specific features, they do not "enable" it. For example you can compile
+NB: These parameters ***allow*** the use of specific features, they do not ***enable*** it. For example you can compile
 with all the parameters and choose to use CUDA or BLAS at execution time.
 
-3. It creates a "main" executable which is by default a simple example performing MNIST classification.
-If you choose to work using the C language you must edit "src/main.c" and recompile using "train.cp".
+3. It creates a *main* executable which is by default a simple example performing MNIST classification.
+If you choose to work using the C language you must edit *src/main.c* and recompile using *train.cp*.
 
 4. OPTIONAL: You can build a Python interface to use the framework.
-To do so you must compile with the desire options using "train.cp".
-First check if any path or compile option need to be adapted for your need in the file "src/python_module_setup.py"
-Then you can go in the "src" directory and execute:
-$ python3 python_module_setup.py build
-
+To do so you must compile with the desire options using *train.cp*.
+First check if any path or compile option need to be adapted for your need in the file *src/python_module_setup.py*
+Then you can go in the *src* directory and execute:
+```
+python3 python_module_setup.py build
+```
 If you want to provide access to the framework system wide, you can use:
-$ sudo python3 python_module_setup.py install
-
+```
+sudo python3 python_module_setup.py install
+```
 If you want to call the locally built interface you must add the path in your Python script (see example) 
 
-The created Python interface module has no dependency with "main.c" and therefore
+The created Python interface module has no dependency with *main.c* and therefore
 any code can be written with the interface with no need for new compilation.
 
 
