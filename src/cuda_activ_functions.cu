@@ -388,7 +388,7 @@ __global__ void softmax_activation_kernel(real *tab, int len, int dim, int size)
 	int j;
 	real *pos;
 	real vmax;
-	real normal = 0.0000;
+	real normal = 0.0000001;
 	
 	if(i >= size)
 		return;
@@ -408,7 +408,7 @@ __global__ void softmax_activation_kernel(real *tab, int len, int dim, int size)
 			normal += pos[j];
 		}		
 		pos[j] = 0.0;
-			
+		
 		for(j = 0; j < dim; j++)
 				pos[j] /= normal;
 				
@@ -485,7 +485,10 @@ __global__ void cross_entropy_output_error_kernel(real *output_error, real *outp
 	if(i < len && (i+1)%(dim+1) != 0)
 	{
 		pos = i - i/(dim+1);
-		output_error[pos] = -target[pos]*log(output[i]);
+		if(output[i] > 0.00001)
+			output_error[pos] = -target[pos]*log(output[i]);
+		else
+			output_error[pos] = -target[pos]*log(0.00001);
 	}
 }
 

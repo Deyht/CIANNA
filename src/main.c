@@ -118,7 +118,7 @@ CIANNA V-0.5 (11/2019), by D.Cornu\n\
 	#endif
 	*/
 	
-	conv_create(networks[0], NULL, 5, 8, 1, 4, RELU, NULL);
+	conv_create(networks[0], NULL, 5, 6, 1, 4, RELU, NULL);
 	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
 	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 0, RELU, NULL);
 	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
@@ -131,7 +131,7 @@ CIANNA V-0.5 (11/2019), by D.Cornu\n\
 	
 	printf("Start learning phase ...\n");
 	
-	train_network(networks[0], 10, 1, 0.0003, 0.0001, 0.7, 0.009, 1, 5, 0, 1);
+	train_network(networks[0], 30, 1, 0.0003, 0.0001, 0.7, 0.009, 1, 5, 0, 1);
 
 	exit(EXIT_SUCCESS);
 }

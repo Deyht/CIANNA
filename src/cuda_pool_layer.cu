@@ -11,7 +11,7 @@ void cuda_backward_pool_layer(layer* current);
 
 __global__ void  pooling_kernel(real *input, real *output, real* pool_map, int pool_size, int w_size, int w_size_out, int  length);
 __global__ void deltah_pool(real* cu_deltah, real* cu_deltah_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length);
-__global__ void deltah_pool_cont(real* cu_deltah, real* cu_deltah_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length);
+
 
 void cuda_pool_define(layer *current)
 {
@@ -58,8 +58,11 @@ void cuda_forward_pool_layer(layer* current)
 
 void cuda_backward_pool_layer(layer* current)
 {	
+	p_param = (pool_param*) current->param;
+
 	if(current->previous != NULL)
 	{
+	
 		if(current->previous->type == CONV)
 		{
 			//array must be set to 0 as deltah_pool do not erase previous values
@@ -68,21 +71,11 @@ void cuda_backward_pool_layer(layer* current)
 		
 			cu_blocks = (current->c_network->batch_size*(p_param->nb_maps * p_param->nb_area_w 
 				* p_param->nb_area_h) + cu_threads - 1) / cu_threads;
-				
-			if(p_param->next_layer_type == DENSE)
-			{
-				deltah_pool<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, 
-					p_param->pool_map, p_param->p_size, current->c_network->length, 
-					current->c_network->batch_size, p_param->nb_maps * p_param->nb_area_w 
-					* p_param->nb_area_h, p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w);
-			}
-			else
-			{
-				deltah_pool_cont<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o,
-					p_param->pool_map, p_param->p_size, current->c_network->length, 
-					current->c_network->batch_size, p_param->nb_maps * p_param->nb_area_w 
-					* p_param->nb_area_h, p_param->nb_area_w);
-			}
+
+			deltah_pool<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, 
+				p_param->pool_map, p_param->p_size, current->c_network->length, 
+				current->c_network->batch_size, p_param->nb_maps * p_param->nb_area_w 
+				* p_param->nb_area_h, p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w);
 		}
 		
 		current->previous->deriv_activation(current->previous);
@@ -139,35 +132,6 @@ __global__ void deltah_pool(real* cu_deltah, real* cu_deltah_unpool, real* pool_
 		*cu_deltah_unpool = cu_deltah[i];
 	else
 		*cu_deltah_unpool = 0.0;
-}
-
-__global__ void deltah_pool_cont(real* cu_deltah, real* cu_deltah_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int pos;
-
-	pos = i;
-	
-	if(i < len*image_size)
-	{
-		//add mask of locations
-		cu_deltah_unpool += (i/column_length) * column_length * pool_size * pool_size 
-			+ (i%column_length) * (pool_size) + (int(pool_map[i])/pool_size) * column_length 
-			* pool_size + (int(pool_map[i])%pool_size);
-		
-		*cu_deltah_unpool = cu_deltah[pos];
-	}
-	else if(i < batch_size*image_size)
-	{
-		cu_deltah[pos] = 0.0;
-		//add mask of locations
-		cu_deltah_unpool += (i/column_length) * column_length * pool_size * pool_size 
-			+ (i%column_length) * pool_size + (int(pool_map[i])/pool_size) * column_length 
-			* pool_size + (int(pool_map[i])%pool_size);
-			
-		*cu_deltah_unpool = cu_deltah[pos];
-	}
-	
 }
 
 

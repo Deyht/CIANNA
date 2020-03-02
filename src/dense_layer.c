@@ -95,7 +95,8 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 			
 			case POOL:
 				d_param->in_size = ((pool_param*)previous->param)->nb_area_w 
-					* ((pool_param*)previous->param)->nb_area_h * ((pool_param*)previous->param)->nb_maps + 1;
+					* ((pool_param*)previous->param)->nb_area_h 
+					* ((pool_param*)previous->param)->nb_maps + 1;
 				d_param->flat_delta_o = (real*) calloc(d_param->in_size * net->batch_size, sizeof(real));
 				((pool_param*)previous->param)->next_layer_type = current->type;
 				break;
