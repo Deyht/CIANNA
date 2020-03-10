@@ -118,12 +118,12 @@ CIANNA V-0.5 (11/2019), by D.Cornu\n\
 	#endif
 	*/
 	
-	conv_create(networks[0], NULL, 5, 6, 1, 4, RELU, NULL);
+	conv_create(networks[0], NULL, 5, 2, 1, 0, RELU, NULL);
 	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 0, RELU, NULL);
+	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 8, 1, 0, RELU, NULL);
 	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.1, NULL);
-	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.1, NULL);
+	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.0, NULL);
+	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.0, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 
 		networks[0]->output_dim, SOFTMAX, 0.0, NULL);
 	

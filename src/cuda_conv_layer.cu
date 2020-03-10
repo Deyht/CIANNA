@@ -13,7 +13,7 @@ __global__ void add_bias_im2col(real* output, real bias_value, int flat_f_size, 
 __global__ void rotate_filter_matrix(real* in, real* out, int nb_rows, int depth_size, int nb_filters_in, int len);
 __global__ void unroll_conv(real* in, real* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 __global__ void reroll_delta_o(real* in, real* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
-__global__ void im2col_kernel_v3(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int depth, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
+__global__ void im2col_kernel_v3(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
 
 
 
@@ -54,8 +54,8 @@ void cuda_convert_conv_layer(layer *current)
 
 void cuda_forward_conv_layer(layer *current)
 {
-	int image_size;
 	int depth_padding;
+	int image_padding;
 	int im2col_prev_bias;
 	int dim_a, dim_b, dim_c;
 
@@ -67,20 +67,25 @@ void cuda_forward_conv_layer(layer *current)
 	{
 		//if previous layer is input layer then remove the added bias on the image
 		//and interpret it that continuous RGB images
-		image_size = c_param->prev_size_w * c_param->prev_size_h * c_param->prev_depth + 1; 
 		//size in line format
 		depth_padding = c_param->prev_size_w * c_param->prev_size_h;
+		image_padding = c_param->prev_size_w * c_param->prev_size_h * c_param->prev_depth;
 		current->input = current->c_network->input;
 		im2col_prev_bias = 1;
+		
+		//printf("im_size : %d, depth_padding :%d \n", image_size, depth_padding);
+		
 	}
 	else
 	{
 		//if previous layer is a CONV (or pool) then the format is all image in R, then all image in B, ...
 		//it also not contain a bias directly in the image
-		image_size = c_param->prev_size_w * c_param->prev_size_h * c_param->prev_depth;
-		depth_padding = c_param->prev_size_w * c_param->prev_size_h;
+		depth_padding = c_param->prev_size_w * c_param->prev_size_h * current->c_network->batch_size;
+		image_padding = c_param->prev_size_w * c_param->prev_size_h;
 		im2col_prev_bias = 0;
+		current->input = current->previous->output;
 		
+		/*
 		//need to convert the previous output in a format similar as a regular input
 		//before giving it to im2col kernel. Need input with continuity of depth for each image.
 		cu_blocks = ((c_param->prev_size_w * c_param->prev_size_h * c_param->prev_depth) 
@@ -90,10 +95,10 @@ void cuda_forward_conv_layer(layer *current)
 			* c_param->prev_depth),  c_param->prev_depth, current->c_network->batch_size, 
 			(c_param->prev_size_w * c_param->prev_size_h * c_param->prev_depth) 
 			* current->c_network->batch_size);
+		*/
 	}
 	
 
-	image_size = image_size;
 	depth_padding = depth_padding;
 	
 	dim_c = 1;
@@ -117,8 +122,10 @@ void cuda_forward_conv_layer(layer *current)
 	im2col_kernel_v3<<< numBlocks2, threadsPerBlock2 >>>(c_param->im2col_input, current->input, 
 		c_param->prev_size_w*c_param->prev_size_h, c_param->nb_area_w * c_param->nb_area_h 
 		* c_param->flat_f_size, c_param->stride, c_param->padding, c_param->prev_depth, 
-		current->c_network->batch_size, c_param->f_size, c_param->flat_f_size, c_param->prev_size_w,
-		c_param->nb_area_w, im2col_prev_bias);
+		depth_padding, image_padding, current->c_network->batch_size, c_param->f_size, 
+		c_param->flat_f_size, c_param->prev_size_w, c_param->nb_area_w, im2col_prev_bias);
+
+	//cuda_print_table_transpose(real* tab, int line_size, int column_size)
 	
 	//Input X filters matrix multiplication for the all batch
 	cublasgemm(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, current->c_network->batch_size 
@@ -126,7 +133,8 @@ void cuda_forward_conv_layer(layer *current)
 		/*A*/ c_param->im2col_input, c_param->flat_f_size, /*B*/ c_param->filters, c_param->flat_f_size,
 		&cu_beta, /*C*/ current->output, current->c_network->batch_size 
 		* (c_param->nb_area_w*c_param->nb_area_h));
-	
+		
+
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
 }
@@ -134,8 +142,8 @@ void cuda_forward_conv_layer(layer *current)
 
 void cuda_backward_conv_layer(layer *current)
 {
-	int image_size;
 	int depth_padding;
+	int image_padding;
 	int flat_f_size;
 	int dim_a, dim_b, dim_c;
 	
@@ -143,29 +151,32 @@ void cuda_backward_conv_layer(layer *current)
 	
 	
 	//######################## ERROR PROPAGATION ########################
-
+	
 	//skip error prop if previous is the input layer
 	if(current->previous != NULL)
 	{
-		//rotate the filters, also reorganise to get filters regarding depth
-		//organized as F1_D1, F2_D1, F3_D1, ..., F1_D2, F2_D2, F3_D3, ...
+		//rotate the filters
 		//so the new matrix can be considered as flat_filter_size * current->c_network->batch_size rows against input_depth
+		
+		
 		
 		cu_blocks = (c_param->nb_filters * c_param->flat_f_size + cu_threads - 1) / cu_threads;
 		rotate_filter_matrix<<< cu_blocks, cu_threads >>>(c_param->filters, c_param->rotated_filters, 
 			c_param->flat_f_size, c_param->f_size*c_param->f_size, c_param->nb_filters,
-			c_param->nb_filters*(c_param->flat_f_size));
+			c_param->nb_filters*c_param->flat_f_size);
 		
+
 		//In the backward formalism we asume continuous images (the activation maps)
 		//the backprop process generate bias nodes so they must be taken into account
 		
 		//Warning : the convolution processed is reversed using full convolution with padding
 		//this mean that the meaning of nb_area_w/h and prev_size_w/h are reversed in the following operation
-		image_size = c_param->nb_area_w * c_param->nb_area_h * c_param->nb_filters; //size in line format
-		depth_padding = c_param->nb_area_w * c_param->nb_area_h;
-		flat_f_size = c_param->f_size * c_param->f_size * c_param->nb_filters; //no bias here in backprop
 		
-		image_size = image_size;
+		
+		depth_padding = c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size;
+		image_padding = c_param->nb_area_w * c_param->nb_area_h;
+		flat_f_size = c_param->f_size * c_param->f_size * c_param->nb_filters;
+		
 		depth_padding = depth_padding;
 		
 		
@@ -192,10 +203,10 @@ void cuda_backward_conv_layer(layer *current)
 		
 		im2col_kernel_v3<<< numBlocks2, threadsPerBlock2 >>>(c_param->im2col_delta_o, current->delta_o,
 			c_param->nb_area_w * c_param->nb_area_h, (c_param->prev_size_w * c_param->prev_size_h) 
-			* flat_f_size, c_param->stride, c_param->f_size - 1, c_param->nb_filters, 
-			current->c_network->batch_size, c_param->f_size, flat_f_size, 
+			* flat_f_size, c_param->stride, c_param->f_size - 1, c_param->nb_filters, depth_padding,
+			image_padding, current->c_network->batch_size, c_param->f_size, flat_f_size, 
 			c_param->nb_area_w, c_param->prev_size_w, 0);
-		
+
 		
 		cublasgemm(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, c_param->prev_size_w * c_param->prev_size_h 
 			* current->c_network->batch_size, c_param->prev_depth, c_param->f_size * c_param->f_size 
@@ -203,15 +214,17 @@ void cuda_backward_conv_layer(layer *current)
 			* c_param->f_size * c_param->nb_filters, /*B*/c_param->rotated_filters, c_param->f_size 
 			* c_param->f_size*c_param->nb_filters, &cu_beta, /*C*/current->previous->delta_o, 
 			c_param->prev_size_w*c_param->prev_size_h*current->c_network->batch_size);
-		
+
 		//update gradiant regarding the previous layer activation function
+		//WARNING : ONLY WORK IF PREVIOUS LAYER IS A CONV AS OUTPUT AND DELTA_O SHARE THE SAME DATA ORDER
 		current->previous->deriv_activation(current->previous);
+
 	}
 	
 	//########################  WEIGHTS UPDATE   ########################
 	
+
 	//based on the recovered delta_o provided by the next layer propagation
-	
 	//CUBLAS_OP_N ,in this case, is a transpose of regular input (see forward function)
 	cublasgemm(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, c_param->flat_f_size, c_param->nb_filters, 
 		c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size, 
@@ -230,7 +243,7 @@ void cuda_backward_conv_layer(layer *current)
 //One of the most important function, aim to convert an image into a table that contains all the
 //areas that will be used for convolution. Highly redundant but speed up significantly the calculation
 //VERSION 3
-__global__ void im2col_kernel_v3(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int depth, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias)
+__global__ void im2col_kernel_v3(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias)
 {
 	int z = blockIdx.x*blockDim.x + threadIdx.x;
 	int d = blockIdx.y*blockDim.y + threadIdx.y;
@@ -240,12 +253,12 @@ __global__ void im2col_kernel_v3(real* output, real* input, int image_size, int 
 	
 	if( i < batch_size)
 	{
-		input += i*(image_size * depth + bias);
+		input += i*(image_padding + bias);
 		output += i*(flat_image_size);
 		
 		if(d < depth)
 		{
-			input += d * image_size;
+			input += d * depth_padding;
 			output += d * f_size*f_size;
 			if(z < image_size)
 			{
@@ -265,8 +278,9 @@ __global__ void im2col_kernel_v3(real* output, real* input, int image_size, int 
 __global__ void rotate_filter_matrix(real* in, real* out, int nb_rows, int depth_size, int nb_filters_in, int len)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int x, y, filter_id;
+	int x, y, depth_id;
 	
+	/*
 	if(i < len)
 	{
 		//#####################################
@@ -274,14 +288,32 @@ __global__ void rotate_filter_matrix(real* in, real* out, int nb_rows, int depth
 		x = i / nb_rows;
 		y = i % nb_rows;
 		
+		if(y < nb_rows-1) //ignore the weights of the bias nodes
+		{
+			depth_id = y / depth_size;
+			
+			out[x * (nb_rows-1) + depth_id * depth_size + (depth_size - 1 - y%depth_size)] = in[x*nb_rows+y];
+		}
+		
+	}*/
+	
+	
+	if(i < len)
+	{
+		//#####################################
+		//Rotate and move the filters
+		x = i / nb_rows;
+		y = i % nb_rows;
+		
 		if(y < nb_rows-1) //remove the weights of the bias nodes
 		{
-			filter_id = y / depth_size;
+			depth_id = y / depth_size;
 			
-			out[filter_id * depth_size*nb_filters_in + x * depth_size + (depth_size - 1 - y%depth_size)] = in[x*nb_rows+y];
+			out[depth_id * depth_size*nb_filters_in + x * depth_size + (depth_size - 1 - y%depth_size)] = in[x*nb_rows+y];
 		}
 		
 	}
+	
 }
 
 

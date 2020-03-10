@@ -313,6 +313,7 @@ __global__ void logistic_activation_kernel(real *tab, real beta, real saturation
 }
 
 
+
 void cuda_logistic_deriv(layer *previous)
 {
 	logistic_param *param = (logistic_param*)previous->activ_param;
@@ -321,6 +322,7 @@ void cuda_logistic_deriv(layer *previous)
 	logistic_deriv_kernel <<< cu_blocks, cu_threads >>>(previous->delta_o, previous->output, param->beta,
 		param->size, param->dim, param->size);
 }
+
 
 
 __global__ void logistic_deriv_kernel(real *deriv, real* value, real beta, int len, int dim, int size)

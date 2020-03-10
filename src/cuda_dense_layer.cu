@@ -139,8 +139,9 @@ void cuda_forward_dense_layer(layer *current)
 	cu_blocks = (d_param->nb_neurons);
 	dropout_select<<<cu_blocks, 1>>>(d_param->dropout_mask, d_param->nb_neurons+1, d_param->dropout_rate,
 		(curandState_t*) d_param->block_state);
+		
+		
 	current->activation(current);
-	
 
 	dim3 threadsPerBlock(8, 32);
 	dim3 numBlocks((current->c_network->batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
