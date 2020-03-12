@@ -143,6 +143,7 @@ void cuda_forward_conv_layer(layer *current)
 void cuda_backward_conv_layer(layer *current)
 {
 	int depth_padding;
+	int back_padding;
 	int image_padding;
 	int flat_f_size;
 	int dim_a, dim_b, dim_c;
@@ -177,12 +178,14 @@ void cuda_backward_conv_layer(layer *current)
 		image_padding = c_param->nb_area_w * c_param->nb_area_h;
 		flat_f_size = c_param->f_size * c_param->f_size * c_param->nb_filters;
 		
-		depth_padding = depth_padding;
+		back_padding = c_param->prev_size_w - c_param->nb_area_w;
+		if(back_padding < 0)
+			back_padding = 0;
 		
 		
-		//Note : having higher dimensions on the left dim3 dim(a,b,c) grant better results 
-		// (profiling show reduction of compute time near to ~ 17% (on Modified LeNet 5 - MNIST))
-		//limit is L2 cache usage, having dim3 a < (16,1,1) allow to maximse it on P2000
+		//Note : having higher dimensions on the left dim3 dim(a,b,c) grants better results 
+		// (profiling shows reduction of compute time near to ~ 17% (on Modified LeNet 5 - MNIST))
+		//limit is L2 cache usage, having dim3 a < (16,1,1) allows to maximse it on P2000
 		dim_c = 1;
 			
 		if(c_param->nb_filters <= 1)
@@ -203,7 +206,7 @@ void cuda_backward_conv_layer(layer *current)
 		
 		im2col_kernel_v3<<< numBlocks2, threadsPerBlock2 >>>(c_param->im2col_delta_o, current->delta_o,
 			c_param->nb_area_w * c_param->nb_area_h, (c_param->prev_size_w * c_param->prev_size_h) 
-			* flat_f_size, c_param->stride, c_param->f_size - 1, c_param->nb_filters, depth_padding,
+			* flat_f_size, c_param->stride, back_padding, c_param->nb_filters, depth_padding,
 			image_padding, current->c_network->batch_size, c_param->f_size, flat_f_size, 
 			c_param->nb_area_w, c_param->prev_size_w, 0);
 
