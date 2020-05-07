@@ -82,6 +82,106 @@ Dataset create_dataset(network *net, int nb_elem)
 	return data;
 }
 
+
+
+void write_formated_dataset(network *net, const char *filename, Dataset *data)
+{
+	// Create and load a dataset from a format specific file
+
+	FILE *f = NULL;
+	f = fopen(filename, "wb"); 
+	int i, j;
+	
+	
+	fwrite(&data->size, sizeof(int), 1, f);
+	fwrite(&net->input_width, sizeof(int), 1, f);
+	fwrite(&net->input_height, sizeof(int), 1, f);
+	fwrite(&net->input_depth, sizeof(int), 1, f);
+	fwrite(&net->output_dim, sizeof(int), 1, f);
+	
+	for(i = 0; i < data->nb_batch; i++)
+	{
+		for(j = 0; j < net->batch_size; j++)
+		{
+			if(i*net->batch_size + j >= data->size)
+				continue;
+			fwrite(&data->input[i][j*(net->input_dim+1)], sizeof(float), net->input_dim, f);
+		}	
+	}
+	
+	for(i = 0; i < data->nb_batch; i++)
+	{
+		for(j = 0; j < net->batch_size; j++)
+		{
+			if(i*net->batch_size + j >= data->size)
+				continue;
+			fwrite(&data->target[i][j*(net->output_dim)], sizeof(float), net->output_dim, f);
+		}
+	}
+	fclose(f);
+}
+
+
+
+
+Dataset load_formated_dataset(network *net, const char *filename)
+{
+	// Create and load a dataset from a format specific file
+	Dataset data;
+
+	FILE *f = NULL;
+	f = fopen(filename, "rb"); 
+	int size, width, height, depth, out_dim;
+	int i, j;
+	
+	if(f == NULL)
+	{
+		printf("ERROR : file %s does not exist !", filename);
+		exit(EXIT_FAILURE);
+	}
+	
+	fread(&size, sizeof(int), 1, f);
+	fread(&width, sizeof(int), 1, f);
+	fread(&height, sizeof(int), 1, f);
+	fread(&depth, sizeof(int), 1, f);
+	fread(&out_dim, sizeof(int), 1, f);
+	
+	if( width * height * depth != net->input_dim || out_dim != net->output_dim)
+	{
+		printf("\nERROR : input dimensions do not match in file %s !\n", filename);
+		printf("File dimensions are, size: %d, input dimensions : %dx%dx%d, output dimension : %d\n"
+					, size, width, height, depth, out_dim);
+		exit(EXIT_FAILURE);
+	}
+	
+	
+	data = create_dataset(net, size);
+	
+	for(i = 0; i < data.nb_batch; i++)
+	{
+		for(j = 0; j < net->batch_size; j++)
+		{
+			if(i*net->batch_size + j >= size)
+				continue;
+			fread(&(data.input[i][j*(net->input_dim+1)]), sizeof(float), net->input_dim, f);
+		}	
+	}
+	
+	for(i = 0; i < data.nb_batch; i++)
+	{
+		for(j = 0; j < net->batch_size; j++)
+		{
+			if(i*net->batch_size + j >= size)
+				continue;
+			fread(&data.target[i][j*(net->output_dim)], sizeof(float), net->output_dim, f);
+		}
+	}
+	fclose(f);
+	
+	return data;
+}
+
+
 void free_dataset(Dataset data)
 {
 	int i;

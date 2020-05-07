@@ -44,7 +44,6 @@ CIANNA V-0.7 (03/2020), by D.Cornu\n\
 				continue;
 			for(k = 0; k < networks[0]->input_dim; k ++)
 				fscanf(f, "%f", &networks[0]->train.input[i][j*(networks[0]->input_dim+1) + k]);
-			networks[0]->train.input[i][j*(networks[0]->input_dim+1) + networks[0]->input_dim] = 0.1;
 			//bias value should be adapted somehow based on 1st layer
 		}
 	}
@@ -57,7 +56,6 @@ CIANNA V-0.7 (03/2020), by D.Cornu\n\
 				continue;
 			for(k = 0; k < networks[0]->input_dim; k ++)
 				fscanf(f, "%f", &networks[0]->test.input[i][j*(networks[0]->input_dim+1) + k]);
-			networks[0]->test.input[i][j*(networks[0]->input_dim+1) + networks[0]->input_dim] = 0.1;
 		}
 	}
 	
@@ -69,7 +67,6 @@ CIANNA V-0.7 (03/2020), by D.Cornu\n\
 				continue;
 			for(k = 0; k < networks[0]->input_dim; k ++)
 				fscanf(f, "%f", &networks[0]->valid.input[i][j*(networks[0]->input_dim+1) + k]);
-			networks[0]->valid.input[i][j*(networks[0]->input_dim+1) + networks[0]->input_dim] = 0.1;
 		}
 	}
 	
