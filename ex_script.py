@@ -45,7 +45,7 @@ if(0):
 	cnn.dense_create(10, activation="SOFTMAX")
 
 
-	cnn.train_network(nb_epoch=1, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.7, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
+	cnn.train_network(nb_epoch=10, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.7, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
 
 	exit()
 
@@ -75,14 +75,13 @@ if(1):
 	target_test = np.loadtxt("mnist.dat", skiprows=(80000*28 + 70000)+6,max_rows=10000,dtype="float32")
 	print ("Done !", flush=True)
 
-	"""
+	
 	cnn.write_formated_dataset("train.dat", 60000, data_train, target_train, flat=0)
 	cnn.write_formated_dataset("valid.dat", 10000, data_valid, target_valid, flat=0)
 	cnn.write_formated_dataset("test.dat", 10000, data_test, target_test, flat=0)
-	"""
+	
 	
 	del (data_train, data_valid, data_test, target_train, target_valid, target_test)
-	exit()
 	
 	cnn.load_formated_dataset("TRAIN", "train.dat")
 	cnn.load_formated_dataset("VALID", "valid.dat")
@@ -98,7 +97,7 @@ if(1):
 	cnn.dense_create(10, activation="SOFTMAX")
 
 
-	cnn.train_network(nb_epoch=1, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.7, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
+	cnn.train_network(nb_epoch=10, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.7, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
 
 	exit()
 
