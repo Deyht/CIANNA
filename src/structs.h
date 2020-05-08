@@ -13,6 +13,7 @@
 enum layer_type{CONV, POOL, DENSE};
 enum activation_functions{RELU, LOGISTIC, SOFTMAX, LINEAR};
 enum initializers{N_XAVIER, U_XAVIER, N_LECUN, U_LECUN, U_RAND, N_RAND};
+enum data_types{FP32, UINT16, UINT8};
 enum compute_method{C_NAIV, C_BLAS, C_CUDA};
 enum memory_localization{HOST, DEVICE};
 

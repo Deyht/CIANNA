@@ -156,14 +156,35 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 {
 	int i, j, k, l, m;
 	const char *filename;
+	const char *input_data_type, *output_data_type;
+	int input_data_type_C = FP32, output_data_type_C = FP32;
 	PyArrayObject *py_data = NULL, *py_target = NULL;
 	int size, flat = 0;
 	int network_id = nb_networks-1;
-	static char *kwlist[] = {"filename", "size", "input", "target", "flat", "network_id", "filename", NULL};
+	int datasize;
+	static char *kwlist[] = {"filename", "size", "input", "input_dtype","target", "output_dtype", "flat", "network_id", "filename", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOO|ii", kwlist, &filename, &size, &py_data, &py_target, &flat, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOsOs|ii", kwlist, &filename, &size, &py_data, &input_data_type, &py_target, &output_data_type, &flat, &network_id))
 	    return Py_None;
-	    
+	
+	if(py_data == NULL || py_target == NULL)
+	{
+		printf("ERROR : non recognized numpy array in write formated dataset \n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(strcmp(input_data_type,"UINT8") == 0)
+		input_data_type_C = UINT8;
+	else if(strcmp(input_data_type,"UINT16") == 0)
+		input_data_type_C = UINT16;
+	else if(strcmp(input_data_type,"FP32") == 0)
+		input_data_type_C = FP32;
+	else
+	{
+		printf("ERROR : Unsuported datatype %s\n", input_data_type);
+		exit(EXIT_FAILURE);
+	}
+	
 	
 	printf("Saving formated file: %s\n", filename);
 	
@@ -177,63 +198,215 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 	fwrite(&networks[network_id]->input_depth, sizeof(int), 1, f);
 	fwrite(&networks[network_id]->output_dim, sizeof(int), 1, f);
 	
-	float *temp_input;
-	float *temp_output;
+	// As for the C function, this one could probably be strongly simplified to avoid repetition
 	
-	temp_input = (float*) calloc(networks[network_id]->input_dim,sizeof(float));
-	temp_output = (float*) calloc(networks[network_id]->output_dim,sizeof(float));
-	
-	if(py_data != NULL && py_target != NULL)
+	switch(input_data_type_C)
 	{
-		for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
+		case UINT8:
 		{
-			for(j = 0; j < networks[network_id]->batch_size; j++)
+			unsigned char *temp_input;
+			datasize = sizeof(unsigned char);
+			temp_input = (unsigned char *) calloc(networks[network_id]->input_dim, datasize);
+			
+			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
 			{
-				if(i*networks[network_id]->batch_size + j >= size)
-					continue;
-				for(k = 0; k < networks[network_id]->input_depth; k++)
+				for(j = 0; j < networks[network_id]->batch_size; j++)
 				{
-					for(l = 0; l < networks[network_id]->input_height; l++)
-						for(m = 0; m < networks[network_id]->input_width; m++)
-						{
-							if(!flat)
-	temp_input[k * networks[network_id]->input_height 
-		* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
-		= *(float*)(py_data->data + (i*networks[network_id]->batch_size 
-		* networks[network_id]->input_depth*networks[network_id]->input_height 
-		+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
-		+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
-							else
-	temp_input[k * networks[network_id]->input_height
-		* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
-		= *(float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
-		* py_data->strides[0] + (k*networks[network_id]->input_height 
-		* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
-		* py_data->strides[1]);	
-						}
+					if(i*networks[network_id]->batch_size + j >= size)
+						continue;
+					for(k = 0; k < networks[network_id]->input_depth; k++)
+					{
+						for(l = 0; l < networks[network_id]->input_height; l++)
+							for(m = 0; m < networks[network_id]->input_width; m++)
+							{
+								if(!flat)
+		temp_input[k * networks[network_id]->input_height 
+			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
+			= (unsigned char) *(float*)(py_data->data + (i*networks[network_id]->batch_size 
+			* networks[network_id]->input_depth*networks[network_id]->input_height 
+			+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
+			+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
+								else
+		temp_input[k * networks[network_id]->input_height
+			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
+			= (unsigned char) *(float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
+			* py_data->strides[0] + (k*networks[network_id]->input_height 
+			* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
+			* py_data->strides[1]);	
+							}
+					}
+					fwrite(temp_input, datasize, networks[network_id]->input_dim, f);
+					
 				}
-				fwrite(temp_input, sizeof(float), networks[network_id]->input_dim, f);
-				
 			}
+			free(temp_input);
+			break;
 		}
-		
-		
-		for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
-			for(j = 0; j < networks[network_id]->batch_size; j++)
+			
+		case UINT16:
+		{
+			unsigned short *temp_input;
+			datasize = sizeof(unsigned short);
+			temp_input = (unsigned short *) calloc(networks[network_id]->input_dim, datasize);
+			
+			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
 			{
-				if(i*networks[network_id]->batch_size + j >= size)
-					continue;
-				for(k = 0; k < networks[network_id]->output_dim; k++)
-					temp_output[k]
-					= *(float*)(py_target->data + i * (networks[network_id]->batch_size 
-					* py_target->strides[0]) + j * py_target->strides[0] + k 
-					* py_target->strides[1]);
-				fwrite(temp_output, sizeof(float), networks[network_id]->output_dim, f);
+				for(j = 0; j < networks[network_id]->batch_size; j++)
+				{
+					if(i*networks[network_id]->batch_size + j >= size)
+						continue;
+					for(k = 0; k < networks[network_id]->input_depth; k++)
+					{
+						for(l = 0; l < networks[network_id]->input_height; l++)
+							for(m = 0; m < networks[network_id]->input_width; m++)
+							{
+								if(!flat)
+		temp_input[k * networks[network_id]->input_height 
+			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
+			= (unsigned short) *(float*)(py_data->data + (i*networks[network_id]->batch_size 
+			* networks[network_id]->input_depth*networks[network_id]->input_height 
+			+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
+			+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
+								else
+		temp_input[k * networks[network_id]->input_height
+			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
+			= (unsigned short) *(float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
+			* py_data->strides[0] + (k*networks[network_id]->input_height 
+			* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
+			* py_data->strides[1]);	
+							}
+					}
+					fwrite(temp_input, datasize, networks[network_id]->input_dim, f);
+					
+				}
 			}
+			free(temp_input);
+			break;
+		}
+		case FP32:
+		default:
+		{
+			float *temp_input;
+			datasize = sizeof(float);
+			temp_input = (float *) calloc(networks[network_id]->input_dim, datasize);
+			
+			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
+			{
+				for(j = 0; j < networks[network_id]->batch_size; j++)
+				{
+					if(i*networks[network_id]->batch_size + j >= size)
+						continue;
+					for(k = 0; k < networks[network_id]->input_depth; k++)
+					{
+						for(l = 0; l < networks[network_id]->input_height; l++)
+							for(m = 0; m < networks[network_id]->input_width; m++)
+							{
+								if(!flat)
+		temp_input[k * networks[network_id]->input_height 
+			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
+			= *(float*)(py_data->data + (i*networks[network_id]->batch_size 
+			* networks[network_id]->input_depth*networks[network_id]->input_height 
+			+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
+			+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
+								else
+		temp_input[k * networks[network_id]->input_height
+			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
+			= *(float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
+			* py_data->strides[0] + (k*networks[network_id]->input_height 
+			* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
+			* py_data->strides[1]);	
+							}
+					}
+					fwrite(temp_input, datasize, networks[network_id]->input_dim, f);
+					
+				}
+			}
+			free(temp_input);
+			break;
+		}
 	}
 	
-	free(temp_input);
-	free(temp_output);
+	
+	if(strcmp(output_data_type,"UINT8") == 0)
+		output_data_type_C = UINT8;
+	else if(strcmp(output_data_type,"UINT16") == 0)
+		output_data_type_C = UINT16;
+	else if(strcmp(output_data_type,"FP32") == 0)
+		output_data_type_C = FP32;
+	else
+	{
+		printf("ERROR : Unsuported datatype %s\n", output_data_type);
+		exit(EXIT_FAILURE);
+	}
+	
+	
+	switch(output_data_type_C)
+	{
+		case UINT8:
+		{
+			unsigned char *temp_output;
+			datasize = sizeof(unsigned char);
+			temp_output = (unsigned char *) calloc(networks[network_id]->output_dim, datasize);
+			
+			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
+				for(j = 0; j < networks[network_id]->batch_size; j++)
+				{
+					if(i*networks[network_id]->batch_size + j >= size)
+						continue;
+					for(k = 0; k < networks[network_id]->output_dim; k++)
+						temp_output[k]
+						= (unsigned char) *(float*)(py_target->data + i * (networks[network_id]->batch_size 
+						* py_target->strides[0]) + j * py_target->strides[0] + k 
+						* py_target->strides[1]);
+					fwrite(temp_output, datasize, networks[network_id]->output_dim, f);
+				}
+			free(temp_output);
+			break;
+		}
+			
+		case UINT16:
+		{
+			unsigned short *temp_output;
+			datasize = sizeof(unsigned short);
+			temp_output = (unsigned short *) calloc(networks[network_id]->output_dim, datasize);
+			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
+				for(j = 0; j < networks[network_id]->batch_size; j++)
+				{
+					if(i*networks[network_id]->batch_size + j >= size)
+						continue;
+					for(k = 0; k < networks[network_id]->output_dim; k++)
+						temp_output[k]
+						= (unsigned short) *(float*)(py_target->data + i * (networks[network_id]->batch_size 
+						* py_target->strides[0]) + j * py_target->strides[0] + k 
+						* py_target->strides[1]);
+					fwrite(temp_output, datasize, networks[network_id]->output_dim, f);
+				}
+			free(temp_output);
+			break;
+		}
+			
+		case FP32:
+		default:
+		{
+			float *temp_output;
+			datasize = sizeof(float);
+			temp_output = (float *) calloc(networks[network_id]->output_dim, datasize);
+			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
+				for(j = 0; j < networks[network_id]->batch_size; j++)
+				{
+					if(i*networks[network_id]->batch_size + j >= size)
+						continue;
+					for(k = 0; k < networks[network_id]->output_dim; k++)
+						temp_output[k]
+						= *(float*)(py_target->data + i * (networks[network_id]->batch_size 
+						* py_target->strides[0]) + j * py_target->strides[0] + k 
+						* py_target->strides[1]);
+					fwrite(temp_output, datasize, networks[network_id]->output_dim, f);
+				}
+			free(temp_output);
+			break;
+		}
+	}
 	
 	fclose(f);
 	
@@ -247,16 +420,43 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 	Dataset data;
 	const char *dataset_type;
 	const char *filename;
+	const char *input_data_type, *output_data_type;
+	int input_data_type_C = FP32, output_data_type_C = FP32;
 	int network_id = nb_networks-1;
-	static char *kwlist[] = {"dataset", "filename" "network_id", NULL};
+	static char *kwlist[] = {"dataset", "filename", "input_dtype", "output_dtype", "network_id", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "ss|i", kwlist, &dataset_type, &filename, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "ssss|i", kwlist, &dataset_type, &filename, &input_data_type, &output_data_type, &network_id))
 	    return Py_None;
+	
+	if(strcmp(input_data_type,"UINT8") == 0)
+		input_data_type_C = UINT8;
+	else if(strcmp(input_data_type,"UINT16") == 0)
+		input_data_type_C = UINT16;
+	else if(strcmp(input_data_type,"FP32") == 0)
+		input_data_type_C = FP32;
+	else
+	{
+		printf("ERROR : Unsuported datatype %s\n", input_data_type);
+		exit(EXIT_FAILURE);
+	}
+	
+	
+	if(strcmp(output_data_type,"UINT8") == 0)
+		output_data_type_C = UINT8;
+	else if(strcmp(output_data_type,"UINT16") == 0)
+		output_data_type_C = UINT16;
+	else if(strcmp(output_data_type,"FP32") == 0)
+		output_data_type_C = FP32;
+	else
+	{
+		printf("ERROR : Unsuported datatype %s\n", output_data_type);
+		exit(EXIT_FAILURE);
+	}
 	
 	
 	printf("Loading dataset from file %s ...\n",filename);
 	
-	data = load_formated_dataset(networks[network_id], filename);
+	data = load_formated_dataset(networks[network_id], filename, input_data_type_C, output_data_type_C);
 	
 	
 	if(strcmp(dataset_type,"TRAIN") == 0)
@@ -277,6 +477,23 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 	
 	printf(" Done!\n");
 		
+	return Py_None;
+}
+
+
+
+
+static PyObject* py_normalize_datasets(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	double offset_input, norm_input, offset_output, norm_output;
+	int network_id = nb_networks-1;
+	static char *kwlist[] = {"offset_in", "norm_in", "offset_out", "norm_out", "network_id", NULL};
+
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "dddd|i", kwlist, &offset_input, &norm_input, &offset_output, &norm_output, &network_id))
+		return Py_None;
+	
+	normalize_datasets(networks[network_id], offset_input, norm_input, offset_output, norm_output);
+
 	return Py_None;
 }
 
@@ -430,8 +647,6 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 	return Py_None;
 }
 
-
-
 // Module creation functions
 //############################################################
 
@@ -440,6 +655,7 @@ static PyMethodDef CIANNAMethods[] = {
     { "create_dataset", (PyCFunction)py_create_dataset, METH_VARARGS | METH_KEYWORDS, "Allocate dataset structure and return a corresponding object" },
     { "write_formated_dataset", (PyCFunction)py_write_formated_dataset, METH_VARARGS | METH_KEYWORDS, "Write a proper numpy table onto a formated binary dataset file"},
     { "load_formated_dataset", (PyCFunction)py_load_formated_dataset, METH_VARARGS | METH_KEYWORDS, "Read a formated binary dataset file and directly store it into a network dataset"},
+    { "normalize_datasets", (PyCFunction)py_normalize_datasets, METH_VARARGS | METH_KEYWORDS, "Apply normalization transformation on all the datasets already loaded in the C framework"},
     { "dense_create", (PyCFunction)py_dense_create, METH_VARARGS | METH_KEYWORDS, "Add a dense layer to the network" },
     { "conv_create",(PyCFunction)py_conv_create, METH_VARARGS | METH_KEYWORDS, "Add a convolutional layer to the network" },
     { "pool_create",(PyCFunction)py_pool_create, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },

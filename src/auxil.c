@@ -84,104 +84,6 @@ Dataset create_dataset(network *net, int nb_elem)
 
 
 
-void write_formated_dataset(network *net, const char *filename, Dataset *data)
-{
-	// Create and load a dataset from a format specific file
-
-	FILE *f = NULL;
-	f = fopen(filename, "wb"); 
-	int i, j;
-	
-	
-	fwrite(&data->size, sizeof(int), 1, f);
-	fwrite(&net->input_width, sizeof(int), 1, f);
-	fwrite(&net->input_height, sizeof(int), 1, f);
-	fwrite(&net->input_depth, sizeof(int), 1, f);
-	fwrite(&net->output_dim, sizeof(int), 1, f);
-	
-	for(i = 0; i < data->nb_batch; i++)
-	{
-		for(j = 0; j < net->batch_size; j++)
-		{
-			if(i*net->batch_size + j >= data->size)
-				continue;
-			fwrite(&data->input[i][j*(net->input_dim+1)], sizeof(float), net->input_dim, f);
-		}	
-	}
-	
-	for(i = 0; i < data->nb_batch; i++)
-	{
-		for(j = 0; j < net->batch_size; j++)
-		{
-			if(i*net->batch_size + j >= data->size)
-				continue;
-			fwrite(&data->target[i][j*(net->output_dim)], sizeof(float), net->output_dim, f);
-		}
-	}
-	fclose(f);
-}
-
-
-
-
-Dataset load_formated_dataset(network *net, const char *filename)
-{
-	// Create and load a dataset from a format specific file
-	Dataset data;
-
-	FILE *f = NULL;
-	f = fopen(filename, "rb"); 
-	int size, width, height, depth, out_dim;
-	int i, j;
-	
-	if(f == NULL)
-	{
-		printf("ERROR : file %s does not exist !", filename);
-		exit(EXIT_FAILURE);
-	}
-	
-	fread(&size, sizeof(int), 1, f);
-	fread(&width, sizeof(int), 1, f);
-	fread(&height, sizeof(int), 1, f);
-	fread(&depth, sizeof(int), 1, f);
-	fread(&out_dim, sizeof(int), 1, f);
-	
-	if( width * height * depth != net->input_dim || out_dim != net->output_dim)
-	{
-		printf("\nERROR : input dimensions do not match in file %s !\n", filename);
-		printf("File dimensions are, size: %d, input dimensions : %dx%dx%d, output dimension : %d\n"
-					, size, width, height, depth, out_dim);
-		exit(EXIT_FAILURE);
-	}
-	
-	
-	data = create_dataset(net, size);
-	
-	for(i = 0; i < data.nb_batch; i++)
-	{
-		for(j = 0; j < net->batch_size; j++)
-		{
-			if(i*net->batch_size + j >= size)
-				continue;
-			fread(&(data.input[i][j*(net->input_dim+1)]), sizeof(float), net->input_dim, f);
-		}	
-	}
-	
-	for(i = 0; i < data.nb_batch; i++)
-	{
-		for(j = 0; j < net->batch_size; j++)
-		{
-			if(i*net->batch_size + j >= size)
-				continue;
-			fread(&data.target[i][j*(net->output_dim)], sizeof(float), net->output_dim, f);
-		}
-	}
-	fclose(f);
-	
-	return data;
-}
-
-
 void free_dataset(Dataset data)
 {
 	int i;
@@ -203,6 +105,380 @@ void free_dataset(Dataset data)
 	
 	free(data.input);
 	free(data.target);
+}
+
+
+void write_formated_dataset(network *net, const char *filename, Dataset *data, int input_data_type, int output_data_type)
+{
+	// Create and load a dataset from a format specific file
+
+	FILE *f = NULL;
+	f = fopen(filename, "wb"); 
+	int i, j, k;
+	int datasize;
+	
+	fwrite(&data->size, sizeof(int), 1, f);
+	fwrite(&net->input_width, sizeof(int), 1, f);
+	fwrite(&net->input_height, sizeof(int), 1, f);
+	fwrite(&net->input_depth, sizeof(int), 1, f);
+	fwrite(&net->output_dim, sizeof(int), 1, f);
+	
+	// Should rework this function to avoid repetions, try to use a void pointer that is 
+	// properly converted and try to get function pointer to type cast 
+	
+	switch(input_data_type)
+	{
+		case UINT8:
+		{
+			unsigned char *temp_input;
+			datasize = sizeof(unsigned char);
+			temp_input = (unsigned char *) calloc(net->input_dim, datasize);
+			
+			for(i = 0; i < data->nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= data->size)
+						continue;
+					for(k = 0; k < net->input_dim; k++)
+						temp_input[k] = (unsigned char) data->input[i][j*(net->input_dim+1) + k];
+					fwrite(temp_input, datasize, net->input_dim, f);
+				}
+			}
+			free(temp_input);
+			break;
+		}
+			
+		case UINT16:
+		{
+			unsigned short *temp_input;
+			datasize = sizeof(unsigned short);
+			temp_input = (unsigned short *) calloc(net->input_dim, datasize);
+			
+			for(i = 0; i < data->nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= data->size)
+						continue;
+					for(k = 0; k < net->input_dim; k++)
+						temp_input[k] = (unsigned short) data->input[i][j*(net->input_dim+1) + k];
+					fwrite(temp_input, datasize, net->input_dim, f);
+				}
+			}
+			free(temp_input);
+			break;
+		}
+		case FP32:
+		default:
+		{
+			float *temp_input;
+			datasize = sizeof(float);
+			temp_input = (float *) calloc(net->input_dim, datasize);
+			
+			for(i = 0; i < data->nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= data->size)
+						continue;
+					for(k = 0; k < net->input_dim; k++)
+						temp_input[k] = (float) data->input[i][j*(net->input_dim+1) + k];
+					fwrite(temp_input, datasize, net->input_dim, f);
+				}
+			}
+			free(temp_input);
+			break;
+		}
+	}
+	
+	
+	switch(output_data_type)
+	{
+		case UINT8:
+		{
+			unsigned char *temp_output;
+			datasize = sizeof(unsigned char);
+			temp_output = (unsigned char *) calloc(net->output_dim, datasize);
+			
+			for(i = 0; i < data->nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= data->size)
+						continue;
+					for(k = 0; k < net->input_dim; k++)
+						temp_output[k] = (unsigned char) data->target[i][j*(net->output_dim) + k];
+					fwrite(temp_output, datasize, net->output_dim, f);
+				}
+			}
+			free(temp_output);
+			break;
+		}
+			
+		case UINT16:
+		{
+			unsigned short *temp_output;
+			datasize = sizeof(unsigned short);
+			temp_output = (unsigned short *) calloc(net->output_dim, datasize);
+			for(i = 0; i < data->nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= data->size)
+						continue;
+					for(k = 0; k < net->input_dim; k++)
+						temp_output[k] = (unsigned short) data->target[i][j*(net->output_dim) + k];
+					fwrite(temp_output, datasize, net->output_dim, f);
+				}
+			}
+			free(temp_output);
+			break;
+		}
+			
+		case FP32:
+		default:
+		{
+			float *temp_output;
+			datasize = sizeof(float);
+			temp_output = (float *) calloc(net->output_dim, datasize);
+			break;
+			for(i = 0; i < data->nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= data->size)
+						continue;
+					for(k = 0; k < net->input_dim; k++)
+						temp_output[k] = (float) data->target[i][j*(net->output_dim) + k];
+					fwrite(temp_output, datasize, net->output_dim, f);
+				}
+			}
+			free(temp_output);
+		}
+	}
+	
+	fclose(f);
+	
+}
+
+
+
+
+Dataset load_formated_dataset(network *net, const char *filename, int input_data_type, int output_data_type)
+{
+	// Create and load a dataset from a format specific file
+	Dataset data;
+
+	FILE *f = NULL;
+	f = fopen(filename, "rb"); 
+	int size, width, height, depth, out_dim;
+	int i, j, k;
+	int datasize;
+	
+	if(f == NULL)
+	{
+		printf("ERROR : file %s does not exist !", filename);
+		exit(EXIT_FAILURE);
+	}
+	
+	fread(&size, sizeof(int), 1, f);
+	fread(&width, sizeof(int), 1, f);
+	fread(&height, sizeof(int), 1, f);
+	fread(&depth, sizeof(int), 1, f);
+	fread(&out_dim, sizeof(int), 1, f);
+	
+	
+	if( width * height * depth != net->input_dim || out_dim != net->output_dim)
+	{
+		printf("\nERROR : input dimensions do not match in file %s !\n", filename);
+		printf("File dimensions are, size: %d, input dimensions : %dx%dx%d, output dimension : %d\n"
+					, size, width, height, depth, out_dim);
+		exit(EXIT_FAILURE);
+	}
+	
+	data = create_dataset(net, size);
+	
+	
+	switch(input_data_type)
+	{
+		case UINT8:
+		{
+			unsigned char *temp_input;
+			datasize = sizeof(unsigned char);
+			temp_input = (unsigned char *) calloc(net->input_dim, datasize);
+			
+			for(i = 0; i < data.nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= size)
+						continue;
+					fread(temp_input, datasize, net->input_dim, f);
+					for(k = 0; k < net->input_dim; k++)
+						data.input[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
+				}	
+			}
+			free(temp_input);
+			break;
+		}
+			
+		case UINT16:
+		{
+			unsigned short *temp_input;
+			datasize = sizeof(unsigned short);
+			temp_input = (unsigned short *) calloc(net->input_dim, datasize);
+			for(i = 0; i < data.nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= size)
+						continue;
+					fread(temp_input, datasize, net->input_dim, f);
+					for(k = 0; k < net->input_dim; k++)
+						data.input[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
+				}	
+			}
+			free(temp_input);
+			break;
+		}
+			
+		case FP32:
+		default:
+		{
+			float *temp_input;
+			datasize = sizeof(float);
+			temp_input = (float *) calloc(net->input_dim, datasize);
+			for(i = 0; i < data.nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= size)
+						continue;
+					fread(temp_input, datasize, net->input_dim, f);
+					for(k = 0; k < net->input_dim; k++)
+						data.input[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
+				}	
+			}
+			free(temp_input);
+			break;
+		}
+	}
+	
+		
+	switch(output_data_type)
+	{
+		case UINT8:
+		{
+			unsigned char *temp_output;
+			datasize = sizeof(unsigned char);
+			temp_output = (unsigned char *) calloc(net->output_dim, datasize);
+			for(i = 0; i < data.nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= size)
+						continue;
+					fread(temp_output, datasize, net->output_dim, f);
+					for(k = 0; k < net->output_dim; k++)
+						data.target[i][j*(net->output_dim) + k] = (float) temp_output[k];
+				}
+			}
+			free(temp_output);
+			break;
+		}
+			
+		case UINT16:
+		{
+			unsigned short *temp_output;
+			datasize = sizeof(unsigned short);
+			temp_output = (unsigned short *) calloc(net->output_dim, datasize);
+			for(i = 0; i < data.nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= size)
+						continue;
+					fread(temp_output, datasize, net->output_dim, f);
+					for(k = 0; k < net->output_dim; k++)
+						data.target[i][j*(net->output_dim) + k] = (float) temp_output[k];
+				}
+			}
+			free(temp_output);
+			break;
+		}
+			
+		case FP32:
+		default:
+		{
+			float *temp_output;
+			datasize = sizeof(float);
+			temp_output = (float *) calloc(net->output_dim, datasize);
+			for(i = 0; i < data.nb_batch; i++)
+			{
+				for(j = 0; j < net->batch_size; j++)
+				{
+					if(i*net->batch_size + j >= size)
+						continue;
+					fread(temp_output, datasize, net->output_dim, f);
+					for(k = 0; k < net->output_dim; k++)
+						data.target[i][j*(net->output_dim) + k] = (float) temp_output[k];
+				}
+			}
+			free(temp_output);
+			break;
+		}
+	}
+	
+	fclose(f);
+	
+	return data;
+}
+
+
+
+void normalize_datasets(network *net, float offset_input, float norm_input, float offset_output, float norm_output)
+{
+	int i, j, k, n;
+	
+	Dataset *c_data[3];
+	
+	c_data[0] = &(net->train);
+	c_data[1] = &(net->valid);
+	c_data[2] = &(net->test);
+	
+	for(n = 0; n < 3; n++)
+	{
+		for(i = 0; i < c_data[n]->nb_batch; i++)
+		{
+			for(j = 0; j < net->batch_size; j++)
+			{
+				if(i*net->batch_size + j >= c_data[n]->size)
+					continue;
+				for(k = 0; k < net->input_dim; k++)
+				{
+					c_data[n]->input[i][j*(net->input_dim+1) + k] += offset_input;
+					c_data[n]->input[i][j*(net->input_dim+1) + k] /= norm_input;
+				}
+			}
+		}
+		
+		for(i = 0; i < c_data[n]->nb_batch; i++)
+		{
+			for(j = 0; j < net->batch_size; j++)
+			{
+				if(i*net->batch_size + j >= c_data[n]->size)
+					continue;
+				for(k = 0; k < net->output_dim; k++)
+				{
+					c_data[n]->target[i][j*(net->output_dim) + k] += offset_output;
+					c_data[n]->target[i][j*(net->output_dim) + k] /= norm_output;
+				}
+			}
+		}
+	}
+	
+	
 }
 
 
