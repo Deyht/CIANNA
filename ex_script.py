@@ -130,8 +130,6 @@ if(1):
 	data_valid *= 255.0
 	data_test *= 255.0
 	
-	print (np.max(data_train))
-	
 	
 	cnn.write_formated_dataset("train.dat", 60000, data_train, "UINT8", target_train, "UINT8", flat=0)
 	cnn.write_formated_dataset("valid.dat", 10000, data_valid, "UINT8", target_valid, "UINT8", flat=0)
@@ -145,7 +143,7 @@ if(1):
 	cnn.load_formated_dataset("TEST", "test.dat", "UINT8", "UINT8")
 	
 	#Normalize directly all dataset loaded in the C framework (for a specific network, default 0)
-	cnn.normalize_datasets(0.0,255.0,0.0,1.0)
+	cnn.normalize_datasets(np.array([0.0]),np.array([255.0]),28*28, np.array([0.0]),np.array([1.0]),10)
 
 
 	cnn.conv_create(f_size=5, nb_filters=6, stride=1, padding=0, activation="RELU")

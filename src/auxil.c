@@ -437,11 +437,14 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 
 
 
-void normalize_datasets(network *net, float offset_input, float norm_input, float offset_output, float norm_output)
+void normalize_datasets(network *net, float *offset_input, float *norm_input, int dim_size_input, float *offset_output, float *norm_output, int dim_size_output)
 {
-	int i, j, k, n;
+	int i, j, k, l, n;
 	
 	Dataset *c_data[3];
+	
+	int nb_dim_in = net->input_dim / dim_size_input;
+	int nb_dim_out = net->output_dim / dim_size_output;
 	
 	c_data[0] = &(net->train);
 	c_data[1] = &(net->valid);
@@ -455,10 +458,13 @@ void normalize_datasets(network *net, float offset_input, float norm_input, floa
 			{
 				if(i*net->batch_size + j >= c_data[n]->size)
 					continue;
-				for(k = 0; k < net->input_dim; k++)
+				for(k = 0; k < nb_dim_in; k++)
 				{
-					c_data[n]->input[i][j*(net->input_dim+1) + k] += offset_input;
-					c_data[n]->input[i][j*(net->input_dim+1) + k] /= norm_input;
+					for(l = 0; l < dim_size_input; l++)
+					{
+						c_data[n]->input[i][j*(net->input_dim+1) + k*dim_size_input + l] += offset_input[k];
+						c_data[n]->input[i][j*(net->input_dim+1) + k*dim_size_input + l] /= norm_input[k];
+					}
 				}
 			}
 		}
@@ -469,10 +475,13 @@ void normalize_datasets(network *net, float offset_input, float norm_input, floa
 			{
 				if(i*net->batch_size + j >= c_data[n]->size)
 					continue;
-				for(k = 0; k < net->output_dim; k++)
+				for(k = 0; k < nb_dim_out; k++)
 				{
-					c_data[n]->target[i][j*(net->output_dim) + k] += offset_output;
-					c_data[n]->target[i][j*(net->output_dim) + k] /= norm_output;
+					for(l = 0; l < dim_size_output; l++)
+					{
+						c_data[n]->target[i][j*(net->output_dim) + k*dim_size_output + l] += offset_output[k];
+						c_data[n]->target[i][j*(net->output_dim) + k*dim_size_output + l] /= norm_output[k];
+					}
 				}
 			}
 		}

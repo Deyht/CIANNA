@@ -25,7 +25,7 @@ Dataset create_dataset(network *net, int nb_elem);
 void free_dataset(Dataset data);
 void write_formated_dataset(network *net, const char *filename, Dataset *data, int input_data_type, int output_data_type);
 Dataset load_formated_dataset(network *net, const char *filename, int input_data_type, int output_data_type);
-void normalize_datasets(network *net, float offset_input, float norm_input, float offset_output, float norm_output);
+void normalize_datasets(network *net, float *offset_input, float *norm_input, int dim_size_input, float *offset_output, float *norm_output, int dim_size_output);
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat);
 void save_network(network *net, char *filename);
 void load_network(network *net, char *filename, int epoch);

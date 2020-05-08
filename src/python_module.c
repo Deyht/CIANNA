@@ -485,15 +485,53 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 
 static PyObject* py_normalize_datasets(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	double offset_input, norm_input, offset_output, norm_output;
+	PyArrayObject *offset_input, *norm_input, *offset_output, *norm_output;
+	float *c_offset_input, *c_norm_input, *c_offset_output, *c_norm_output;
+	int dim_size_input, dim_size_output;
 	int network_id = nb_networks-1;
-	static char *kwlist[] = {"offset_in", "norm_in", "offset_out", "norm_out", "network_id", NULL};
+	static char *kwlist[] = {"offset_in", "norm_in", "dim_in", "offset_out", "norm_out", "dim_out", "network_id", NULL};
+	int i;
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "dddd|i", kwlist, &offset_input, &norm_input, &offset_output, &norm_output, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOiOOi|i", kwlist, &offset_input, &norm_input, &dim_size_input, &offset_output, &norm_output, &dim_size_output, &network_id))
 		return Py_None;
+		
+	if(networks[network_id]->input_dim != dim_size_input*offset_input->dimensions[0])
+	{
+		printf("ERROR : Input dimensions do not match dataset to normalize ...\n");
+		exit(EXIT_FAILURE);
+	}
 	
-	normalize_datasets(networks[network_id], offset_input, norm_input, offset_output, norm_output);
+	if(networks[network_id]->output_dim != dim_size_output*offset_output->dimensions[0])
+	{
+		printf("ERROR : Input dimensions do not match dataset to normalize ...\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	
+	c_offset_input = (float*) calloc(offset_input->dimensions[0], sizeof(float));
+	c_norm_input = (float*) calloc(norm_input->dimensions[0], sizeof(float));
+	c_offset_output = (float*) calloc(offset_output->dimensions[0], sizeof(float));
+	c_norm_output = (float*) calloc(norm_output->dimensions[0], sizeof(float));
+	
+	
+	for(i = 0; i < offset_input->dimensions[0]; i++)
+		c_offset_input[i] = *(double *)(offset_input->data + i*offset_input->strides[0]);
+	for(i = 0; i < norm_input->dimensions[0]; i++)
+		c_norm_input[i] = *(double *)(norm_input->data + i*norm_input->strides[0]);
+	for(i = 0; i < offset_output->dimensions[0]; i++)
+		c_offset_output[i] = *(double *)(offset_output->data + i*offset_output->strides[0]);
+	for(i = 0; i < norm_output->dimensions[0]; i++)
+		c_norm_output[i] = *(double *)(norm_output->data + i*norm_output->strides[0]);
+	
+	printf("%f %f %f %f\n", c_offset_input[0], c_norm_input[0], c_offset_output[0], c_norm_output[0]);
+		
+	normalize_datasets(networks[network_id], c_offset_input, c_norm_input,
+		dim_size_input, c_offset_output, c_norm_output, dim_size_output);
 
+
+	free(c_offset_input); free(c_norm_input);
+	free(c_offset_output); free(c_norm_output);
+	
 	return Py_None;
 }
 
