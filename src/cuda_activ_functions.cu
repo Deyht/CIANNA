@@ -205,7 +205,6 @@ __global__ void ReLU_deriv_kernel(real *deriv, real *value, int len, int dim, re
 	
 	if(i < len && (i+1)%(dim+1) != 0)
 	{
-		i += i/dim;
 		if(value[i] <= 0.0)
 			deriv[i] *= leaking_factor;
 	}
@@ -328,14 +327,12 @@ void cuda_logistic_deriv(layer *previous)
 __global__ void logistic_deriv_kernel(real *deriv, real* value, real beta, int len, int dim, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	//int pos;
 	
 	if(i >= size)
 		return;
 	
 	if(i < len && (i+1)%(dim+1) != 0)
 	{
-		//pos = i - i/dim;
 		deriv[i] *= beta*value[i]*(1.0-value[i]);
 	}
 	else

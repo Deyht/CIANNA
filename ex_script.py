@@ -106,7 +106,7 @@ if(0):
 
 if(1):
 
-	cnn.init_network(np.array([28,28,1]),10,0.1,32,'C_CUDA', dynamic_load=1)
+	cnn.init_network(np.array([28,28,1]),10,0.1,128,'C_CUDA', dynamic_load=1)
 
 
 	print ("Reading inputs ... ", end = "", flush=True)
@@ -155,7 +155,7 @@ if(1):
 	cnn.dense_create(10, activation="SOFTMAX")
 
 
-	cnn.train_network(nb_epoch=1, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.7, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
+	cnn.train_network(nb_epoch=20, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.7, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
 
 	exit()
 
