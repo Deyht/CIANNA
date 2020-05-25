@@ -328,15 +328,15 @@ void cuda_logistic_deriv(layer *previous)
 __global__ void logistic_deriv_kernel(real *deriv, real* value, real beta, int len, int dim, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int pos;
+	//int pos;
 	
 	if(i >= size)
 		return;
 	
 	if(i < len && (i+1)%(dim+1) != 0)
 	{
-		pos = i - i/dim;
-		deriv[i] *= beta*value[i]*(1.0-value[pos]);
+		//pos = i - i/dim;
+		deriv[i] *= beta*value[i]*(1.0-value[i]);
 	}
 	else
 		deriv[i] = 0.0;
