@@ -101,7 +101,7 @@ Users must be aware of those issues and be able to identify them in order to mak
 
 #### License
 
-These files are Copyright (C) 2020 [David Cornu](https://github.com/Deyht/CIANNA), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/LICENSE.md).
+These files are Copyright (C) 2020 [David Cornu](https://github.com/Deyht/CIANNA), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
 
 \ 
 
