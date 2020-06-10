@@ -2,15 +2,11 @@
 # CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysicists
 ########################################################################################
 
-CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysicists - is a deep learning framework developed to address astrophysical problems. Functionalities and optimizations are mainly added as they are identified as relevant for astrophysical problems solving.
+CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysicists - is a deep learning framework mainly used to address astrophysical problems. Functionalities and optimizations are mainly added as they are identified as relevant for astrophysical problems solving.
 
 Main developer : David Cornu, FR - UTINAM / Univ. Franche Comté
 david.cornu@utinam.cnrs.fr
-
-The use of this framework must have received an explicit authorization.
-
-All rights reserved to the Author.
-
+See Copyight (C) and [License](#License) terms.
 
 
 
@@ -97,8 +93,20 @@ However, since there is no automated gradient optimization, it will happen that 
 Users must be aware of those issues and be able to identify them in order to make proper use of the framework.
 
 
+# License
+
+These files are Copyright (C) 2020 [David Cornu](https://github.com/Deyht/CIANNA), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/LICENSE.md).
 
 
+
+# Contributor License Agreement
+*While you are free to duplicate and modify this repository under the Apache2 License above, by being allowed to submit a contribution to this repository you agree to the following terms:*
+
+- *You grant to the present CIANNA application your copyright license to reproduce and distribute your contributions and such derivative works.*
+
+- *To the fullest extent permitted, you agree not to assert, all of your “moral rights” in or relating to your contributions for the benefit of the present CIANNA application.*
+
+- *Your contribution was created in whole or in part by you and you have the right to submit it under the open source license indicated in the LICENCE file; or the contribution is based upon previous work that, to the best of your knowledge, is covered under an appropriate open source license and you have the right to submit that work with modifications.*
 
 
 
