@@ -12,7 +12,7 @@ See Copyight (C) and [License](#License) terms.
 
 
 #############################################################
-#        /!\ /!\ /!\ /!\ WARNING /!\ /!\ /!\ /!\
+##          /!\ /!\ /!\ /!\ WARNING /!\ /!\ /!\ /!\
 #############################################################
 
 THIS FRAMEWORK IS NEITHER IN A STABLE NOR FINISHED STATE.
@@ -23,7 +23,7 @@ If in need for any help, information, advises, ... please contact
 me at : david.cornu@utinam.cnrs.fr
 
 #############################################################
-#        /!\ /!\ /!\ /!\ WARNING /!\ /!\ /!\ /!\
+##          /!\ /!\ /!\ /!\ WARNING /!\ /!\ /!\ /!\
 #############################################################
 
 
@@ -34,7 +34,7 @@ me at : david.cornu@utinam.cnrs.fr
 
 
 #############################################################
-#                         INSTALLATION
+##                         Installation
 #############################################################
 
 WARNING : Currently, the framework only work using CUDA (version 9.2 minimum, 10.1 up 2 recommended).
@@ -82,7 +82,7 @@ any code can be written with the interface with no need for new compilation.
 
 
 #############################################################
-#                   VARIOUS RECOMMENDATIONS
+##                   Various Recommandations
 #############################################################
 
 There is currently no tutorial on how to use either the main C code or the Python interface.
@@ -99,13 +99,13 @@ Users must be aware of those issues and be able to identify them in order to mak
 
 ########################################################################################
 
-# License
+#### License
 
 These files are Copyright (C) 2020 [David Cornu](https://github.com/Deyht/CIANNA), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/LICENSE.md).
 
 \ 
 
-# Contributor License Agreement
+#### Contributor License Agreement
 *While you are free to duplicate and modify this repository under the Apache2 License above, by being allowed to submit a contribution to this repository you agree to the following terms:*
 
 - *You grant to the present CIANNA application your copyright license to reproduce and distribute your contributions and such derivative works.*
