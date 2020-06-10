@@ -6,6 +6,7 @@ CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysici
 
 Main developer : David Cornu, FR - UTINAM / Univ. Franche Comté
 david.cornu@utinam.cnrs.fr
+
 See Copyight (C) and [License](#License) terms.
 
 
@@ -97,7 +98,7 @@ Users must be aware of those issues and be able to identify them in order to mak
 
 These files are Copyright (C) 2020 [David Cornu](https://github.com/Deyht/CIANNA), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/LICENSE.md).
 
-
+\_
 
 # Contributor License Agreement
 *While you are free to duplicate and modify this repository under the Apache2 License above, by being allowed to submit a contribution to this repository you agree to the following terms:*
