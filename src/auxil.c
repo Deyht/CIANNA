@@ -549,6 +549,7 @@ void load_network(network *net, char *filename, int epoch)
 	char layer_type;
 	
 	net->epoch = epoch;
+	net->nb_layers = 0;
 	
 	f = fopen(filename, "r+");
 	if(f == NULL)
@@ -641,6 +642,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	float items_per_s = 0.0;
 	FILE *f_save;
 	char f_save_name[100];
+
+	FILE *f_err;
 
 	o = net->output_dim;
 	
@@ -764,9 +767,15 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				#endif
 			}
 		}
+	
+		f_err = fopen("error.txt", "a");
+		
 		items_per_s = data.size/ellapsed_time(ep_timer);
 		printf("Net. forward perf.: %0.2f items/s\n", items_per_s);
 		printf("Cumulated error: \t %g\n", total_error/data.size);
+		
+		fprintf(f_err, "%g\n",  total_error/data.size);
+		fclose(f_err);
 		
 	}
 	

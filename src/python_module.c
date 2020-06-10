@@ -89,10 +89,11 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	}
 	
 	
+	*data = create_dataset(networks[network_id], size);
+	
 	printf("input dim :%d,", networks[network_id]->input_dim);
 	printf("Creating dataset with size %d (nb_batch = %d) ... ", data->size, data->nb_batch);
 	
-	*data = create_dataset(networks[network_id], size);
 	
 	if(py_data != NULL && py_target != NULL)
 	{
