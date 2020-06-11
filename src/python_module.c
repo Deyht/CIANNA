@@ -2,7 +2,7 @@
 /*
 	Copyright (C) 2020 David Cornu
 	for the Convolutional Interactive Artificial 
-	Neural Network by/for Astrophysicists (CIANNA) Code
+	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
 
 	Licensed under the Apache License, Version 2.0 (the "License");

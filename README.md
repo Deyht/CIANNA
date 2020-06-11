@@ -1,9 +1,9 @@
 
 <img src="cianna_logo_v1.1.png" alt="drawing" width="160" height="160"/>
 
-## CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysicists
+## CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists
 
-CIANNA - Convolutional Interactive Artificial Neural Network by/for Astrophysicists - is a deep learning framework mainly used to address astrophysical problems. Functionalities and optimizations are mainly added as they are identified as relevant for astrophysical problems solving.
+CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists - is a deep learning framework mainly used to address astrophysical problems. Functionalities and optimizations are mainly added as they are identified as relevant for astrophysical problems solving.
 
 Main developer : David Cornu, FR - UTINAM / Univ. Franche Comté
 david.cornu@utinam.cnrs.fr
