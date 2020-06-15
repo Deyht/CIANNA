@@ -204,7 +204,7 @@ void cuda_backward_conv_layer(layer *current)
 		image_padding = c_param->nb_area_w * c_param->nb_area_h;
 		flat_f_size = c_param->f_size * c_param->f_size * c_param->nb_filters;
 		
-		back_padding = c_param->prev_size_w - c_param->nb_area_w;
+		back_padding =  c_param->f_size -  c_param->padding - 1;
 		if(back_padding < 0)
 			back_padding = 0;
 		

@@ -146,16 +146,17 @@ if(1):
 	cnn.normalize_datasets(np.array([0.0]),np.array([255.0]),28*28, np.array([0.0]),np.array([1.0]),10)
 
 
-	cnn.conv_create(f_size=5, nb_filters=6, stride=1, padding=0, activation="RELU")
+	cnn.conv_create(f_size=5, nb_filters=6, stride=1, padding=2, activation="RELU")
 	cnn.pool_create(pool_size=2)
-	cnn.conv_create(f_size=5, nb_filters=16, stride=1, padding=4, activation="RELU")
+	cnn.conv_create(f_size=5, nb_filters=12, stride=1, padding=2, activation="RELU")
 	cnn.pool_create(pool_size=2)
+	cnn.conv_create(f_size=3, nb_filters=18, stride=1, padding=1, activation="RELU")
 	cnn.dense_create(nb_neurons=256, activation="RELU", drop_rate=0.0)
 	cnn.dense_create(nb_neurons=256, activation="RELU", drop_rate=0.0)
 	cnn.dense_create(10, activation="SOFTMAX")
 
 
-	cnn.train_network(nb_epoch=20, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.7, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
+	cnn.train_network(nb_epoch=20, learning_rate=0.0002, end_learning_rate=0.0001, control_interv=1, momentum=0.7, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
 
 	exit()
 

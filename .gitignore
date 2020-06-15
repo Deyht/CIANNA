@@ -17,6 +17,7 @@ fwd_step_*.dat
 *.log
 *.dat
 *.nvvp
+error.txt
 input.dat
 ./fwd_res/*
 ./src/build
