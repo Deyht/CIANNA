@@ -666,7 +666,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	FILE *f_save;
 	char f_save_name[100];
 
-	FILE *f_err;
+	//FILE *f_err;
 
 	o = net->output_dim;
 	
@@ -790,15 +790,16 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				#endif
 			}
 		}
-	
-		f_err = fopen("error.txt", "a");
+		
+		//f_err = fopen("error.txt", "a");
 		
 		items_per_s = data.size/ellapsed_time(ep_timer);
 		printf("Net. forward perf.: %0.2f items/s\n", items_per_s);
 		printf("Cumulated error: \t %g\n", total_error/data.size);
 		
-		fprintf(f_err, "%g\n",  total_error/data.size);
-		fclose(f_err);
+		//fprintf(f_err, "%g\n",  total_error/data.size);
+		//fclose(f_err);
+		
 		
 	}
 	
