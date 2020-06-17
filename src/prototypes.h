@@ -106,7 +106,7 @@ extern cublasHandle_t cu_handle;
 __global__ void cuda_update_weights(real *weights, real* updates, int size);
 __global__ void cuda_update_weights_dropout(real *weights, real* update, int size, real *drop_mask, int dim);
 __device__ int cuda_argmax(real* tab, int dim_out);
-__global__ void im2col_kernel_nested(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int depth, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
+__global__ void im2col_kernel_v4(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
 #endif
 void init_cuda(void);
 void cuda_free_table(real* tab);

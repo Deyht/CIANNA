@@ -144,14 +144,18 @@ void cuda_forward_conv_layer(layer *current)
     dim3 numBlocks2(((c_param->prev_size_w * c_param->prev_size_h) + threadsPerBlock2.x - 1) / threadsPerBlock2.x,
     	(c_param->prev_depth + threadsPerBlock2.y - 1) / threadsPerBlock2.y,
     	(current->c_network->batch_size + threadsPerBlock2.z - 1) / threadsPerBlock2.z);
+    
+   // cuda_print_table(current->input, 6*6, 6);
+    	
 	//cuda im2col conversion kernel -> one of the most complex function, go see details above
-	im2col_kernel_v3<<< numBlocks2, threadsPerBlock2 >>>(c_param->im2col_input, current->input, 
+	
+	im2col_kernel_v4<<< numBlocks2, threadsPerBlock2 >>>(c_param->im2col_input, current->input, 
 		c_param->prev_size_w*c_param->prev_size_h, c_param->nb_area_w * c_param->nb_area_h 
-		* c_param->flat_f_size, c_param->stride, c_param->padding, c_param->prev_depth, 
+		* c_param->flat_f_size, c_param->stride, c_param->padding, 0, c_param->prev_depth, 
 		depth_padding, image_padding, current->c_network->batch_size, c_param->f_size, 
 		c_param->flat_f_size, c_param->prev_size_w, c_param->nb_area_w, im2col_prev_bias);
 
-	//cuda_print_table_transpose(real* tab, int line_size, int column_size)
+	//cuda_print_table(c_param->im2col_input, c_param->nb_area_w * c_param->nb_area_h * c_param->flat_f_size, c_param->flat_f_size);
 	
 	//Input X filters matrix multiplication for the all batch
 	cublasgemm(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, current->c_network->batch_size 
@@ -164,6 +168,8 @@ void cuda_forward_conv_layer(layer *current)
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
 }
+
+
 
 
 void cuda_backward_conv_layer(layer *current)
@@ -229,14 +235,25 @@ void cuda_backward_conv_layer(layer *current)
 		dim3 numBlocks2((c_param->nb_area_w * c_param->nb_area_h + threadsPerBlock2.x - 1) / threadsPerBlock2.x,
 			(c_param->nb_filters + threadsPerBlock2.y - 1) / threadsPerBlock2.y,
 			(current->c_network->batch_size + threadsPerBlock2.z - 1) / threadsPerBlock2.z);
+		/*
+		if(c_param->stride == 2)
+			cuda_print_table(current->delta_o, c_param->nb_area_w * c_param->nb_area_h * c_param->nb_filters * current->c_network->batch_size, c_param->nb_area_w * c_param->nb_area_h * c_param->nb_filters);
+		*/
 		
-		im2col_kernel_v3<<< numBlocks2, threadsPerBlock2 >>>(c_param->im2col_delta_o, current->delta_o,
+		im2col_kernel_v4<<< numBlocks2, threadsPerBlock2 >>>(c_param->im2col_delta_o, current->delta_o,
 			c_param->nb_area_w * c_param->nb_area_h, (c_param->prev_size_w * c_param->prev_size_h) 
-			* flat_f_size, c_param->stride, back_padding, c_param->nb_filters, depth_padding,
-			image_padding, current->c_network->batch_size, c_param->f_size, flat_f_size, 
+			* flat_f_size, 1, back_padding, c_param->stride - 1 , c_param->nb_filters, 
+			depth_padding, image_padding, current->c_network->batch_size, c_param->f_size, flat_f_size, 
 			c_param->nb_area_w, c_param->prev_size_w, 0);
 
 		
+			/*
+		if(c_param->stride == 2)
+			cuda_print_table(c_param->im2col_delta_o, (c_param->prev_size_w * c_param->prev_size_h) * flat_f_size * current->c_network->batch_size, c_param->prev_size_w * c_param->prev_size_h * flat_f_size);
+
+		if(c_param->stride == 2)
+			exit(EXIT_SUCCESS);
+		*/
 		cublasgemm(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, c_param->prev_size_w * c_param->prev_size_h 
 			* current->c_network->batch_size, c_param->prev_depth, c_param->f_size * c_param->f_size 
 			* c_param->nb_filters, &cu_alpha, /*A*/c_param->im2col_delta_o, c_param->f_size 
@@ -269,9 +286,55 @@ void cuda_backward_conv_layer(layer *current)
 
 
 
-//One of the most important function, aim to convert an image into a table that contains all the
-//areas that will be used for convolution. Highly redundant but speed up significantly the calculation
+//One of the most important function, aims to convert an image into a table that contains all the
+//areas that will be used for convolution. Highly redundant but still allows a significant speed up
+//due to subsequent matrix operations. Currently memory bound despite only 1 load per element of the original image.
+//VERSION 4
+
+__global__ void im2col_kernel_v4(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias)
+{
+	int z = blockIdx.x*blockDim.x + threadIdx.x;
+	int d = blockIdx.y*blockDim.y + threadIdx.y;
+	int i = blockIdx.z*blockDim.z + threadIdx.z;
+	
+	float local_pix;
+	
+	int w, h, x, y;
+	int pos_w_filter, pos_h_filter;
+	
+	if( i < batch_size)
+	{
+		input += i*(image_padding + bias);
+		output += i*(flat_image_size);
+		
+		if(d < depth)
+		{
+			input += d * depth_padding;
+			output += d * f_size*f_size;
+			if(z < image_size)
+			{
+				local_pix = input[z];
+			
+				w = (z % w_size)*(1 + internal_padding) + padding;
+				h = (z / w_size)*(1 + internal_padding) + padding;
+				
+				for(x = w/stride; w-x*stride < f_size & x >= 0; x -= 1)
+				{
+					pos_w_filter = w-x*stride;
+					for(y = h/stride; h-y*stride < f_size & y >= 0; y-= 1)
+					{
+						pos_h_filter = h-y*stride;
+						output[x*flat_f_size + y*nb_area_w*flat_f_size + pos_w_filter + pos_h_filter*f_size] = local_pix;
+					}
+				}
+			}
+		}
+	}
+}
+
+
 //VERSION 3
+/*
 __global__ void im2col_kernel_v3(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias)
 {
 	int z = blockIdx.x*blockDim.x + threadIdx.x;
@@ -301,8 +364,7 @@ __global__ void im2col_kernel_v3(real* output, real* input, int image_size, int 
 		}
 	}
 }
-
-
+*/
 
 __global__ void rotate_filter_matrix(real* in, real* out, int nb_rows, int depth_size, int nb_filters_in, int len)
 {

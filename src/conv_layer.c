@@ -158,6 +158,8 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	c_param->nb_area_w = nb_area_comp(c_param->prev_size_w);
 	c_param->nb_area_h = nb_area_comp(c_param->prev_size_h);
 	
+	printf("Layer output: %d %d\n", c_param->nb_area_w,c_param->nb_area_h);
+	
 	//allocate all the filters in a flatten table. One filter is continuous. (include bias weight)
 	c_param->filters = (real*) malloc(nb_filters * c_param->flat_f_size * sizeof(real));
 	//allocate the update for the filters
@@ -182,6 +184,7 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	//allocate the im2col input flatten table regarding the batch size
 	c_param->im2col_input = (real*) calloc( (c_param->flat_f_size * c_param->nb_area_w * c_param->nb_area_h)
 		* net->batch_size, sizeof(real));
+	
 	c_param->im2col_delta_o = (real*) calloc( (c_param->prev_size_w*c_param->prev_size_h) * 
 		/* flat_filter*/(f_size*f_size*c_param->nb_filters) * net->batch_size,  sizeof(real));
 
