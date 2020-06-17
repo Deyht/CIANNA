@@ -41,6 +41,12 @@ void conv_define_activation_param(layer *current);
 //compute the number of area to convolve regarding the filters parameters
 int nb_area_comp(int size)
 {
+	if((size + c_param->padding*2 - c_param->f_size)%c_param->stride != 0)
+	{
+		printf("Warning: unable to divide current input volume into \
+an integer number of convolution regions\n \
+This might produce unstable results !\n\n");
+	}		
 	return (size + c_param->padding*2 - c_param->f_size) / c_param->stride + 1;
 }
 
@@ -231,6 +237,15 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	exit(EXIT_FAILURE);
 	#endif
 	
+	char activ[10];
+	get_string_activ_param(activ, current->activation_type);
+	printf("L:%d - Convolutional layer created:\n \
+Input: %dx%dx%d, Filters: %dx%dx%d, Output: %dx%dx%d \n \
+Activation: %s, Stride: %d, padding: %d\n",
+		net->nb_layers, c_param->prev_size_w, c_param->prev_size_h, 
+		c_param->prev_depth, c_param->f_size, c_param->f_size, c_param->nb_filters,
+		c_param->nb_area_w, c_param->nb_area_h, c_param->nb_filters,
+		activ, c_param->stride, c_param->padding);
 	
 }
 

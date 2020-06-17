@@ -595,8 +595,6 @@ static PyObject* py_dense_create(PyObject* self, PyObject *args, PyObject *kwarg
 		
 	dense_create(networks[network_id], prev, nb_neurons, i_activ, drop_rate, NULL);
 	
-	printf("Added dense layer, L:%d\n", networks[network_id]->nb_layers-1);
-	
 	return Py_None;
 }
 
@@ -630,7 +628,6 @@ static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs
 		
 	conv_create(networks[network_id], prev, f_size, nb_filters, stride, padding, i_activ, NULL);
 	
-	printf("Added convolutional layer, L:%d\n", networks[network_id]->nb_layers-1);
 	
 	return Py_None;
 }
@@ -654,8 +651,6 @@ static PyObject* py_pool_create(PyObject* self, PyObject *args, PyObject *kwargs
 		prev = networks[network_id]->net_layers[prev_layer];
 		
 	pool_create(networks[network_id], prev, pool_size);
-	
-	printf("Added pool layer, L:%d\n", networks[network_id]->nb_layers-1);
 	
 	return Py_None;
 }

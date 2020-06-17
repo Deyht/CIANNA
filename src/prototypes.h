@@ -59,6 +59,7 @@ void forward_testset(network *net, int train_step, int repeat);
 
 //activations function
 void print_activ_param(FILE *f, int type);
+void get_string_activ_param(char* activ, int type);
 int load_activ_param(char *type);
 void define_activation(layer* current);
 void linear_activation(layer *current);

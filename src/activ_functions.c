@@ -95,6 +95,29 @@ void print_activ_param(FILE *f, int type)
 	}	
 }
 
+void get_string_activ_param(char* activ, int type)
+{
+	switch(type)
+	{
+		case LOGISTIC:
+			sprintf(activ,"(LOGI)");
+			break;
+		
+		case SOFTMAX:
+			sprintf(activ,"(SMAX)");
+			break;
+	
+		case LINEAR:
+			sprintf(activ,"(LIN)");
+			break;
+	
+		case RELU:
+		default:
+			sprintf(activ,"(RELU)");
+			break;
+	}
+}
+
 int load_activ_param(char *type)
 {
 	if(strcmp(type, "(SMAX)") == 0)

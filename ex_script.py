@@ -56,7 +56,7 @@ if(0):
 
 if(0):
 
-	cnn.init_network(np.array([28,28,1]),10,0.1,32,'C_CUDA', dynamic_load=1)
+	cnn.init_network(np.array([28,28,1]),10,0.1,32,'C_CUDA', dynamic_load=0)
 
 
 	print ("Reading inputs ... ", end = "", flush=True)
@@ -106,7 +106,7 @@ if(0):
 
 if(1):
 
-	cnn.init_network(np.array([28,28,1]),10,0.1,64,'C_CUDA', dynamic_load=1)
+	cnn.init_network(np.array([28,28,1]),10,0.1,32,'C_CUDA', dynamic_load=1)
 
 
 	print ("Reading inputs ... ", end = "", flush=True)
@@ -150,13 +150,13 @@ if(1):
 	cnn.pool_create(pool_size=2)
 	cnn.conv_create(f_size=5, nb_filters=16, stride=1, padding=2, activation="RELU")
 	cnn.pool_create(pool_size=2)
-	cnn.conv_create(f_size=3, nb_filters=48, stride=1, padding=1, activation="RELU")
+	cnn.conv_create(f_size=3, nb_filters=48, stride=2, padding=1, activation="RELU")
 	cnn.dense_create(nb_neurons=1024, activation="RELU", drop_rate=0.5)
 	cnn.dense_create(nb_neurons=512, activation="RELU", drop_rate=0.2)
 	cnn.dense_create(10, activation="SOFTMAX")
 
 
-	cnn.train_network(nb_epoch=1, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.9, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
+	cnn.train_network(nb_epoch=20, learning_rate=0.0003, end_learning_rate=0.0001, control_interv=1, momentum=0.9, decay=0.009, save_each=0, shuffle_gpu=0, shuffle_every=1, confmat=1)
 
 	exit()
 

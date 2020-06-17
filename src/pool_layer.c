@@ -137,6 +137,12 @@ void pool_create(network *net, layer* previous, int pool_size)
 	#endif
 	
 	
+	printf("L:%d - Pooling layer layer created:\n \
+Input: %dx%dx%d, P. size: %d, Output: %dx%dx%d \n",
+		net->nb_layers, p_param->prev_size_w, p_param->prev_size_h, 
+		p_param->prev_depth, p_param->p_size,
+		p_param->nb_area_w, p_param->nb_area_h, p_param->nb_maps);
+	
 }
 
 void pool_save(FILE *f, layer *current)

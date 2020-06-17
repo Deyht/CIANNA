@@ -154,7 +154,6 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	
 	if(f_load == NULL)
 	{
-		printf("Xavier init\n");
 		xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1);
 	}
 	else
@@ -182,6 +181,15 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	printf("ERROR : Non CUDA compute not implemented at the moment !\n");
 	exit(EXIT_FAILURE);
 	#endif
+	
+		char activ[10];
+	get_string_activ_param(activ, current->activation_type);
+	printf("L:%d - Dense layer created:\n \
+Input: %d, Nb. Neurons: %d \n \
+Activation: %s, Dropout: %f\n",
+		net->nb_layers, d_param->in_size,  d_param->nb_neurons, 
+		activ, d_param->dropout_rate);
+	
 }
 
 
