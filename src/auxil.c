@@ -920,10 +920,10 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 	
 	for(i = 0; i < nb_epochs; i++)
 	{
-		init_timing(&ep_timer);
 		net->epoch++;
 		
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*i);
+		
 		
 		if((net->epoch) % shuffle_every == 0)
 		{
@@ -941,6 +941,8 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 				#endif
 			}
 		}
+		
+		init_timing(&ep_timer);
 		
 		//Loop on all batch for one epoch
 		for(j = 0; j < net->train.nb_batch; j++)

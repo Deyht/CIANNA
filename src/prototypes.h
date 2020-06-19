@@ -110,6 +110,7 @@ __device__ int cuda_argmax(real* tab, int dim_out);
 __global__ void im2col_kernel_v4(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
 #endif
 void init_cuda(void);
+void cuda_sync(void);
 void cuda_free_table(real* tab);
 void cuda_convert_table(real **tab, int size);
 void cuda_convert_dataset(network *net, Dataset *data);

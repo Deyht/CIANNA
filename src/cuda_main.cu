@@ -45,6 +45,11 @@ void init_cuda(void)
 	//place holder for device selection
 }
 
+void cuda_sync(void)
+{
+	cudaDeviceSynchronize();
+}
+
 void cuda_free_table(real* tab)
 {
 	cudaFree(tab);
