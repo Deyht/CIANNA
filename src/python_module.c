@@ -134,18 +134,18 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 						{
 							if(!flat)
 	data->input[i][j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height 
-		* networks[network_id]->input_width + l * networks[network_id]->input_width + m] 
-		= *(float*)(py_data->data + (i*networks[network_id]->batch_size 
+		* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
+		= *((float*)(py_data->data + (i*networks[network_id]->batch_size 
 		* networks[network_id]->input_depth*networks[network_id]->input_height 
 		+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
-		+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
+		+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]));
 							else
 	data->input[i][j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height
 		* networks[network_id]->input_width + l * networks[network_id]->input_width + m] 
-		= *(float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
+		= *((float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
 		* py_data->strides[0] + (k*networks[network_id]->input_height 
 		* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
-		* py_data->strides[1]);	
+		* py_data->strides[1]));	
 						}
 				}
 			}
@@ -628,7 +628,6 @@ static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs
 		
 	conv_create(networks[network_id], prev, f_size, nb_filters, stride, padding, i_activ, NULL);
 	
-	
 	return Py_None;
 }
 
@@ -682,6 +681,9 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|diddiiiii", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_net, &network_id, &shuffle_gpu, &shuffle_every))
 	    return Py_None;
 	
+	printf("py_nb_epoch %d, py_control_interv %d, py_learning_rate %f, py_end_learning_rate %f , py_momentum %f, py_decay %f, py_confmat %d, save_net %d, shuffle_gpu %d , shuffle_every %d \n", 
+		py_nb_epoch, py_control_interv, py_learning_rate, py_end_learning_rate, py_momentum, 
+		py_decay, py_confmat, save_net, shuffle_gpu, shuffle_every);
 	train_network(networks[network_id], py_nb_epoch, py_control_interv, 
 		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_net, shuffle_gpu, shuffle_every);
 
@@ -738,9 +740,9 @@ PyMODINIT_FUNC PyInit_CIANNA(void)
 	setbuf(stdout, NULL);
 	import_array();
 	
-	printf("############################################################\n\
-Importing CIANNA python module V-p.0.4, by D.Cornu\n\
-############################################################\n\n");
+	printf("###################################################################\n\
+Importing CIANNA python module V-p.0.4 (CIANNA V-0.8), by D.Cornu\n\
+###################################################################\n\n");
 
 	PyObject *m;
     m = PyModule_Create(&CIANNA);

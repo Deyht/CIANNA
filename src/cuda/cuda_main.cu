@@ -23,7 +23,7 @@
 
 
 
-#include "prototypes.h"
+#include "../prototypes.h"
 
 static int cu_blocks;
 int cu_threads = CUDA_THREADS_PER_BLOCKS;
@@ -37,9 +37,43 @@ __device__ int cuda_argmax(real* tab, int pos, int len, int size, int format);
 
 void init_cuda(void)
 {
-	if(cublasCreate(&cu_handle) != CUBLAS_STATUS_SUCCESS) 
+	cublasStatus_t stat = cublasCreate(&cu_handle);
+	
+	if(stat != CUBLAS_STATUS_SUCCESS) 
 	{
-		printf("GPU handle create fail\n");
+		switch(stat)
+		{
+		    case CUBLAS_STATUS_SUCCESS:
+		        printf("CUBLAS_STATUS_SUCCESS");
+		        break;
+		    case CUBLAS_STATUS_NOT_INITIALIZED:
+		        printf("CUBLAS_STATUS_NOT_INITIALIZED");
+				break;
+		    case CUBLAS_STATUS_ALLOC_FAILED:
+		        printf("CUBLAS_STATUS_ALLOC_FAILED");
+				break;
+		    case CUBLAS_STATUS_INVALID_VALUE:
+		        printf("CUBLAS_STATUS_INVALID_VALUE");
+				break;
+		    case CUBLAS_STATUS_ARCH_MISMATCH:
+		        printf("CUBLAS_STATUS_ARCH_MISMATCH");
+				break;
+		    case CUBLAS_STATUS_MAPPING_ERROR:
+		        printf("CUBLAS_STATUS_MAPPING_ERROR");
+				break;
+		    case CUBLAS_STATUS_EXECUTION_FAILED:
+		        printf("CUBLAS_STATUS_EXECUTION_FAILED");
+				break;
+		    case CUBLAS_STATUS_INTERNAL_ERROR:
+		        printf("CUBLAS_STATUS_INTERNAL_ERROR");
+				break;
+			default:
+				break;
+			
+		}
+		
+
+		printf("\nGPU handle create fail\n");
 		exit(EXIT_FAILURE);
 	}
 	//place holder for device selection
@@ -157,7 +191,7 @@ void cuda_print_table(real* tab, int size, int return_every)
 	{
 		if(i%return_every == 0)
 			printf("\n");
-		printf("%g ", (temp[i]));
+		printf("%g \t ", (temp[i]));
 	}
 	printf("\n");
 	
@@ -179,7 +213,7 @@ void cuda_print_table_transpose(real* tab, int line_size, int column_size)
 	{
 		for(j = 0; j < line_size; j++)
 		{
-			printf("%g ", temp[j*column_size + i]);
+			printf("%g \t ", temp[j*column_size + i]);
 		}
 		printf("\n");
 	}

@@ -51,8 +51,33 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, real
 	{
 		srand(time(NULL));
 		#ifdef CUDA
-		init_cuda();
+		if(u_compute_method == C_CUDA)
+			init_cuda();
 		#endif
+		
+		#ifndef CUDA
+		if(u_compute_method == C_CUDA)
+		{
+			printf("ERROR: compute method set to CUDA while CIANNA was not compiled for it.\n");
+			printf("Install Nvidia CUDA and recompile CIANNA with the appropriate option.\n\n");
+			exit(EXIT_FAILURE);
+		}
+		#endif
+		
+		#ifndef BLAS
+		if(u_compute_method == C_BLAS)
+		{
+			printf("ERROR: compute method set to BLAS while CIANNA was not compiled for it.\n");
+			printf("Install OpenBLAS and recompile CIANNA with the appropriate option.\n\n");
+			exit(EXIT_FAILURE);
+		}
+		#endif
+		if(u_compute_method == C_NAIV)
+		{
+			printf("WARNING: compute method set to NAIV, which is not optimal.\n");
+			printf("We recommand the use of OpenBLAS for a better usage of CPU ressources.\n");
+			printf("If NAIV with single CPU thread is your only option, we recommand the use of the SGD learning scheme, enabled by setting the batch size to 1.\n\n");
+		}
 		is_init = 1;
 	}
 
@@ -62,18 +87,37 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, real
 	networks[network_number]->input_dim = u_input_dim[0]*u_input_dim[1]*u_input_dim[2];
 	networks[network_number]->output_dim = u_output_dim;
 	networks[network_number]->input_bias = in_bias;
-	networks[network_number]->batch_size = u_batch_size;
+	if(u_batch_size > 1)
+	{
+		networks[network_number]->batch_size = u_batch_size;
+		networks[network_number]->batch_param = OFF;
+	}
+	else if(u_batch_size == 1)
+	{
+		networks[network_number]->batch_size = 1;
+		networks[network_number]->batch_param = SGD;
+		printf("Automatically switch to SGD scheme (batch_size = 1)\n");
+	}
+	else if(u_batch_size <= 0)
+	{
+		networks[network_number]->batch_size = 1024;
+		networks[network_number]->batch_param = FULL;
+		printf("Undefined batch size -> automatic value is 1024\n");
+	}
 	networks[network_number]->compute_method = u_compute_method;
 	networks[network_number]->nb_layers = 0;
 	networks[network_number]->epoch = 0;
 	
 	networks[network_number]->output_error = (real*) calloc(networks[network_number]->batch_size*
 		networks[network_number]->output_dim,sizeof(real));
-	#ifdef CUDA
+	
 	if(u_compute_method == C_CUDA)
+	{
+		#ifdef CUDA
 		cuda_create_table(&networks[network_number]->output_error_cuda, 
 			networks[network_number]->batch_size*networks[network_number]->output_dim);
-	#endif
+		#endif
+	}
 }
 
 
@@ -81,7 +125,7 @@ Dataset create_dataset(network *net, int nb_elem)
 {
 	int i,j;
 	Dataset data;
-
+	
 	data.size = nb_elem;
 	data.nb_batch = (data.size - 1) / net->batch_size + 1;
 	data.input = (real**) malloc(data.nb_batch*sizeof(real*));
@@ -105,7 +149,20 @@ Dataset create_dataset(network *net, int nb_elem)
 	return data;
 }
 
-
+void print_table(real* tab, int column_size, int nb_column)
+{
+	int i, j;
+	
+	for(i = 0; i < nb_column; i++)
+	{
+		for(j = 0; j < column_size; j++)
+		{
+			printf("%f ", tab[i*column_size+j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+}
 
 void free_dataset(Dataset data)
 {
@@ -620,7 +677,6 @@ void host_only_shuffle(network *net, Dataset data)
 	real temp;
 	int pos, pos2, batch, batch2;
 
-
 	for(i = 0; i < data.size - 1; i++)
 	{
 		j = i + (int)((rand() / ((double)RAND_MAX) ) * (double)(data.size-i));
@@ -648,26 +704,39 @@ void host_only_shuffle(network *net, Dataset data)
 
 
 
+void update_weights(real *weights, real* update, int size)
+{
+	int i;
+	
+	for(i = 0; i < size; i++)
+		weights[i] -= update[i];
+}
+
+
+
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat)
 {
 	int j, k, l, r;
 	float** mat = NULL; 
-	real* cuda_mat;
 	float* temp = NULL;
 	int arg1, arg2;
 	real count;
 	real *rapp_err = NULL, *rapp_err_rec = NULL;
 	int o, pos;
 	real total_error;
-	real* temp_error = NULL;
 	real* output_save = NULL;
 	struct timeval ep_timer;
 	float items_per_s = 0.0;
-	FILE *f_save;
+	FILE *f_save = NULL;
 	char f_save_name[100];
+	
+	#ifdef CUDA
+	real* cuda_mat;
+	real* temp_error = NULL;
+	#endif
 
 	//FILE *f_err;
-
+	
 	o = net->output_dim;
 	
 	if(confusion_matrix)
@@ -676,7 +745,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		rapp_err = (real*) malloc(o*sizeof(real));
 		rapp_err_rec = (real*) malloc(o*sizeof(real));
 		mat = (float**) malloc(o*sizeof(float*));
-		temp = (float*) malloc(o*o*sizeof(float));
+		temp = (float*) calloc(o*o,sizeof(float));
 		for(j = 0; j < o; j++)
 			mat[j] = &(temp[j*o]);
 		
@@ -686,11 +755,12 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			cuda_create_table(&cuda_mat, o*o);
 		}
 		#endif
-	}
+	}	
 	
 	if(saving == 1)
 	{
-		output_save = (real*) calloc(net->batch_size*net->out_size,sizeof(real));
+		if(net->compute_method == C_CUDA)
+			output_save = (real*) calloc(net->batch_size*net->out_size,sizeof(real));
 		sprintf(f_save_name, "fwd_res/net%d_%04d.dat", net->id, net->epoch);
 		f_save = fopen(f_save_name, "w+");
 		if(f_save == NULL)
@@ -710,8 +780,10 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		{
 			if(net->compute_method == C_CUDA)
 			{
+				#ifdef CUDA
 				temp_error = net->output_error;
 				net->output_error = net->output_error_cuda;
+				#endif
 			}
 			
 			//##########################################################
@@ -723,10 +795,12 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			else
 				net->length = net->batch_size;
 			
-			if(net->dynamic_load)
+			if(net->compute_method == C_CUDA && net->dynamic_load)
 			{
+				#ifdef CUDA
 				cuda_put_table(&net->input, &(data.input[j]), net->batch_size*(net->input_dim+1));
 				cuda_put_table(&net->target, &(data.target[j]), net->batch_size*(net->output_dim));
+				#endif
 			}
 			else
 			{
@@ -737,15 +811,18 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			//forward
 			for(k = 0; k < net->nb_layers; k++)
 			{
+				
 				net->net_layers[k]->forward(net->net_layers[k]);
 			}
-			output_error_fct(net->net_layers[net->nb_layers-1]);
 			
+			output_error(net->net_layers[net->nb_layers-1]);
+				
 			//##########################################################
 			
-			#ifdef CUDA
+			
 			if(net->compute_method == C_CUDA)
 			{
+				#ifdef CUDA
 				cuda_get_table(&net->output_error, &temp_error, net->batch_size*net->output_dim);
 				net->output_error = temp_error;	
 				if(saving == 1)
@@ -757,12 +834,22 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 						for(l = 0; l < net->out_size; l++)
 							fprintf(f_save, "%g ", output_save[k*net->out_size + l]);
 						fprintf(f_save, "\n");
-						
 					}
 				}
-				
+				#endif
 			}
-			#endif
+			else
+			{
+				if(saving == 1)
+				{
+					for(k = 0; k < net->length; k++)
+					{
+						for(l = 0; l < net->out_size; l++)
+							fprintf(f_save, "%g ", net->net_layers[net->nb_layers-1]->output[k*net->out_size + l]);
+						fprintf(f_save, "\n");
+					}
+				}
+			}
 			
 			pos = 0;
 			for(k = 0; k < net->length; k++)
@@ -868,29 +955,35 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 	char net_save_file_name[200];
 	struct timeval ep_timer;
 	float items_per_s = 0.0;
+	int batch_loc;
+	
+	#ifdef CUDA
 	Dataset shuffle_duplicate;
 	real *index_shuffle = NULL, *index_shuffle_device = NULL;
 	
-	if(net->dynamic_load)
+	if(net->compute_method == C_CUDA)
 	{
-		cuda_create_table(&(net->input), net->batch_size*(net->input_dim+1));
-		cuda_create_table(&(net->target), net->batch_size*(net->output_dim));
-	}
-	else
-	{
-		shuffle_duplicate = create_dataset(net, net->train.size);
-		if(shuffle_gpu)
+		if(net->dynamic_load)
 		{
-			#ifdef CUDA
-			index_shuffle = (real*) calloc(net->train.size,sizeof(real));
-			for(i = 0; i < net->train.size; i++)
-				index_shuffle[i] = i;
-			index_shuffle_device = (real*)  calloc(net->train.size,sizeof(real));
-			cuda_convert_dataset(net, &shuffle_duplicate);
-			cuda_convert_table(&index_shuffle_device, net->train.size);
-			#endif
+			cuda_create_table(&(net->input), net->batch_size*(net->input_dim+1));
+			cuda_create_table(&(net->target), net->batch_size*(net->output_dim));
+		}
+		else
+		{
+			shuffle_duplicate = create_dataset(net, net->train.size);
+			if(shuffle_gpu)
+			{
+				
+				index_shuffle = (real*) calloc(net->train.size,sizeof(real));
+				for(i = 0; i < net->train.size; i++)
+					index_shuffle[i] = i;
+				index_shuffle_device = (real*)  calloc(net->train.size,sizeof(real));
+				cuda_convert_dataset(net, &shuffle_duplicate);
+				cuda_convert_table(&index_shuffle_device, net->train.size);
+			}
 		}
 	}
+	#endif
 	
 	begin_learn_rate = u_begin_learning_rate;
 	end_learn_rate = u_end_learning_rate;
@@ -924,22 +1017,29 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 		
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*i);
 		
-		
-		if((net->epoch) % shuffle_every == 0)
+		if((net->epoch) % shuffle_every == 0 && net->batch_param != SGD)
 		{
-			if(net->dynamic_load)
+			if(net->compute_method == C_CUDA)
 			{
-				host_only_shuffle(net, net->train);
+				#ifdef CUDA
+				if(net->dynamic_load)
+				{
+					host_only_shuffle(net, net->train);
+				}
+				else
+				{
+					if(shuffle_gpu)
+						cuda_shuffle(net, net->train, shuffle_duplicate, index_shuffle, index_shuffle_device);
+					else
+						host_shuffle(net, net->train, shuffle_duplicate);
+				}
+				#endif
 			}
 			else
 			{
-				#ifdef CUDA
-				if(shuffle_gpu)
-					cuda_shuffle(net, net->train, shuffle_duplicate, index_shuffle, index_shuffle_device);
-				else
-					host_shuffle(net, net->train, shuffle_duplicate);
-				#endif
+				host_only_shuffle(net, net->train);
 			}
+			
 		}
 		
 		init_timing(&ep_timer);
@@ -951,26 +1051,38 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 				net->length = net->train.size%net->batch_size;
 			else
 				net->length = net->batch_size;
-			
-			if(net->dynamic_load)
+
+			if(net->batch_param != SGD)
+				batch_loc = j;
+			else
+				batch_loc = random_uniform() * net->train.size;
+				
+			if(net->dynamic_load && net->compute_method == C_CUDA)
 			{
-				cuda_put_table(&net->input, &(net->train.input[j]), net->batch_size*(net->input_dim+1));
-				cuda_put_table(&net->target, &(net->train.target[j]), net->batch_size*(net->output_dim));
+				#ifdef CUDA
+				cuda_put_table(&net->input, &(net->train.input[batch_loc]), net->batch_size*(net->input_dim+1));
+				cuda_put_table(&net->target, &(net->train.target[batch_loc]), net->batch_size*(net->output_dim));
+				#endif
 			}
 			else
 			{
-				net->input = net->train.input[j];
-				net->target = net->train.target[j];
+				net->input = net->train.input[batch_loc];
+				net->target = net->train.target[batch_loc];
 			}
-		
+			
 			for(k = 0; k < net->nb_layers; k++)
+			{
 				net->net_layers[k]->forward(net->net_layers[k]);
+			}
 			
 			output_deriv_error(net->net_layers[net->nb_layers-1]);
 			
 			//Propagate error through all layers
 			for(k = 0; k < net->nb_layers; k++)
+			{
 				net->net_layers[net->nb_layers-1-k]->backprop(net->net_layers[net->nb_layers-1-k]);
+			}
+		
 		}
 		
 		items_per_s = net->train.size/ellapsed_time(ep_timer); 
@@ -989,30 +1101,29 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 			printf("Saving network for epoch: %d\n", net->epoch);
 			save_network(net, net_save_file_name);
 		}
-		
-		
 	}
 	
 	#ifdef CUDA
-	if(net->dynamic_load)
-	{
-		cuda_free_table(net->input);
-		cuda_free_table(net->target);
-	}
-	else if(shuffle_gpu)
-	{
-		cuda_free_dataset(&shuffle_duplicate);
-		free(index_shuffle);
-	}
-	else
-	{
-		free_dataset(shuffle_duplicate);
-	}
 	if(net->compute_method == C_CUDA)
-		cuda_free_table(index_shuffle_device);
+	{
+		if(net->dynamic_load)
+		{
+			cuda_free_table(net->input);
+			cuda_free_table(net->target);
+		}
+		else if(shuffle_gpu)
+		{
+			cuda_free_dataset(&shuffle_duplicate);
+			cuda_free_table(index_shuffle_device);
+			free(index_shuffle);
+		}
+		else
+		{
+			free_dataset(shuffle_duplicate);
+		}	
+	}
 	#endif
 }
-
 
 
 void forward_testset(network *net, int train_step, int repeat)
@@ -1041,8 +1152,10 @@ void forward_testset(network *net, int train_step, int repeat)
 	
 	if(net->dynamic_load)
 	{
+		#ifdef CUDA
 		cuda_create_table(&(net->input), net->batch_size*(net->input_dim+1));
 		cuda_create_table(&(net->target), net->batch_size*(net->output_dim));
+		#endif
 	}
 	
 	if(train_step <= 0)
@@ -1058,8 +1171,10 @@ void forward_testset(network *net, int train_step, int repeat)
 	
 	if(net->dynamic_load)
 	{
+		#ifdef CUDA
 		cuda_free_table(net->input);
 		cuda_free_table(net->target);
+		#endif
 	}
 }
 

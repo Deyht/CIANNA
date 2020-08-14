@@ -21,9 +21,7 @@
 
 
 
-
 #include "prototypes.h"
-
 
 int main()
 {
@@ -39,10 +37,10 @@ int main()
 	
 	
 	printf("############################################################\n\
-CIANNA V-0.7 (03/2020), by D.Cornu\n\
+	CIANNA V-0.8 (08/2020), by D.Cornu\n\
 ############################################################\n\n");
 	
-	f = fopen("mnist.dat", "r+");
+	f = fopen("mnist_dat/mnist.dat", "r+");
 	if(f == NULL)
 	{
 		printf("ERROR: Can not open input file ...\n");
@@ -51,12 +49,11 @@ CIANNA V-0.7 (03/2020), by D.Cornu\n\
 
 	fscanf(f, "%d %d %d %dx%dx%d %d", &train_size, &test_size, &valid_size, &dims[0], &dims[1],
 		&dims[2], &out_dim);
-		
 	
-	init_network(0, dims, out_dim, 0.1, 256, C_CUDA, 1);
+	init_network(0, dims, out_dim, 0.1, 64, C_NAIV, 1);
 	
 	networks[0]->train = create_dataset(networks[0], train_size);
-	networks[0]->test = create_dataset(networks[0], test_size);
+	networks[0]->test  = create_dataset(networks[0], test_size );
 	networks[0]->valid = create_dataset(networks[0], valid_size);
 	
 	for(i = 0; i < networks[0]->train.nb_batch; i++)
@@ -93,7 +90,6 @@ CIANNA V-0.7 (03/2020), by D.Cornu\n\
 		}
 	}
 	
-	
 	for(i = 0; i < networks[0]->train.nb_batch; i++)
 	{
 		for(j = 0; j < networks[0]->batch_size; j++)
@@ -126,7 +122,7 @@ CIANNA V-0.7 (03/2020), by D.Cornu\n\
 				fscanf(f, "%f", &networks[0]->valid.target[i][j*(networks[0]->output_dim) + k]);
 		}
 	}
-
+	
 	fclose(f);
 	
 	/*
@@ -138,20 +134,30 @@ CIANNA V-0.7 (03/2020), by D.Cornu\n\
 	#endif
 	*/
 	
-	conv_create(networks[0], NULL, 5, 6, 1, 0, RELU, NULL);
+	/*
+	conv_create(networks[0], NULL, 5, 6, 1, 2, RELU, NULL);
 	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 4, RELU, NULL);
+	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 2, RELU, NULL);
 	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
+	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 3, 48, 1, 1, RELU, NULL);
+	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 1024, RELU, 0.5, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.0, NULL);
+	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 
+		networks[0]->output_dim, SOFTMAX, 0.0, NULL);*/
+	
+	conv_create(networks[0], NULL, 5, 6, 1, 2, RELU, NULL);
+	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
+	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 2, RELU, NULL);
+	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
+	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 3, 48, 1, 1, RELU, NULL);
+	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 1024, RELU, 0.5, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.0, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 
 		networks[0]->output_dim, SOFTMAX, 0.0, NULL);
 	
-	
-	
 	printf("Start learning phase ...\n");
 	
-	train_network(networks[0], 30, 1, 0.0003, 0.0001, 0.7, 0.009, 1, 5, 0, 1);
+	train_network(networks[0], 40, 1, 0.0002, 0.0001, 0.9, 0.009, 1, 5, 0, 1);
 
 	exit(EXIT_SUCCESS);
 }

@@ -24,7 +24,121 @@
 #include "prototypes.h"
 
 
+//public are in "prototypes.h"
+
+//private prototypes
+void linear_activation(layer *current);
+void linear_deriv(layer *previous);
+void linear_deriv_output_error(layer* current);
+void linear_output_error(layer* current);
+
+void ReLU_activation(layer *current);
+void ReLU_deriv(layer *previous);
+void ReLU_deriv_output_error(layer* current);
+void ReLU_output_error(layer* current);
+
+void logistic_activation(layer *current);
+void logistic_deriv(layer *previous);
+void logistic_deriv_output_error(layer* current);
+void logistic_output_error(layer* current);
+
+void softmax_activation(layer *current);
+void softmax_deriv(layer *previous);
+void softmax_deriv_output_error(layer *current);
+void softmax_output_error(layer *current);
+
+void ReLU_activation_fct(real *tab, int len, int dim, real leaking_factor);
+void ReLU_deriv_fct(real *deriv, real *value, int len, int dim, real leaking_factor, int size);
+void quadratic_deriv_output_error(real *delta_o, real *output, real *target, 
+	int dim, int len, int size);
+void quadratic_output_error(real *output_error, real *output, real *target, 
+	int dim, int len, int size);
+void logistic_activation_fct(real *tab, real beta, real saturation, int dim, int len, int size);
+void logistic_deriv_fct(real *deriv, real* value, real beta, int len, int dim, int size);
+void softmax_activation_fct(real *tab, int len, int dim, int size);
+void cross_entropy_deriv_output_error(real *delta_o, real *output, real *target, int len, int dim, int size);
+void cross_entropy_output_error(real *output_error, real *output, real *target, int len, int dim, int size);
+
 //#####################################################
+
+
+void define_activation(layer *current)
+{
+	switch(current->activation_type)
+	{
+		case RELU:
+			current->activation = ReLU_activation;
+			current->deriv_activation = ReLU_deriv;
+			break;
+		
+		case LOGISTIC:
+			current->activation = logistic_activation;
+			current->deriv_activation = logistic_deriv;
+			break;
+			
+		case SOFTMAX:
+			current->activation = softmax_activation;
+			current->deriv_activation = softmax_deriv;
+			break;
+			
+		case LINEAR:
+			default:
+			current->activation = linear_activation;
+			current->deriv_activation = linear_deriv;
+			break;
+	}
+
+}
+
+
+void deriv_output_error(layer *current)
+{
+	switch(current->activation_type)
+	{
+		case RELU:
+			ReLU_deriv_output_error(current);
+			break;
+		
+		case LOGISTIC:
+			logistic_deriv_output_error(current);
+			break;
+			
+		case SOFTMAX:
+			softmax_deriv_output_error(current);
+			break;
+			
+		case LINEAR:
+		default:
+			linear_deriv_output_error(current);
+			break;
+	
+	}
+}
+
+
+void output_error_fct(layer* current)
+{
+	switch(current->activation_type)
+	{
+		case RELU:
+			ReLU_output_error(current);
+			break;
+		
+		case LOGISTIC:
+			logistic_output_error(current);
+			break;
+			
+		case SOFTMAX:
+			softmax_output_error(current);
+			break;
+			
+		case LINEAR:
+		default:
+			linear_output_error(current);
+			break;
+	
+	}
+}
 
 
 void output_deriv_error(layer* current)
@@ -37,19 +151,18 @@ void output_deriv_error(layer* current)
 			#endif
 			break;
 		
+		case C_NAIV:
 		case C_BLAS:
-			#ifdef BLAS
-			printf("BLAS computation do not exist yet\n");
-			#endif
+			deriv_output_error(current);
 			break;
+			
 		default:
-			printf("default computaiton do not exist yet\n");
-			exit(EXIT_FAILURE);
+			deriv_output_error(current);
 			break;
 	}	
 }
 
-void output_error_fct(layer* current)
+void output_error(layer* current)
 {
 	switch(current->c_network->compute_method)
 	{
@@ -59,16 +172,15 @@ void output_error_fct(layer* current)
 			#endif
 			break;
 		
+		case C_NAIV:
 		case C_BLAS:
-			#ifdef BLAS
-			printf("BLAS computation do not exist yet\n");
-			#endif
+			output_error_fct(current);
 			break;
+			
 		default:
-			printf("default computaiton do not exist yet\n");
-			exit(EXIT_FAILURE);
+			output_error_fct(current);
 			break;
-	}
+	}	
 }
 
 
@@ -134,19 +246,379 @@ int load_activ_param(char *type)
 
 
 //#####################################################
-//          Linear activation related functions
+//         Linear activation related functions
 //#####################################################
 
 void linear_activation(layer *current)
 {
-	//Do nothing in a linear activation
+	//empty on purpose
 }
 
-void linear_deriv(layer *current)
+
+void linear_deriv(layer *previous)
 {
-	//the linear derivativ is always 1, no action is required
+	//empty on purpose
+}
+
+
+void linear_deriv_output_error(layer *current)
+{
+	linear_param *param = (linear_param*)current->activ_param;
+	quadratic_deriv_output_error(current->delta_o, current->output,
+		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
+}
+
+void linear_output_error(layer *current)
+{	
+	linear_param *param = (linear_param*)current->activ_param;
+	quadratic_output_error(current->c_network->output_error, 
+		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
+}
+
+
+//#####################################################
+
+
+
+
+//#####################################################
+//          ReLU activation related functions
+//#####################################################
+
+
+void ReLU_activation(layer *current)
+{
+	ReLU_param *param = (ReLU_param*)current->activ_param;
+	ReLU_activation_fct(current->output, param->size, param->dim, 
+		param->leaking_factor);
+}
+
+//Is in fact a leaky ReLU, to obtain true ReLU define leaking_factor to 0
+void ReLU_activation_fct(real *tab, int len, int dim, real leaking_factor)
+{
+	int i;
+	int pos;
+	
+	#pragma omp parallel for private(pos) schedule(guided,4)
+	for(i = 0; i < len; i++)
+	{
+		pos = i + i/dim;
+		if(tab[pos] <= 0.0)
+			tab[pos] *= leaking_factor;
+	}
+}
+
+
+void ReLU_deriv(layer *previous)
+{
+	ReLU_param *param = (ReLU_param*)previous->activ_param;
+	ReLU_deriv_fct(previous->delta_o, previous->output, param->size, param->dim,
+		param->leaking_factor, param->size);
+}
+
+
+//should be adapted for both conv and dense layer if dim is properly defined
+void ReLU_deriv_fct(real *deriv, real *value, int len, int dim, real leaking_factor, int size)
+{
+	int i;
+	
+	#pragma omp parallel for schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		if(i < len && (i+1)%(dim+1) != 0)
+		{
+			if(value[i] <= 0.0)
+				deriv[i] *= leaking_factor;
+		}
+		else
+			deriv[i] = 0.0;
+	}
+}
+
+// Should re write a output function to take into account ReLU for Conv output format
+void ReLU_deriv_output_error(layer* current)
+{
+	ReLU_param *param = (ReLU_param*)current->activ_param;
+	
+	quadratic_deriv_output_error(current->delta_o, current->output, current->c_network->target,
+		(param->dim+1) * current->c_network->length, param->dim, param->size);
+	ReLU_deriv_fct(current->delta_o, current->output, 
+		param->size, param->dim, param->leaking_factor, param->size);
+}
+
+
+void ReLU_output_error(layer* current)
+{
+	ReLU_param *param = (ReLU_param*)current->activ_param;
+	
+	quadratic_output_error(current->c_network->output_error, 
+		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, 
+		param->dim, param->size);
+}
+
+
+void quadratic_deriv_output_error(real *delta_o, real *output, real *target, int len, int dim, int size)
+{
+	int i;
+	int pos;
+	
+	#pragma omp parallel for private(pos) schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{	
+		if(i < len && (i+1)%(dim+1) != 0)
+		{
+			pos = i - i/(dim+1);
+			delta_o[i] = (output[i] - target[pos]);
+		}
+		else
+		{
+			delta_o[i] = 0.0;
+		}
+	}
+}
+
+
+
+void quadratic_output_error(real *output_error, real *output, real *target, int len, int dim, int size)
+{
+	int i;
+	int pos;
+	
+	#pragma omp parallel for private(pos) schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		if(i < len && (i+1)%(dim+1) != 0)
+		{
+			pos = i - i/(dim+1);
+			output_error[pos] = 0.5*(output[i] - target[pos])*(output[i] - target[pos]);
+		}
+	}
+}
+
+
+//#####################################################
+
+
+
+
+
+//#####################################################
+//          Logistic activation related funcitons
+//#####################################################
+
+
+void logistic_activation(layer *current)
+{
+	logistic_param *param = (logistic_param*)current->activ_param;
+	
+	logistic_activation_fct(current->output, param->beta, param->saturation, param->size,  param->dim, param->size);
+}
+
+void logistic_activation_fct(real *tab, real beta, real saturation, int len, int dim, int size)
+{
+	int i = 0;
+	int pos;
+
+	#pragma omp parallel for private(pos) schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		if(i < len)
+		{
+			pos = i + i / dim;
+			tab[pos] = -beta*tab[pos];
+			if(tab[pos] > saturation)
+				tab[pos] = saturation;
+			tab[pos] = 1.0/(1.0 + expf(tab[pos]));
+		}
+		else
+		{
+			tab[i] = 0.0;
+		}
+	}
+}
+
+
+
+void logistic_deriv(layer *previous)
+{
+	logistic_param *param = (logistic_param*)previous->activ_param;
+	logistic_deriv_fct(previous->delta_o, previous->output, param->beta,
+		param->size, param->dim, param->size);
+}
+
+
+
+void logistic_deriv_fct(real *deriv, real* value, real beta, int len, int dim, int size)
+{
+	int i;
+	
+	#pragma omp parallel for schedule(guided,4)
+	for(i = 0; i < size;  i++)
+	{
+		if(i < len && (i+1)%(dim+1) != 0)
+		{
+			deriv[i] *= beta*value[i]*(1.0-value[i]);
+		}
+		else
+			deriv[i] = 0.0;
+	}
+}
+
+
+void logistic_deriv_output_error(layer* current)
+{
+	logistic_param *param = (logistic_param*)current->activ_param;
+	quadratic_deriv_output_error(current->delta_o, current->output,
+		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
+	logistic_deriv_fct(current->delta_o, current->output, param->beta,
+		(param->dim+1)*current->c_network->length, param->dim, param->size);
+	
+}
+
+void logistic_output_error(layer* current)
+{
+	logistic_param *param = (logistic_param*)current->activ_param;
+	quadratic_output_error(current->c_network->output_error, 
+		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, 
+		param->dim, param->size);	
 }
 
 //#####################################################
+
+
+
+//#####################################################
+//          Soft-Max activation related funcitons
+//#####################################################
+
+
+void softmax_activation(layer *current)
+{
+	softmax_param *param = (softmax_param*)current->activ_param;
+	softmax_activation_fct(current->output, current->c_network->length, param->dim, current->c_network->batch_size);
+}
+
+void softmax_activation_fct(real *tab, int len, int dim, int size)
+{
+	//difficult to optimize but can be invastigated
+	//provides a probabilistic output
+	int i;
+	int j;
+	real *pos;
+	real vmax;
+	real normal = 0.0000001;
+	
+	#pragma omp parallel for private(j, pos, vmax, normal) schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		normal = 0.0000001;
+		if(i < len)
+		{
+			pos = tab + i*(dim+1);
+			
+			vmax = pos[0];
+			for(j = 1; j < dim; j++)
+				if(pos[j] > vmax)
+					vmax = pos[j];
+			
+			for(j = 0; j < dim; j++)
+			{	
+				pos[j] = expf(pos[j]-vmax);
+				normal += pos[j];
+			}		
+			pos[j] = 0.0;
+			
+			for(j = 0; j < dim; j++)
+					pos[j] /= normal;
+					
+			pos[j] = 0.0;
+		}
+		else
+		{
+			pos = tab + i*(dim+1);		
+			for(j = 0; j < dim; j++)
+				pos[j] = 0.0;
+			pos[j] = 0.0;
+		}
+	}
+}
+
+
+void softmax_deriv(layer *previous)
+{
+	printf("Error : Softmax can not be used in the middle of the network !\n");
+	exit(EXIT_FAILURE);
+}
+
+void softmax_deriv_output_error(layer *current)
+{
+	//use by default a cross entropy error
+	softmax_param *param = (softmax_param*)current->activ_param;
+	cross_entropy_deriv_output_error(current->delta_o, current->output,
+		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, 
+		(param->dim+1)*current->c_network->batch_size);
+		
+}
+
+void softmax_output_error(layer *current)
+{
+	//use by default a cross entropy error
+	softmax_param *param = (softmax_param*)current->activ_param;
+	cross_entropy_output_error(current->c_network->output_error,
+		current->output, current->c_network->target, (param->dim+1)*current->c_network->length,
+		param->dim, (param->dim+1)*current->c_network->batch_size);
+		
+}
+
+
+void cross_entropy_deriv_output_error(real *delta_o, real *output, real *target, int len, int dim, int size)
+{
+	int i;
+	int pos;
+	
+	#pragma omp parallel for private(pos) schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		if(i < len && (i+1)%(dim+1) != 0)
+		{
+			pos = i - i/(dim+1);
+			delta_o[i] = (output[i] - target[pos]);
+		}
+		else
+		{
+			delta_o[i] = 0.0;
+		}
+	}
+}
+
+void cross_entropy_output_error(real *output_error, real *output, real *target, int len, int dim, int size)
+{
+	int i;
+	int pos;
+	
+	#pragma omp parallel for private(pos) schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		if(i < len && (i+1)%(dim+1) != 0)
+		{
+			pos = i - i/(dim+1);
+			if(output[i] > 0.00001)
+				output_error[pos] = -target[pos]*log(output[i]);
+			else
+				output_error[pos] = -target[pos]*log(0.00001);
+		}
+	}
+}
+
+
+
+
+
+
+
+//#####################################################
+
+
+
 
 

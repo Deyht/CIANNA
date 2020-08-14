@@ -35,6 +35,7 @@
 extern network *networks[MAX_NETWOKRS_NB];
 extern int nb_networks;
 extern int is_init;
+extern int verbose;
 
 //######################################
 
@@ -47,9 +48,11 @@ float ellapsed_time(struct timeval tstart);
 void init_network(int network_number, int u_input_dim[3], int u_output_dim, real in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load);
 Dataset create_dataset(network *net, int nb_elem);
 void free_dataset(Dataset data);
+void print_table(real* tab, int column_size, int nb_column);
 void write_formated_dataset(network *net, const char *filename, Dataset *data, int input_data_type, int output_data_type);
 Dataset load_formated_dataset(network *net, const char *filename, int input_data_type, int output_data_type);
 void normalize_datasets(network *net, float *offset_input, float *norm_input, int dim_size_input, float *offset_output, float *norm_output, int dim_size_output);
+void update_weights(real *weights, real* update, int size);
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat);
 void save_network(network *net, char *filename);
 void load_network(network *net, char *filename, int epoch);
@@ -58,14 +61,12 @@ void forward_testset(network *net, int train_step, int repeat);
 
 
 //activations function
+void define_activation(layer *current);
+void output_error(layer* current);
+void output_deriv_error(layer* current);
 void print_activ_param(FILE *f, int type);
 void get_string_activ_param(char* activ, int type);
 int load_activ_param(char *type);
-void define_activation(layer* current);
-void linear_activation(layer *current);
-void linear_deriv(layer *current);
-void output_deriv_error(layer* current);
-void output_error_fct(layer* current);
 
 //dense_layer.c
 void dense_create(network *net, layer* previous, int nb_neurons, int activation, real drop_rate, FILE *f_load);
@@ -83,10 +84,33 @@ void pool_save(FILE *f, layer *current);
 void pool_load(network *net, FILE *f);
 
 //initializers
-void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding);
+real random_uniform(void);
+real random_normal(void);
+void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding, real bias_padding_value);
 
 
 //######################################
+
+#ifdef BLAS
+void blas_dense_define(layer *current);
+void blas_conv_define(layer *current);
+
+#endif 
+
+void pool_define(layer *current);
+void naiv_dense_define(layer *current);
+void naiv_conv_define(layer *current);
+
+void flat_dense(real* in, real* out, real bias, int map_size, int flatten_size, int nb_map, int batch_size, int size);
+void reroll_batch(real* in, real* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
+void dropout_select(real* mask, int size, real drop_rate);
+void dropout_apply(real* table, real batch_size, int dim, real* mask);
+
+void add_bias_im2col(real* output, real bias_value, int flat_f_size, int size);
+void rotate_filter_matrix(real* in, real* out, int nb_rows, int depth_size, int nb_filters_in, int len);
+void unroll_conv(real* in, real* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
+void reroll_delta_o(real* in, real* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
+void im2col_fct_v4(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
 
 
 #ifdef CUDA
@@ -107,7 +131,6 @@ extern cublasHandle_t cu_handle;
 __global__ void cuda_update_weights(real *weights, real* updates, int size);
 __global__ void cuda_update_weights_dropout(real *weights, real* update, int size, real *drop_mask, int dim);
 __device__ int cuda_argmax(real* tab, int dim_out);
-__global__ void im2col_kernel_v4(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
 #endif
 void init_cuda(void);
 void cuda_sync(void);

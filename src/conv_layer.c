@@ -208,7 +208,7 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	if(f_load == NULL)
 	{
 		printf("Xavier init\n");
-		xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0);
+		xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0);
 	}
 	else
 	{
@@ -227,15 +227,19 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 			cuda_convert_conv_layer(current);
 			#endif
 			break;
-			
+		case C_BLAS:
+			#ifdef BLAS
+			blas_conv_define(current);
+			define_activation(current);
+			#endif
+			break;
+		case C_NAIV:
+			naiv_conv_define(current);
+			define_activation(current);
+			break;
 		default:
 			break;
 	}
-	
-	#ifndef CUDA
-	printf("ERROR : Non CUDA compute not implemented at the moment !\n");
-	exit(EXIT_FAILURE);
-	#endif
 	
 	char activ[10];
 	get_string_activ_param(activ, current->activation_type);
@@ -253,7 +257,7 @@ Activation: %s, Stride: %d, padding: %d\n",
 void conv_save(FILE *f, layer *current)
 {
 	int i, j;
-	real *host_filters;
+	real *host_filters = NULL;
 
 	c_param = (conv_param*)current->param;	
 	

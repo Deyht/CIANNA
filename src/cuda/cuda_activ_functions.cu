@@ -23,7 +23,7 @@
 
 
 
-#include "prototypes.h"
+#include "../prototypes.h"
 
 
 static int cu_blocks;
@@ -189,7 +189,6 @@ void cuda_ReLU_activation(layer *current)
 
 	//printf("relu activation\n");
 	ReLU_param *param = (ReLU_param*)current->activ_param;
-	//to update for new formalism
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
 	ReLU_activation_kernel <<< cu_blocks, cu_threads >>>(current->output, param->size, param->dim, 
 		param->leaking_factor);
@@ -212,7 +211,6 @@ __global__ void ReLU_activation_kernel(real *tab, int len, int dim, real leaking
 void cuda_ReLU_deriv(layer *previous)
 {
 	ReLU_param *param = (ReLU_param*)previous->activ_param;
-	//to update for new formalism
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
 	ReLU_deriv_kernel<<< cu_blocks, cu_threads >>>(previous->delta_o, previous->output, param->size, param->dim,
 		param->leaking_factor, param->size);
@@ -341,7 +339,6 @@ __global__ void logistic_activation_kernel(real *tab, real beta, real saturation
 void cuda_logistic_deriv(layer *previous)
 {
 	logistic_param *param = (logistic_param*)previous->activ_param;
-	//to update for new formalism
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
 	logistic_deriv_kernel <<< cu_blocks, cu_threads >>>(previous->delta_o, previous->output, param->beta,
 		param->size, param->dim, param->size);
@@ -368,7 +365,6 @@ __global__ void logistic_deriv_kernel(real *deriv, real* value, real beta, int l
 void cuda_logistic_deriv_output_error(layer* current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
-	//to update for new formalism
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
 	quadratic_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output,
 		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
@@ -380,7 +376,6 @@ void cuda_logistic_deriv_output_error(layer* current)
 void cuda_logistic_output_error(layer* current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
-	//to update for new formalism
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
 	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(current->c_network->output_error, 
 		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, 
@@ -399,7 +394,6 @@ void cuda_logistic_output_error(layer* current)
 void cuda_softmax_activation(layer *current)
 {
 	softmax_param *param = (softmax_param*)current->activ_param;
-	//to update for new formalism
 	cu_blocks = (current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	softmax_activation_kernel<<< cu_blocks, cu_threads >>>(current->output, current->c_network->length, param->dim, current->c_network->batch_size);
 }
@@ -407,7 +401,7 @@ void cuda_softmax_activation(layer *current)
 __global__ void softmax_activation_kernel(real *tab, int len, int dim, int size)
 {
 	//difficult to optimize but can be invastigated
-	//is giving a probabilistic output
+	//provides a probabilistic output
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int j;
 	real *pos;

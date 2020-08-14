@@ -22,7 +22,7 @@
 
 
 
-#include "prototypes.h"
+#include "../prototypes.h"
 
 static int cu_blocks;
 static pool_param *p_param;
@@ -34,8 +34,8 @@ void cuda_forward_pool_layer(layer* current);
 void cuda_backward_pool_layer(layer* current);
 
 __global__ void  pooling_kernel(real *input, real *output, real* pool_map, int pool_size, int w_size, int w_size_out, int  length);
-__global__ void deltah_pool(real* cu_deltah, real* cu_deltah_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length);
-__global__ void deltah_pool_cont(real* cu_deltah, real* cu_deltah_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length);
+__global__ void deltah_pool(real* delta_o, real* delta_o_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length);
+__global__ void deltah_pool_cont(real* delta_o, real* delta_o_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length);
 
 
 void cuda_pool_define(layer *current)
@@ -131,14 +131,14 @@ __global__ void  pooling_kernel(real *input, real *output, real* pool_map, int p
 					x_max = x;
 					y_max = y;
 				}
-		pool_map[pos_out] = real(x_max*pool_size + y_max);
+		pool_map[pos_out] = (real)(x_max*pool_size + y_max);
 		output[pos_out] = input[pos + x_max*w_size + y_max];
 	}
 }
 
 
-// Do the same thing as the funciton below but slightly more slowly
-__global__ void deltah_pool(real* cu_deltah, real* cu_deltah_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length)
+// Do the same thing as the funciton below but slightly slower
+__global__ void deltah_pool(real* delta_o, real* delta_o_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int map_id, image_id, map_col, map_pos;
@@ -151,18 +151,18 @@ __global__ void deltah_pool(real* cu_deltah, real* cu_deltah_unpool, real* pool_
 	map_col =  i % (map_size*batch_size) % map_size / column_length;
 	map_pos = i % (map_size*batch_size) % map_size % column_length;
 	
-	cu_deltah_unpool += (map_id * (map_size*batch_size) + image_id * map_size) * pool_size * pool_size;
-	cu_deltah_unpool += map_col * column_length * pool_size * pool_size + map_pos * pool_size;
-	cu_deltah_unpool += + (int(pool_map[i])/pool_size) * column_length * pool_size 
+	delta_o_unpool += (map_id * (map_size*batch_size) + image_id * map_size) * pool_size * pool_size;
+	delta_o_unpool += map_col * column_length * pool_size * pool_size + map_pos * pool_size;
+	delta_o_unpool += + (int(pool_map[i])/pool_size) * column_length * pool_size 
 		+ (int(pool_map[i])%pool_size);
 	
 	if(i < len*image_size)
-		*cu_deltah_unpool = cu_deltah[i];
+		*delta_o_unpool = delta_o[i];
 	else
-		*cu_deltah_unpool = 0.0;
+		*delta_o_unpool = 0.0;
 }
 
-__global__ void deltah_pool_cont(real* cu_deltah, real* cu_deltah_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length)
+__global__ void deltah_pool_cont(real* delta_o, real* delta_o_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int pos;
@@ -172,22 +172,12 @@ __global__ void deltah_pool_cont(real* cu_deltah, real* cu_deltah_unpool, real* 
 	if(i < len*image_size)
 	{
 		//add mask of locations
-		cu_deltah_unpool += (i/column_length) * column_length * pool_size * pool_size 
+		delta_o_unpool += (i/column_length) * column_length * pool_size * pool_size 
 			+ (i%column_length) * (pool_size) + (int(pool_map[i])/pool_size) * column_length 
 			* pool_size + (int(pool_map[i])%pool_size);
 		
-		*cu_deltah_unpool = cu_deltah[pos];
-	}/*
-	else if(i < batch_size*image_size)
-	{
-		cu_deltah[pos] = 0.0;
-		//add mask of locations
-		cu_deltah_unpool += (i/column_length) * column_length * pool_size * pool_size 
-			+ (i%column_length) * pool_size + (int(pool_map[i])/pool_size) * column_length 
-			* pool_size + (int(pool_map[i])%pool_size);
-			
-		*cu_deltah_unpool = cu_deltah[pos];
-	}*/
+		*delta_o_unpool = delta_o[pos];
+	}
 	
 }
 

@@ -45,7 +45,7 @@ real random_normal(void)
 
 
 
-void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding)
+void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding, real bias_padding_value)
 {
 	int i;
 	int size;
@@ -68,8 +68,9 @@ void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding)
 			tab[i] = random_normal()*sqrt(2.0/(dim_in+dim_out));
 		}
 	}
+	
 	if(bias_padding)
-		tab[size-1] = 1.0;
+		tab[size-1] = bias_padding_value;
 
 }
 

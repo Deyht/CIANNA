@@ -83,6 +83,7 @@ void dense_define_activation_param(layer *current)
 void dense_create(network *net, layer* previous, int nb_neurons, int activation, real drop_rate, FILE *f_load)
 {
 	int i, j;
+	real bias_padding_value ;
 	layer* current;
 	
 	current = (layer*) malloc(sizeof(layer));
@@ -132,7 +133,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 		
 		}
 		current->input = previous->output;
-		d_param->flat_input = (real*) malloc(d_param->in_size*net->batch_size*sizeof(real));
+		d_param->flat_input = (real*) calloc(d_param->in_size*net->batch_size,sizeof(real));
 	}
 
 	d_param->weights = (real*) malloc(d_param->in_size*(nb_neurons+1)*sizeof(real));
@@ -154,7 +155,16 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	
 	if(f_load == NULL)
 	{
-		xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1);
+		if(current->previous == NULL || current->previous->type != DENSE)
+		{
+			//need a modification to allow bias change in first layer
+			bias_padding_value = 1.0;
+		}
+		else
+		{
+			bias_padding_value = (real) d_param->bias_value/((dense_param*)current->previous->param)->bias_value;
+		}
+		xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, bias_padding_value);
 	}
 	else
 	{
@@ -173,14 +183,21 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 			#endif
 			break;
 			
+		case C_BLAS:
+			#ifdef BLAS
+			blas_dense_define(current);
+			define_activation(current);
+			#endif
+			break;
+			
+		case C_NAIV:
+			naiv_dense_define(current);
+			define_activation(current);
+			break;
+			
 		default:
 			break;
 	}
-	
-	#ifndef CUDA
-	printf("ERROR : Non CUDA compute not implemented at the moment !\n");
-	exit(EXIT_FAILURE);
-	#endif
 	
 		char activ[10];
 	get_string_activ_param(activ, current->activation_type);
@@ -196,7 +213,7 @@ Activation: %s, Dropout: %f\n",
 void dense_save(FILE *f, layer *current)
 {
 	int i, j;
-	real* host_weights;
+	real* host_weights = NULL;
 
 	d_param = (dense_param*)current->param;	
 	
@@ -211,6 +228,10 @@ void dense_save(FILE *f, layer *current)
 		host_weights = (real*) malloc(d_param->in_size * (d_param->nb_neurons+1) * sizeof(real));
 		cuda_get_table(&(d_param->weights), &host_weights, d_param->in_size * (d_param->nb_neurons+1));
 		#endif
+	}
+	else
+	{
+		host_weights = d_param->weights;
 	}
 	
 	for(i = 0; i < d_param->in_size; i++)
@@ -243,6 +264,7 @@ void dense_load(network *net, FILE* f)
 
 	dense_create(net, previous, nb_neurons, load_activ_param(activ_type), dropout_rate, f);
 }
+
 
 
 
