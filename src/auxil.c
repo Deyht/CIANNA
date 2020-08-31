@@ -45,6 +45,12 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, floa
 	networks[network_number]->id = network_number;
 	networks[network_number]->dynamic_load = u_dynamic_load;
 	networks[network_number]->use_cuda_TC = u_use_cuda_TC;
+	
+	//Additional security, but all statements should be safe on its own
+	//note that FP32/FP32 Tensore Core operation exist (different than TF32)
+	if(u_compute_method != C_CUDA)
+		networks[network_number]->use_cuda_TC = 0;
+	
 	nb_networks++;
 	
 	if(!is_init)
@@ -768,7 +774,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		#ifdef CUDA
 		if(net->compute_method == C_CUDA)
 			output_save = (float*) calloc(net->batch_size*net->out_size, sizeof(float));
-		if(net->use_cuda_TC)
+		if(net->compute_method == C_CUDA && net->use_cuda_TC)
 			cuda_create_host_table_FP16(net, &output_buffer, net->batch_size*net->out_size);
 		#endif
 		sprintf(f_save_name, "fwd_res/net%d_%04d.dat", net->id, net->epoch);

@@ -137,7 +137,7 @@ int main()
 		cuda_convert_dataset(networks[0], &networks[0]->test);
 		cuda_convert_dataset(networks[0], &networks[0]->valid);
 	}
-	else if(networks[0]->dynamic_load == 1 && networks[0]->use_cuda_TC)
+	else if(networks[0]->compute_method == C_CUDA && networks[0]->dynamic_load == 1 && networks[0]->use_cuda_TC)
 	{
 		cuda_convert_host_dataset_FP32(networks[0], &networks[0]->train);
 		cuda_convert_host_dataset_FP32(networks[0], &networks[0]->test);

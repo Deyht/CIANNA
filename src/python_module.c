@@ -171,7 +171,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 		printf("Converting dataset to GPU device (CUDA)\n");
 		cuda_convert_dataset(networks[network_id], data);
 	}
-	else if(networks[network_id]->dynamic_load == 1 && networks[network_id]->use_cuda_TC)
+	else if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 1 && networks[network_id]->use_cuda_TC)
 	{
 		printf("Converting dataset into host stored FP16\n");
 		cuda_convert_host_dataset_FP32(networks[network_id], data);
