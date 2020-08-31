@@ -96,15 +96,15 @@ void pool_create(network *net, layer* previous, int pool_size)
 		exit(EXIT_FAILURE);
 	}
 	
-	p_param->pool_map = (real*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
-		* net->batch_size * sizeof(real));
-	current->output = (real*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
-		* net->batch_size * sizeof(real));
+	p_param->pool_map = (int*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
+		* net->batch_size * sizeof(float));
+	current->output = (float*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
+		* net->batch_size * sizeof(float));
 	
-	current->delta_o = (real*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
-		* net->batch_size * sizeof(real));
-	p_param->temp_delta_o = (real*) malloc(p_param->prev_size_w * p_param->prev_size_h 
-		* p_param->prev_depth * net->batch_size * sizeof(real));
+	current->delta_o = (float*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
+		* net->batch_size * sizeof(float));
+	p_param->temp_delta_o = (float*) malloc(p_param->prev_size_w * p_param->prev_size_h 
+		* p_param->prev_depth * net->batch_size * sizeof(float));
 	
 	//No activation for this layer for now
 	current->activ_param = NULL;

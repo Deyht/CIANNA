@@ -32,14 +32,15 @@
 //            Various Enumerations
 //############################################
 
-
+enum GPU_type{FP32, FP16, BF16};
 enum layer_type{CONV, POOL, DENSE};
 enum activation_functions{RELU, LOGISTIC, SOFTMAX, LINEAR};
 enum initializers{N_XAVIER, U_XAVIER, N_LECUN, U_LECUN, U_RAND, N_RAND};
 enum batch_param{OFF, SGD, FULL};
-enum data_types{FP32, UINT16, UINT8};
+enum data_types{c_FP32, c_UINT16, c_UINT8};
 enum compute_method{C_NAIV, C_BLAS, C_CUDA};
 enum memory_localization{HOST, DEVICE};
+
 
 //############################################
 //                  Global
@@ -47,10 +48,10 @@ enum memory_localization{HOST, DEVICE};
 
 typedef struct Dataset
 {
-	real **input;
-	real **target;
-	real **input_device;
-	real **target_device;
+	void **input;
+	void **target;
+	void **input_device;
+	void **target_device;
 	int size;
 	int nb_batch;
 	int localization;
@@ -67,9 +68,9 @@ struct layer
 	network *c_network;
 	
 	void *param;
-	real *input; //usually contain adress of previous->output
-	real *output;
-	real *delta_o;
+	void *input; //usually contain adress of previous->output
+	void *output;
+	void *delta_o;
 	
 	layer *previous;
 	
@@ -81,8 +82,8 @@ struct layer
 	void *activ_param;
 	
 	//utility
-	real time_fwd;
-	real time_back;
+	float time_fwd;
+	float time_back;
 	
 };
 
@@ -93,11 +94,12 @@ struct network
 	int id;
 	int compute_method;
 	int dynamic_load;
+	int use_cuda_TC;
 	int nb_layers;
-	real input_bias;
+	float input_bias;
 	
-	real learning_rate;
-	real momentum;
+	float learning_rate;
+	float momentum;
 	
 	Dataset train, test, valid;
 	
@@ -109,11 +111,11 @@ struct network
 	int batch_param;
 	int epoch;
 	
-	real* input;
-	real* target;
+	void* input;
+	void* target;
 	int length;
-	real* output_error;
-	real* output_error_cuda;
+	void* output_error;
+	void* output_error_cuda;
 
 };
 
@@ -129,16 +131,17 @@ typedef struct dense_param
 	
 	int activation;
 	
-	real* flat_input;
-	real* flat_delta_o;
+	void* flat_input;
+	void* flat_delta_o;
 	
-	real* weights;
-	real* update;
-	real* dropout_mask;
+	void* weights;
+	void *FP32_weights;
+	void* update;
+	int* dropout_mask;
 	void* block_state;
 	
-	real bias_value;
-	real dropout_rate;
+	float bias_value;
+	float dropout_rate;
 
 } dense_param;
 
@@ -158,14 +161,15 @@ typedef struct conv_param
 	int prev_size_h;
 	int prev_depth;
 
-	real *im2col_input;
-	real *im2col_delta_o;
-	real *filters;
-	real *rotated_filters;
-	real *temp_delta_o;
-	real *update;
+	void *im2col_input;
+	void *im2col_delta_o;
+	void *filters;
+	void *FP32_filters;
+	void *rotated_filters;
+	void *temp_delta_o;
+	void *update;
 	
-	real bias_value;
+	float bias_value;
 
 } conv_param;
 
@@ -183,8 +187,8 @@ typedef struct pool_param
 	
 	int next_layer_type;
 	
-	real *pool_map;
-	real* temp_delta_o;
+	int *pool_map;
+	void* temp_delta_o;
 
 } pool_param;
 
@@ -197,7 +201,7 @@ typedef struct ReLU_param
 {
 	int size;
 	int dim;
-	real leaking_factor;
+	float leaking_factor;
 
 } ReLU_param;
 
@@ -205,8 +209,8 @@ typedef struct logistic_param
 {
 	int size;
 	int dim;
-	real beta;
-	real saturation;
+	float beta;
+	float saturation;
 	
 } logistic_param;
 

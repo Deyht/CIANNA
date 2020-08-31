@@ -72,7 +72,7 @@ void conv_define_activation_param(layer *current)
 				* c_param->nb_area_h *  c_param->nb_filters * current->c_network->batch_size;
 			((logistic_param*)current->activ_param)->dim = ((logistic_param*)current->activ_param)->size;
 			((logistic_param*)current->activ_param)->beta = 1.0;
-			((logistic_param*)current->activ_param)->saturation = 14.0;
+			((logistic_param*)current->activ_param)->saturation = 10.0;
 			c_param->bias_value = -1.0;
 			break;
 			
@@ -156,8 +156,8 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 				c_param->flat_f_size = (f_size * f_size * ((conv_param*)previous->param)->nb_filters + 1);
 				break;
 		}
-		current->input = (real*) calloc( c_param->prev_depth * (c_param->prev_size_w * c_param->prev_size_h) *
-		net->batch_size, sizeof(real));
+		current->input = (float*) calloc(c_param->prev_depth * (c_param->prev_size_w * c_param->prev_size_h) *
+		net->batch_size, sizeof(float));
 		
 	}
 	
@@ -167,32 +167,32 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	printf("Layer output: %d %d\n", c_param->nb_area_w,c_param->nb_area_h);
 	
 	//allocate all the filters in a flatten table. One filter is continuous. (include bias weight)
-	c_param->filters = (real*) malloc(nb_filters * c_param->flat_f_size * sizeof(real));
+	c_param->filters = (float*) malloc(nb_filters * c_param->flat_f_size * sizeof(float));
 	//allocate the update for the filters
-	c_param->update = (real*) calloc(nb_filters * c_param->flat_f_size, sizeof(real));
+	c_param->update = (float*) calloc(nb_filters * c_param->flat_f_size, sizeof(float));
 	
-	c_param->rotated_filters = (real*) malloc(nb_filters * (c_param->flat_f_size-1) * sizeof(real));
+	c_param->rotated_filters = (float*) malloc(nb_filters * (c_param->flat_f_size-1) * sizeof(float));
 	
 	
 	//allocate the resulting flatten activation map regarding the batch size
 	//Activation maps are not continuous for each image : 
 	//		A1_im1, A1_im2, A1_im3, ... , A2_im1, A2_im2, A2_im3, ... 
-	current->output = (real*) calloc( c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h) *
-		net->batch_size, sizeof(real));
+	current->output = (float*) calloc( c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h) *
+		net->batch_size, sizeof(float));
 	//allocate output error comming from next layer
-	current->delta_o = (real*) calloc( c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h) * 
-		net->batch_size, sizeof(real));
+	current->delta_o = (float*) calloc( c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h) * 
+		net->batch_size, sizeof(float));
 	
 	//temporary output error used for format conversion
-	c_param->temp_delta_o = (real*) calloc( c_param->prev_depth * (c_param->prev_size_w 
-		* c_param->prev_size_h) * current->c_network->batch_size, sizeof(real));
+	c_param->temp_delta_o = (float*) calloc( c_param->prev_depth * (c_param->prev_size_w 
+		* c_param->prev_size_h) * current->c_network->batch_size, sizeof(float));
 		
 	//allocate the im2col input flatten table regarding the batch size
-	c_param->im2col_input = (real*) calloc( (c_param->flat_f_size * c_param->nb_area_w * c_param->nb_area_h)
-		* net->batch_size, sizeof(real));
+	c_param->im2col_input = (float*) calloc( (c_param->flat_f_size * c_param->nb_area_w * c_param->nb_area_h)
+		* net->batch_size, sizeof(float));
 	
-	c_param->im2col_delta_o = (real*) calloc( (c_param->prev_size_w*c_param->prev_size_h) * 
-		/* flat_filter*/(f_size*f_size*c_param->nb_filters) * net->batch_size,  sizeof(real));
+	c_param->im2col_delta_o = (float*) calloc( (c_param->prev_size_w*c_param->prev_size_h) * 
+		/* flat_filter*/(f_size*f_size*c_param->nb_filters) * net->batch_size,  sizeof(float));
 
 	current->param = c_param;
 
@@ -203,7 +203,7 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	
 	//set bias value for the current layer, this value will not move during training
 	for(i = 1; i <= c_param->nb_area_w * c_param->nb_area_h * net->batch_size; i++)
-		c_param->im2col_input[i*(c_param->flat_f_size) - 1] = c_param->bias_value;
+		((float*)c_param->im2col_input)[i*(c_param->flat_f_size) - 1] = c_param->bias_value;
 	
 	if(f_load == NULL)
 	{
@@ -214,7 +214,7 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	{
 		for(i = 0; i < nb_filters; i++)
 			for(j = 0; j < c_param->flat_f_size; j++)
-				 fscanf(f_load, "%f", &(c_param->filters[i*c_param->flat_f_size + j]));
+				 fscanf(f_load, "%f", &(((float*)c_param->filters)[i*c_param->flat_f_size + j]));
 	}
 	
 	//associate the conv specific functions to the layer
@@ -251,13 +251,33 @@ Activation: %s, Stride: %d, padding: %d\n",
 		c_param->nb_area_w, c_param->nb_area_h, c_param->nb_filters,
 		activ, c_param->stride, c_param->padding);
 	
+	if(net->compute_method == C_CUDA && net->use_cuda_TC)
+	{
+	
+		if(c_param->flat_f_size % 8 != 0 
+				|| current->c_network->batch_size * (c_param->nb_area_w*c_param->nb_area_h) % 8 != 0 
+				|| c_param->nb_filters % 8 != 0)
+			printf("Warning : Forward gemm fallback to non TC version due to layer size mismatch\n");
+			
+		if(current->previous != NULL &&
+				( c_param->prev_depth % 8 != 0 
+				|| c_param->prev_size_w * c_param->prev_size_h * current->c_network->batch_size % 8 != 0 
+				|| c_param->f_size * c_param->f_size * c_param->nb_filters % 8 != 0))
+			printf("Warning : Backprop gemm fallback to non TC version due to layer size mismatch\n");
+
+		if( c_param->flat_f_size % 8 != 0 
+				|| c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size % 8 != 0 
+				|| c_param->nb_filters % 8 != 0)
+			printf("Warning : Weights update gemm fallback to non TC version due to layer size mismatch\n");
+	}
+	
 }
 
 
 void conv_save(FILE *f, layer *current)
 {
 	int i, j;
-	real *host_filters = NULL;
+	void *host_filters = NULL;
 
 	c_param = (conv_param*)current->param;	
 	
@@ -269,8 +289,20 @@ void conv_save(FILE *f, layer *current)
 	if(current->c_network->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		host_filters = (real*) malloc(c_param->nb_filters*c_param->flat_f_size*sizeof(real));
-		cuda_get_table(&(c_param->filters), &host_filters, c_param->nb_filters*c_param->flat_f_size);
+		host_filters = (float*) malloc(c_param->nb_filters*c_param->flat_f_size*sizeof(float));
+		switch(current->c_network->use_cuda_TC)
+		{
+			default:
+			case 0:
+				cuda_get_table_FP32(current->c_network, (float*)c_param->filters, (float*)host_filters, 
+					c_param->nb_filters*c_param->flat_f_size);
+				break;
+			case 1:
+				cuda_get_table_FP32(current->c_network, (float*)c_param->FP32_filters, (float*)host_filters, 
+					c_param->nb_filters*c_param->flat_f_size);
+				break;
+		
+		}
 		#endif
 	}
 	else
@@ -281,7 +313,7 @@ void conv_save(FILE *f, layer *current)
 	for(i = 0; i < c_param->nb_filters; i++)
 	{
 		for(j = 0; j < c_param->flat_f_size; j++)
-			fprintf(f, "%g ", host_filters[i*c_param->flat_f_size + j]);
+			fprintf(f, "%g ", ((float*)host_filters)[i*c_param->flat_f_size + j]);
 		fprintf(f,"\n");	
 	}
 	fprintf(f, "\n");

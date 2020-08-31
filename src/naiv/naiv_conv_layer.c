@@ -86,6 +86,10 @@ void forward_conv_layer(layer *current)
 
 	//Input X filters matrix multiplication for the all batch
 	
+	float *f_im2col_input = (float*) c_param->im2col_input;
+	float *f_filters = (float*) c_param->filters;
+	float *f_output = (float*) current->output;
+	
 	#pragma omp parallel for private(i, j, h) collapse(2) schedule(guided, 2)
 	for(b = 0; b < current->c_network->batch_size * (c_param->nb_area_w*c_param->nb_area_h); b++)
 	{
@@ -94,10 +98,10 @@ void forward_conv_layer(layer *current)
 			h = 0.0;
 			for(j = 0; j < c_param->flat_f_size; j++)
 			{
-				h += c_param->im2col_input[b*(c_param->flat_f_size) + j]
-						* c_param->filters[i*(c_param->flat_f_size) + j];
+				h += f_im2col_input[b*(c_param->flat_f_size) + j]
+						* f_filters[i*(c_param->flat_f_size) + j];
 			}
-			current->output[i*(current->c_network->batch_size * (c_param->nb_area_w*c_param->nb_area_h))+b] = h;
+			f_output[i*(current->c_network->batch_size * (c_param->nb_area_w*c_param->nb_area_h))+b] = h;
 		}
 	}
 	
@@ -152,6 +156,10 @@ void backward_conv_layer(layer *current)
 			* flat_f_size, 1, back_padding, c_param->stride - 1 , c_param->nb_filters, 
 			depth_padding, image_padding, current->c_network->batch_size, c_param->f_size, flat_f_size, 
 			c_param->nb_area_w, c_param->prev_size_w, 0);
+			
+		float *f_im2col_delta_o = (float*) c_param->im2col_delta_o;
+		float *f_rotated_filters = (float*) c_param->rotated_filters;
+		float *f_previous_delta_o = (float*) current->previous->delta_o;
 		
 		#pragma omp parallel for private(i, j, h) collapse(2) schedule(guided, 4)
 		for(b = 0; b < c_param->prev_size_w * c_param->prev_size_h * current->c_network->batch_size; b++)
@@ -161,10 +169,10 @@ void backward_conv_layer(layer *current)
 				h = 0.0;
 				for(j = 0; j < c_param->f_size * c_param->f_size * c_param->nb_filters; j++)
 				{
-					h += c_param->im2col_delta_o[b*(c_param->f_size * c_param->f_size * c_param->nb_filters) + j]
-							* c_param->rotated_filters[i*(c_param->f_size * c_param->f_size*c_param->nb_filters) + j];
+					h += f_im2col_delta_o[b*(c_param->f_size * c_param->f_size * c_param->nb_filters) + j]
+							* f_rotated_filters[i*(c_param->f_size * c_param->f_size*c_param->nb_filters) + j];
 				}
-				current->previous->delta_o[i*(c_param->prev_size_w*c_param->prev_size_h*current->c_network->batch_size)+b] = h;
+				f_previous_delta_o[i*(c_param->prev_size_w*c_param->prev_size_h*current->c_network->batch_size)+b] = h;
 			}
 		}
 		
@@ -178,6 +186,9 @@ void backward_conv_layer(layer *current)
 	
 	int dim_batch = c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size;
 	
+	float *f_im2col_input = (float*) c_param->im2col_input;
+	float *f_delta_o = (float*) current->delta_o;
+	float *f_update = (float*) c_param->update;
 	
 	#pragma omp parallel for private(j, b, h) collapse(2) schedule(dynamic, 1)
 	for(i = 0; i <  c_param->nb_filters; i++)
@@ -187,11 +198,11 @@ void backward_conv_layer(layer *current)
 			h = 0.0;
 			for(b = 0; b < dim_batch; b++)
 			{
-				h += c_param->im2col_input[b*(c_param->flat_f_size) + j]
-						* current->delta_o[i*(dim_batch) + b];
+				h += f_im2col_input[b*(c_param->flat_f_size) + j]
+						* f_delta_o[i*(dim_batch) + b];
 			}
-			c_param->update[i*(c_param->flat_f_size) + j] = current->c_network->learning_rate*h 
-					+ current->c_network->momentum * c_param->update[i*(c_param->flat_f_size) + j];
+			f_update[i*(c_param->flat_f_size) + j] = current->c_network->learning_rate*h 
+					+ current->c_network->momentum * f_update[i*(c_param->flat_f_size) + j];
 		}
 	}
 	
@@ -210,14 +221,17 @@ void backward_conv_layer(layer *current)
 //due to subsequent matrix operations. Currently memory bound despite only 1 load per element of the original image.
 //VERSION 4.1
 
-void im2col_fct_v4(real* output, real* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias)
+void im2col_fct_v4(void* output, void* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias)
 {
 	int z, d, i;
-	real local_pix;
+	float local_pix;
 	int w, h, x, y;
 	int pos_w_filter, pos_h_filter;
-	real *t_in, *t_out;
+	float *t_in, *t_out;
 	int loc;
+	
+	float* f_input = (float*) input;
+	float* f_output = (float*) output;
 	
 	// Must test various OpenMP writing and compare performance
 	#pragma omp parallel for private(d, z, local_pix, w, h, x, y, pos_w_filter, pos_h_filter, t_in, t_out) collapse(2) schedule(guided,2)
@@ -225,8 +239,8 @@ void im2col_fct_v4(real* output, real* input, int image_size, int flat_image_siz
 	{
 		for(d = 0; d < depth; d++)
 		{
-			t_in = input + i*(image_padding + bias) + d * depth_padding;
-			t_out =  output + i*(flat_image_size) + d * f_size*f_size;
+			t_in = f_input + i*(image_padding + bias) + d * depth_padding;
+			t_out =  f_output + i*(flat_image_size) + d * f_size*f_size;
 			for(z = 0; z < image_size; z++)
 			{
 				local_pix = t_in[z];
@@ -251,9 +265,12 @@ void im2col_fct_v4(real* output, real* input, int image_size, int flat_image_siz
 	}
 }
 
-void rotate_filter_matrix(real* in, real* out, int nb_rows, int depth_size, int nb_filters_in, int len)
+void rotate_filter_matrix(void* in, void* out, int nb_rows, int depth_size, int nb_filters_in, int len)
 {
 	int i, x, y, depth_id;
+
+	float *f_in = (float*) in;
+	float *f_out = (float*) out;
 
 	#pragma omp parallel for private(x, y, depth_id) schedule(dynamic,1)
 	for(i = 0; i < len; i++)
@@ -267,7 +284,8 @@ void rotate_filter_matrix(real* in, real* out, int nb_rows, int depth_size, int 
 		{
 			depth_id = y / depth_size;
 			
-			out[depth_id * depth_size*nb_filters_in + x * depth_size + (depth_size - 1 - y%depth_size)] = in[x*nb_rows+y];
+			f_out[depth_id * depth_size*nb_filters_in + x * depth_size + (depth_size - 1 - y%depth_size)] 
+				= f_in[x*nb_rows+y];
 		}
 		
 	}
@@ -275,12 +293,15 @@ void rotate_filter_matrix(real* in, real* out, int nb_rows, int depth_size, int 
 }
 
 
-void unroll_conv(real* in, real* out, int map_size, int flatten_size, int nb_map, int batch_size, int size)
+void unroll_conv(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size)
 {
 	//presently unused
 
 	int i;
 	int map_id, image_id, pos;
+	
+	float *f_in = (float*) in;
+	float *f_out = (float*) out;
 	
 	for(i = 0; i < size; i++)
 	{
@@ -288,16 +309,19 @@ void unroll_conv(real* in, real* out, int map_size, int flatten_size, int nb_map
 		map_id = (i % flatten_size)/map_size;
 		pos = (i % flatten_size)%map_size;
 
-		out[i] = in[map_id*(map_size*batch_size) + image_id*map_size + pos];
+		f_out[i] = f_in[map_id*(map_size*batch_size) + image_id*map_size + pos];
 	}
 }
 
 
-void reroll_delta_o(real* in, real* out, int map_size, int flatten_size, int nb_map, int batch_size, int size)
+void reroll_delta_o(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size)
 {
 	//presently unused
 	int i;
 	int map_id, image_id, pos;
+	
+	float *f_in = (float*) in;
+	float *f_out = (float*) out;
 	
 	for(i = 0; i < size; i++)
 	{
@@ -305,7 +329,7 @@ void reroll_delta_o(real* in, real* out, int map_size, int flatten_size, int nb_
 		image_id = (i % (map_size*batch_size))/map_size;
 		pos = (i % (map_size*batch_size))%map_size;
 		
-		out[i] = in[image_id*(flatten_size) + map_id*map_size + pos];
+		f_out[i] = f_in[image_id*(flatten_size) + map_id*map_size + pos];
 	}
 }
 

@@ -36,6 +36,7 @@
 #ifdef CUDA
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
+#include <cuda_fp16.h>
 #include <curand.h>
 #include <curand_kernel.h>
 #endif
@@ -51,10 +52,13 @@
 
 static const double two_pi = 2.0*3.14159265358979323846;
 
-#define FLOAT
-#define real float
-#define cublasnrm2 cublasSnrm2
-#define cublasgemm cublasSgemm
-
+#define TC_scale_factor 1.0f
 
 #endif //DEFS_H
+
+
+
+
+
+
+

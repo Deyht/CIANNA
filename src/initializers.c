@@ -25,13 +25,13 @@
 
 
 //return a random Real value between 0 <= x < 1
-real random_uniform(void)
+float random_uniform(void)
 {
-	return  rand()/(real)RAND_MAX;
+	return  rand()/(float)RAND_MAX;
 }
 
 //return a real value following normal distribution with 0 mean and 1 standart deviation
-real random_normal(void)
+float random_normal(void)
 {
 	// non optimized box muller normal distribution generator
 	double U1, U2;
@@ -45,11 +45,13 @@ real random_normal(void)
 
 
 
-void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding, real bias_padding_value)
+void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value)
 {
 	int i;
 	int size;
 	int limit;
+	
+	float* f_tab = (float*) tab;
 	
 	size = dim_in*dim_out;
 	if(bias_padding)
@@ -62,15 +64,15 @@ void xavier_normal(real *tab, int dim_in, int dim_out, int bias_padding, real bi
 	for(i = 0; i < limit; i++)
 	{
 		if(bias_padding && (i+1) % (dim_in+bias_padding) == 0)
-			tab[i] = 0.0;
+			f_tab[i] = 0.0;
 		else
 		{
-			tab[i] = random_normal()*sqrt(2.0/(dim_in+dim_out));
+			f_tab[i] = random_normal()*sqrt(2.0/(dim_in+dim_out));
 		}
 	}
 	
 	if(bias_padding)
-		tab[size-1] = bias_padding_value;
+		f_tab[size-1] = bias_padding_value;
 
 }
 

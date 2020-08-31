@@ -57,7 +57,7 @@ void dense_define_activation_param(layer *current)
 				* current->c_network->batch_size;
 			((logistic_param*)current->activ_param)->dim = d_param->nb_neurons;
 			((logistic_param*)current->activ_param)->beta = 1.0;
-			((logistic_param*)current->activ_param)->saturation = 14.0;
+			((logistic_param*)current->activ_param)->saturation = 10.0;
 			d_param->bias_value = -1.0;
 			break;
 			
@@ -80,11 +80,14 @@ void dense_define_activation_param(layer *current)
 }
 
 
-void dense_create(network *net, layer* previous, int nb_neurons, int activation, real drop_rate, FILE *f_load)
+void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, FILE *f_load)
 {
 	int i, j;
-	real bias_padding_value ;
+	float bias_padding_value;
 	layer* current;
+	
+	if(net->use_cuda_TC && nb_neurons % 8 == 0)
+		nb_neurons -= 1;
 	
 	current = (layer*) malloc(sizeof(layer));
 	net->net_layers[net->nb_layers] = current;
@@ -114,14 +117,14 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 				d_param->in_size = ((conv_param*)previous->param)->nb_area_w
 					* ((conv_param*)previous->param)->nb_area_h 
 					* ((conv_param*)previous->param)->nb_filters + 1;
-				d_param->flat_delta_o = (real*) calloc(d_param-> in_size * net->batch_size, sizeof(real));
+				d_param->flat_delta_o = (float*) calloc(d_param-> in_size * net->batch_size, sizeof(float));
 				break;
 			
 			case POOL:
 				d_param->in_size = ((pool_param*)previous->param)->nb_area_w 
 					* ((pool_param*)previous->param)->nb_area_h 
 					* ((pool_param*)previous->param)->nb_maps + 1;
-				d_param->flat_delta_o = (real*) calloc(d_param->in_size * net->batch_size, sizeof(real));
+				d_param->flat_delta_o = (float*) calloc(d_param->in_size * net->batch_size, sizeof(float));
 				((pool_param*)previous->param)->next_layer_type = current->type;
 				break;
 			
@@ -133,16 +136,16 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 		
 		}
 		current->input = previous->output;
-		d_param->flat_input = (real*) calloc(d_param->in_size*net->batch_size,sizeof(real));
+		d_param->flat_input = (float*) calloc(d_param->in_size*net->batch_size,sizeof(float));
 	}
 
-	d_param->weights = (real*) malloc(d_param->in_size*(nb_neurons+1)*sizeof(real));
+	d_param->weights = (float*) malloc(d_param->in_size*(nb_neurons+1)*sizeof(float));
 	
-	d_param->update = (real*) calloc(d_param->in_size*(nb_neurons+1), sizeof(real));
-	d_param->dropout_mask = (real*) calloc(d_param->nb_neurons, sizeof(real));
+	d_param->update = (float*) calloc(d_param->in_size*(nb_neurons+1), sizeof(float));
+	d_param->dropout_mask = (int*) calloc(d_param->nb_neurons, sizeof(int));
 	
-	current->output = (real*) calloc((nb_neurons+1)*net->batch_size, sizeof(real));
-	current->delta_o = (real*) calloc((nb_neurons+1)*net->batch_size, sizeof(real));
+	current->output = (float*) calloc((nb_neurons+1)*net->batch_size, sizeof(float));
+	current->delta_o = (float*) calloc((nb_neurons+1)*net->batch_size, sizeof(float));
 	
 	
 	//must be before the association functions
@@ -162,7 +165,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 		}
 		else
 		{
-			bias_padding_value = (real) d_param->bias_value/((dense_param*)current->previous->param)->bias_value;
+			bias_padding_value = (float) d_param->bias_value/((dense_param*)current->previous->param)->bias_value;
 		}
 		xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, bias_padding_value);
 	}
@@ -170,7 +173,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	{
 		for(i = 0; i < d_param->in_size; i++)
 			for(j = 0; j < (d_param->nb_neurons+1); j++)
-				fscanf(f_load, "%f", &(d_param->weights[i*(d_param->nb_neurons+1) + j]));
+				fscanf(f_load, "%f", &(((float*)d_param->weights)[i*(d_param->nb_neurons+1) + j]));
 	}
 	
 	switch(net->compute_method)
@@ -204,8 +207,24 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	printf("L:%d - Dense layer created:\n \
 Input: %d, Nb. Neurons: %d \n \
 Activation: %s, Dropout: %f\n",
-		net->nb_layers, d_param->in_size,  d_param->nb_neurons, 
+		net->nb_layers, d_param->in_size,  d_param->nb_neurons+1, 
 		activ, d_param->dropout_rate);
+		
+	if(net->compute_method == C_CUDA && net->use_cuda_TC)
+	{
+		if(d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
+				|| (d_param->nb_neurons+1) % 8 != 0)
+			printf("Warning : Forward gemm fallback to non TC version due to layer size mismatch\n");
+		if(current->previous != NULL && (d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
+				|| (d_param->nb_neurons+1) % 8 != 0))
+			{
+			printf("%d %d %d\n", d_param->in_size, current->c_network->batch_size, (d_param->nb_neurons+1));
+			printf("Warning : Backprop gemm fallback to non TC version due to layer size mismatch\n");
+			}
+		if(d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
+				|| (d_param->nb_neurons+1) % 8 != 0)
+			printf("Warning : Weights update gemm fallback to non TC version due to layer size mismatch\n");
+	}
 	
 }
 
@@ -213,7 +232,7 @@ Activation: %s, Dropout: %f\n",
 void dense_save(FILE *f, layer *current)
 {
 	int i, j;
-	real* host_weights = NULL;
+	float* host_weights = NULL;
 
 	d_param = (dense_param*)current->param;	
 	
@@ -225,8 +244,19 @@ void dense_save(FILE *f, layer *current)
 	if(current->c_network->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		host_weights = (real*) malloc(d_param->in_size * (d_param->nb_neurons+1) * sizeof(real));
-		cuda_get_table(&(d_param->weights), &host_weights, d_param->in_size * (d_param->nb_neurons+1));
+		host_weights = (float*) malloc(d_param->in_size * (d_param->nb_neurons+1) * sizeof(float));
+		switch(current->c_network->use_cuda_TC)
+		{
+			default:
+			case 0:
+				cuda_get_table_FP32(current->c_network, (float*)d_param->weights, (float*)host_weights,
+					d_param->in_size * (d_param->nb_neurons+1));
+				break;
+			case 1:
+				cuda_get_table_FP32(current->c_network, (float*)d_param->FP32_weights, (float*)host_weights,
+					d_param->in_size * (d_param->nb_neurons+1));
+				break;
+		}
 		#endif
 	}
 	else
@@ -249,7 +279,7 @@ void dense_save(FILE *f, layer *current)
 void dense_load(network *net, FILE* f)
 {
 	int nb_neurons;
-	real dropout_rate;
+	float dropout_rate;
 	char activ_type[20];
 	layer *previous;
 	

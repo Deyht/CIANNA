@@ -33,4 +33,3 @@ int nb_networks = 0;
 int is_init = 0;
 int output_layers_forward_results = 0;
 
-

@@ -23,7 +23,6 @@
 
 #include "prototypes.h"
 
-
 void init_timing(struct timeval* tstart)
 {
     gettimeofday(tstart, NULL);
@@ -39,12 +38,13 @@ float ellapsed_time(struct timeval tstart)
     return ((float)diff*1.0e-6);
 }
 
-void init_network(int network_number, int u_input_dim[3], int u_output_dim, real in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load)
+void init_network(int network_number, int u_input_dim[3], int u_output_dim, float in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load, int u_use_cuda_TC)
 {
 
 	networks[network_number] = (network*) malloc(sizeof(network));
 	networks[network_number]->id = network_number;
 	networks[network_number]->dynamic_load = u_dynamic_load;
+	networks[network_number]->use_cuda_TC = u_use_cuda_TC;
 	nb_networks++;
 	
 	if(!is_init)
@@ -52,7 +52,7 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, real
 		srand(time(NULL));
 		#ifdef CUDA
 		if(u_compute_method == C_CUDA)
-			init_cuda();
+			init_cuda(networks[network_number]);
 		#endif
 		
 		#ifndef CUDA
@@ -86,6 +86,7 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, real
 	networks[network_number]->input_depth = u_input_dim[2];
 	networks[network_number]->input_dim = u_input_dim[0]*u_input_dim[1]*u_input_dim[2];
 	networks[network_number]->output_dim = u_output_dim;
+	
 	networks[network_number]->input_bias = in_bias;
 	if(u_batch_size > 1)
 	{
@@ -108,14 +109,15 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, real
 	networks[network_number]->nb_layers = 0;
 	networks[network_number]->epoch = 0;
 	
-	networks[network_number]->output_error = (real*) calloc(networks[network_number]->batch_size*
-		networks[network_number]->output_dim,sizeof(real));
+	networks[network_number]->output_error = (float*) calloc(networks[network_number]->batch_size*
+		networks[network_number]->output_dim, sizeof(float));
 	
 	if(u_compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		cuda_create_table(&networks[network_number]->output_error_cuda, 
+		cuda_create_table_FP32(networks[network_number], (float**)&networks[network_number]->output_error_cuda, 
 			networks[network_number]->batch_size*networks[network_number]->output_dim);
+		
 		#endif
 	}
 }
@@ -128,28 +130,28 @@ Dataset create_dataset(network *net, int nb_elem)
 	
 	data.size = nb_elem;
 	data.nb_batch = (data.size - 1) / net->batch_size + 1;
-	data.input = (real**) malloc(data.nb_batch*sizeof(real*));
-	data.target = (real**) malloc(data.nb_batch*sizeof(real*));
+	data.input = (void**) malloc(data.nb_batch*sizeof(float*));
+	data.target = (void**) malloc(data.nb_batch*sizeof(float*));
 	data.localization = HOST;
 	
 	for(i = 0; i < data.nb_batch; i++)
 	{
-		data.input[i] = (real*) calloc(net->batch_size * (net->input_dim + 1), sizeof(real));
-		data.target[i] = (real*) calloc(net->batch_size * net->output_dim, sizeof(real));
+		((float**)data.input)[i] = (float*) calloc(net->batch_size * (net->input_dim + 1), sizeof(float));
+		((float**)data.target)[i] = (float*) calloc(net->batch_size * net->output_dim, sizeof(float));
 	}
 	
 	for(i = 0; i < data.nb_batch; i++)
 	{
 		for(j = 0; j < net->batch_size; j++)
 		{
-			data.input[i][j*(net->input_dim+1) + net->input_dim] = net->input_bias;
+			((float**)data.input)[i][j*(net->input_dim+1) + net->input_dim] = net->input_bias;
 		}
 	}
 	
 	return data;
 }
 
-void print_table(real* tab, int column_size, int nb_column)
+void print_table(float* tab, int column_size, int nb_column)
 {
 	int i, j;
 	
@@ -208,7 +210,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 	
 	switch(input_data_type)
 	{
-		case UINT8:
+		case c_UINT8:
 		{
 			unsigned char *temp_input;
 			datasize = sizeof(unsigned char);
@@ -221,7 +223,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 					if(i*net->batch_size + j >= data->size)
 						continue;
 					for(k = 0; k < net->input_dim; k++)
-						temp_input[k] = (unsigned char) data->input[i][j*(net->input_dim+1) + k];
+						temp_input[k] = (unsigned char) ((float**)data->input)[i][j*(net->input_dim+1) + k];
 					fwrite(temp_input, datasize, net->input_dim, f);
 				}
 			}
@@ -229,7 +231,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 			break;
 		}
 			
-		case UINT16:
+		case c_UINT16:
 		{
 			unsigned short *temp_input;
 			datasize = sizeof(unsigned short);
@@ -242,14 +244,14 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 					if(i*net->batch_size + j >= data->size)
 						continue;
 					for(k = 0; k < net->input_dim; k++)
-						temp_input[k] = (unsigned short) data->input[i][j*(net->input_dim+1) + k];
+						temp_input[k] = (unsigned short) ((float**)data->input)[i][j*(net->input_dim+1) + k];
 					fwrite(temp_input, datasize, net->input_dim, f);
 				}
 			}
 			free(temp_input);
 			break;
 		}
-		case FP32:
+		case c_FP32:
 		default:
 		{
 			float *temp_input;
@@ -263,7 +265,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 					if(i*net->batch_size + j >= data->size)
 						continue;
 					for(k = 0; k < net->input_dim; k++)
-						temp_input[k] = (float) data->input[i][j*(net->input_dim+1) + k];
+						temp_input[k] = (float) ((float**)data->input)[i][j*(net->input_dim+1) + k];
 					fwrite(temp_input, datasize, net->input_dim, f);
 				}
 			}
@@ -275,7 +277,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 	
 	switch(output_data_type)
 	{
-		case UINT8:
+		case c_UINT8:
 		{
 			unsigned char *temp_output;
 			datasize = sizeof(unsigned char);
@@ -288,7 +290,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 					if(i*net->batch_size + j >= data->size)
 						continue;
 					for(k = 0; k < net->input_dim; k++)
-						temp_output[k] = (unsigned char) data->target[i][j*(net->output_dim) + k];
+						temp_output[k] = (unsigned char) ((float**)data->target)[i][j*(net->output_dim) + k];
 					fwrite(temp_output, datasize, net->output_dim, f);
 				}
 			}
@@ -296,7 +298,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 			break;
 		}
 			
-		case UINT16:
+		case c_UINT16:
 		{
 			unsigned short *temp_output;
 			datasize = sizeof(unsigned short);
@@ -308,7 +310,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 					if(i*net->batch_size + j >= data->size)
 						continue;
 					for(k = 0; k < net->input_dim; k++)
-						temp_output[k] = (unsigned short) data->target[i][j*(net->output_dim) + k];
+						temp_output[k] = (unsigned short) ((float**)data->target)[i][j*(net->output_dim) + k];
 					fwrite(temp_output, datasize, net->output_dim, f);
 				}
 			}
@@ -316,7 +318,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 			break;
 		}
 			
-		case FP32:
+		case c_FP32:
 		default:
 		{
 			float *temp_output;
@@ -330,7 +332,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 					if(i*net->batch_size + j >= data->size)
 						continue;
 					for(k = 0; k < net->input_dim; k++)
-						temp_output[k] = (float) data->target[i][j*(net->output_dim) + k];
+						temp_output[k] = (float) ((float**)data->target)[i][j*(net->output_dim) + k];
 					fwrite(temp_output, datasize, net->output_dim, f);
 				}
 			}
@@ -382,7 +384,7 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 	
 	switch(input_data_type)
 	{
-		case UINT8:
+		case c_UINT8:
 		{
 			unsigned char *temp_input;
 			datasize = sizeof(unsigned char);
@@ -396,14 +398,14 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 						continue;
 					fread(temp_input, datasize, net->input_dim, f);
 					for(k = 0; k < net->input_dim; k++)
-						data.input[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
+						((float**)data.input)[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
 				}	
 			}
 			free(temp_input);
 			break;
 		}
 			
-		case UINT16:
+		case c_UINT16:
 		{
 			unsigned short *temp_input;
 			datasize = sizeof(unsigned short);
@@ -416,14 +418,14 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 						continue;
 					fread(temp_input, datasize, net->input_dim, f);
 					for(k = 0; k < net->input_dim; k++)
-						data.input[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
+						((float**)data.input)[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
 				}	
 			}
 			free(temp_input);
 			break;
 		}
 			
-		case FP32:
+		case c_FP32:
 		default:
 		{
 			float *temp_input;
@@ -437,7 +439,7 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 						continue;
 					fread(temp_input, datasize, net->input_dim, f);
 					for(k = 0; k < net->input_dim; k++)
-						data.input[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
+						((float**)data.input)[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
 				}	
 			}
 			free(temp_input);
@@ -448,7 +450,7 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 		
 	switch(output_data_type)
 	{
-		case UINT8:
+		case c_UINT8:
 		{
 			unsigned char *temp_output;
 			datasize = sizeof(unsigned char);
@@ -461,14 +463,14 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 						continue;
 					fread(temp_output, datasize, net->output_dim, f);
 					for(k = 0; k < net->output_dim; k++)
-						data.target[i][j*(net->output_dim) + k] = (float) temp_output[k];
+						((float**)data.target)[i][j*(net->output_dim) + k] = (float) temp_output[k];
 				}
 			}
 			free(temp_output);
 			break;
 		}
 			
-		case UINT16:
+		case c_UINT16:
 		{
 			unsigned short *temp_output;
 			datasize = sizeof(unsigned short);
@@ -481,14 +483,14 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 						continue;
 					fread(temp_output, datasize, net->output_dim, f);
 					for(k = 0; k < net->output_dim; k++)
-						data.target[i][j*(net->output_dim) + k] = (float) temp_output[k];
+						((float**)data.target)[i][j*(net->output_dim) + k] = (float) temp_output[k];
 				}
 			}
 			free(temp_output);
 			break;
 		}
 			
-		case FP32:
+		case c_FP32:
 		default:
 		{
 			float *temp_output;
@@ -502,7 +504,7 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 						continue;
 					fread(temp_output, datasize, net->output_dim, f);
 					for(k = 0; k < net->output_dim; k++)
-						data.target[i][j*(net->output_dim) + k] = (float) temp_output[k];
+						((float**)data.target)[i][j*(net->output_dim) + k] = (float) temp_output[k];
 				}
 			}
 			free(temp_output);
@@ -542,8 +544,8 @@ void normalize_datasets(network *net, float *offset_input, float *norm_input, in
 				{
 					for(l = 0; l < dim_size_input; l++)
 					{
-						c_data[n]->input[i][j*(net->input_dim+1) + k*dim_size_input + l] += offset_input[k];
-						c_data[n]->input[i][j*(net->input_dim+1) + k*dim_size_input + l] /= norm_input[k];
+						((float**)c_data[n]->input)[i][j*(net->input_dim+1) + k*dim_size_input + l] += offset_input[k];
+						((float**)c_data[n]->input)[i][j*(net->input_dim+1) + k*dim_size_input + l] /= norm_input[k];
 					}
 				}
 			}
@@ -559,8 +561,8 @@ void normalize_datasets(network *net, float *offset_input, float *norm_input, in
 				{
 					for(l = 0; l < dim_size_output; l++)
 					{
-						c_data[n]->target[i][j*(net->output_dim) + k*dim_size_output + l] += offset_output[k];
-						c_data[n]->target[i][j*(net->output_dim) + k*dim_size_output + l] /= norm_output[k];
+						((float**)c_data[n]->target)[i][j*(net->output_dim) + k*dim_size_output + l] += offset_output[k];
+						((float**)c_data[n]->target)[i][j*(net->output_dim) + k*dim_size_output + l] /= norm_output[k];
 					}
 				}
 			}
@@ -571,10 +573,10 @@ void normalize_datasets(network *net, float *offset_input, float *norm_input, in
 }
 
 
-int argmax(real *tab, int size)
+int argmax(float *tab, int size)
 {
 	int i;
-	real max;
+	float max;
 	int imax;
 
 	max = *tab;
@@ -674,7 +676,7 @@ void load_network(network *net, char *filename, int epoch)
 void host_only_shuffle(network *net, Dataset data)
 {
 	int i, j, k;
-	real temp;
+	float temp;
 	int pos, pos2, batch, batch2;
 
 	for(i = 0; i < data.size - 1; i++)
@@ -687,29 +689,32 @@ void host_only_shuffle(network *net, Dataset data)
 		
 		for(k = 0; k < net->input_dim+1; k++)
 		{
-			temp = data.input[batch][pos*(net->input_dim + 1) + k];
-			data.input[batch][pos*(net->input_dim + 1) + k] = data.input[batch2][pos2*(net->input_dim + 1) + k];
-			data.input[batch2][pos2*(net->input_dim + 1) + k] = temp;
+			temp = ((float**)data.input)[batch][pos*(net->input_dim + 1) + k];
+			((float**)data.input)[batch][pos*(net->input_dim + 1) + k] = ((float**)data.input)[batch2][pos2*(net->input_dim + 1) + k];
+			((float**)data.input)[batch2][pos2*(net->input_dim + 1) + k] = temp;
 		}
 		
 		for(k = 0; k < net->output_dim; k++)
 		{
-			temp = data.target[batch][pos*net->output_dim + k];
+			temp = ((float**)data.target)[batch][pos*net->output_dim + k];
 			
-			data.target[batch][pos*net->output_dim + k] = data.target[batch2][pos2*net->output_dim + k];
-			data.target[batch2][pos2*net->output_dim + k] = temp;
+			((float**)data.target)[batch][pos*net->output_dim + k] = ((float**)data.target)[batch2][pos2*net->output_dim + k];
+			((float**)data.target)[batch2][pos2*net->output_dim + k] = temp;
 		}
 	}
 }
 
 
 
-void update_weights(real *weights, real* update, int size)
+void update_weights(void *weights, void* update, int size)
 {
 	int i;
 	
+	float* f_weights = (float*) weights;
+	float* f_update = (float*) update;
+	
 	for(i = 0; i < size; i++)
-		weights[i] -= update[i];
+		f_weights[i] -= f_update[i];
 }
 
 
@@ -720,19 +725,20 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	float** mat = NULL; 
 	float* temp = NULL;
 	int arg1, arg2;
-	real count;
-	real *rapp_err = NULL, *rapp_err_rec = NULL;
+	float count;
+	float *rapp_err = NULL, *rapp_err_rec = NULL;
 	int o, pos;
-	real total_error;
-	real* output_save = NULL;
+	float total_error;
+	void* output_save = NULL;
+	void* output_buffer = NULL;
 	struct timeval ep_timer;
 	float items_per_s = 0.0;
 	FILE *f_save = NULL;
 	char f_save_name[100];
 	
 	#ifdef CUDA
-	real* cuda_mat;
-	real* temp_error = NULL;
+	float* cuda_mat;
+	void* temp_error = NULL;
 	#endif
 
 	//FILE *f_err;
@@ -742,8 +748,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	if(confusion_matrix)
 	{
 		printf("Confusion matrix load\n");
-		rapp_err = (real*) malloc(o*sizeof(real));
-		rapp_err_rec = (real*) malloc(o*sizeof(real));
+		rapp_err = (float*) malloc(o*sizeof(float));
+		rapp_err_rec = (float*) malloc(o*sizeof(float));
 		mat = (float**) malloc(o*sizeof(float*));
 		temp = (float*) calloc(o*o,sizeof(float));
 		for(j = 0; j < o; j++)
@@ -752,15 +758,19 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		#ifdef CUDA
 		if(net->compute_method == C_CUDA)
 		{
-			cuda_create_table(&cuda_mat, o*o);
+			cuda_create_table_FP32(net, &cuda_mat, o*o);
 		}
 		#endif
 	}	
 	
 	if(saving == 1)
 	{
+		#ifdef CUDA
 		if(net->compute_method == C_CUDA)
-			output_save = (real*) calloc(net->batch_size*net->out_size,sizeof(real));
+			output_save = (float*) calloc(net->batch_size*net->out_size, sizeof(float));
+		if(net->use_cuda_TC)
+			cuda_create_host_table_FP16(net, &output_buffer, net->batch_size*net->out_size);
+		#endif
 		sprintf(f_save_name, "fwd_res/net%d_%04d.dat", net->id, net->epoch);
 		f_save = fopen(f_save_name, "w+");
 		if(f_save == NULL)
@@ -798,8 +808,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			if(net->compute_method == C_CUDA && net->dynamic_load)
 			{
 				#ifdef CUDA
-				cuda_put_table(&net->input, &(data.input[j]), net->batch_size*(net->input_dim+1));
-				cuda_put_table(&net->target, &(data.target[j]), net->batch_size*(net->output_dim));
+				cuda_put_table(net, net->input, data.input[j], net->batch_size*(net->input_dim+1));
+				cuda_put_table(net, net->target, data.target[j], net->batch_size*(net->output_dim));
 				#endif
 			}
 			else
@@ -811,7 +821,6 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			//forward
 			for(k = 0; k < net->nb_layers; k++)
 			{
-				
 				net->net_layers[k]->forward(net->net_layers[k]);
 			}
 			
@@ -823,16 +832,27 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
-				cuda_get_table(&net->output_error, &temp_error, net->batch_size*net->output_dim);
+				cuda_get_table(net, net->output_error, temp_error, net->batch_size*net->output_dim);
 				net->output_error = temp_error;	
 				if(saving == 1)
 				{
-					cuda_get_table(&(net->net_layers[net->nb_layers-1]->output), &output_save, 
-						net->batch_size*net->out_size);
+					switch(net->use_cuda_TC)
+					{
+						default:
+						case 0:
+							cuda_get_table(net, net->net_layers[net->nb_layers-1]->output,
+								output_save, net->batch_size*net->out_size);
+							break;
+						case 1:
+							cuda_get_table_FP16_to_FP32(net->net_layers[net->nb_layers-1]->output,
+								output_save, net->batch_size*net->out_size, output_buffer);
+							break;
+					}
+					
 					for(k = 0; k < net->length; k++)
 					{
 						for(l = 0; l < net->out_size; l++)
-							fprintf(f_save, "%g ", output_save[k*net->out_size + l]);
+							fprintf(f_save, "%g ", ((float*)output_save)[k*net->out_size + l]);
 						fprintf(f_save, "\n");
 					}
 				}
@@ -845,7 +865,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					for(k = 0; k < net->length; k++)
 					{
 						for(l = 0; l < net->out_size; l++)
-							fprintf(f_save, "%g ", net->net_layers[net->nb_layers-1]->output[k*net->out_size + l]);
+							fprintf(f_save, "%g ", ((float*)net->net_layers[net->nb_layers-1]->output)[k*net->out_size + l]);
 						fprintf(f_save, "\n");
 					}
 				}
@@ -857,13 +877,13 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				for(l = 0; l < net->output_dim; l++)
 				{
 					pos++;
-					total_error += net->output_error[pos];
+					total_error += ((float*)net->output_error)[pos];
 				}
 				
 				if(confusion_matrix && net->compute_method != C_CUDA)
 				{
-					arg1 = argmax(&(net->target[k*net->output_dim]), net->output_dim);
-					arg2 = argmax(&(net->net_layers[net->nb_layers-1]->output[k*(net->output_dim+1)]),
+					arg1 = argmax(&(((float*)net->target)[k*net->output_dim]), net->output_dim);
+					arg2 = argmax(&(((float*)net->net_layers[net->nb_layers-1]->output)[k*(net->output_dim+1)]),
 						net->output_dim);
 					mat[arg1][arg2]++;
 
@@ -893,7 +913,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	if(confusion_matrix && net->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		cuda_get_table(&cuda_mat, mat, o*o);
+		cuda_get_table_FP32(net, (float*)cuda_mat, *mat, o*o);
 		cuda_free_table(cuda_mat);
 		#endif
 	}
@@ -902,6 +922,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	{
 		if(output_save != NULL)
 			free(output_save);
+		if(output_buffer != NULL)
+			free(output_buffer);
 		fclose(f_save);
 	}
 
@@ -946,12 +968,12 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 }
 
 
-void train_network(network* net, int nb_epochs, int control_interv, real u_begin_learning_rate, real u_end_learning_rate, real u_momentum, real u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every)
+void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every)
 {
 	int i, j, k;
-	real begin_learn_rate;
-	real end_learn_rate;
-	real decay;
+	float begin_learn_rate;
+	float end_learn_rate;
+	float decay;
 	char net_save_file_name[200];
 	struct timeval ep_timer;
 	float items_per_s = 0.0;
@@ -959,14 +981,14 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 	
 	#ifdef CUDA
 	Dataset shuffle_duplicate;
-	real *index_shuffle = NULL, *index_shuffle_device = NULL;
+	int *index_shuffle = NULL, *index_shuffle_device = NULL;
 	
 	if(net->compute_method == C_CUDA)
 	{
 		if(net->dynamic_load)
 		{
-			cuda_create_table(&(net->input), net->batch_size*(net->input_dim+1));
-			cuda_create_table(&(net->target), net->batch_size*(net->output_dim));
+			cuda_create_table(net, &(net->input), net->batch_size*(net->input_dim+1));
+			cuda_create_table(net, &(net->target), net->batch_size*(net->output_dim));
 		}
 		else
 		{
@@ -974,12 +996,12 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 			if(shuffle_gpu)
 			{
 				
-				index_shuffle = (real*) calloc(net->train.size,sizeof(real));
+				index_shuffle = (void*) calloc(net->train.size,sizeof(void));
 				for(i = 0; i < net->train.size; i++)
 					index_shuffle[i] = i;
-				index_shuffle_device = (real*)  calloc(net->train.size,sizeof(real));
+				index_shuffle_device = (void*)  calloc(net->train.size,sizeof(void));
 				cuda_convert_dataset(net, &shuffle_duplicate);
-				cuda_convert_table(&index_shuffle_device, net->train.size);
+				cuda_convert_table_int(net, &index_shuffle_device, net->train.size);
 			}
 		}
 	}
@@ -1010,11 +1032,9 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 			break;
 	}
 	
-	
 	for(i = 0; i < nb_epochs; i++)
 	{
 		net->epoch++;
-		
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*i);
 		
 		if((net->epoch) % shuffle_every == 0 && net->batch_param != SGD)
@@ -1023,9 +1043,7 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 			{
 				#ifdef CUDA
 				if(net->dynamic_load)
-				{
-					host_only_shuffle(net, net->train);
-				}
+					cuda_host_only_shuffle(net, net->train);
 				else
 				{
 					if(shuffle_gpu)
@@ -1036,9 +1054,7 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 				#endif
 			}
 			else
-			{
 				host_only_shuffle(net, net->train);
-			}
 			
 		}
 		
@@ -1060,8 +1076,8 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 			if(net->dynamic_load && net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
-				cuda_put_table(&net->input, &(net->train.input[batch_loc]), net->batch_size*(net->input_dim+1));
-				cuda_put_table(&net->target, &(net->train.target[batch_loc]), net->batch_size*(net->output_dim));
+				cuda_put_table(net, net->input, net->train.input[batch_loc], net->batch_size*(net->input_dim+1));
+				cuda_put_table(net, net->target, net->train.target[batch_loc], net->batch_size*(net->output_dim));
 				#endif
 			}
 			else
@@ -1072,6 +1088,7 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 			
 			for(k = 0; k < net->nb_layers; k++)
 			{
+				//printf("Forward layer %d\n", k);
 				net->net_layers[k]->forward(net->net_layers[k]);
 			}
 			
@@ -1082,6 +1099,7 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 			{
 				net->net_layers[net->nb_layers-1-k]->backprop(net->net_layers[net->nb_layers-1-k]);
 			}
+			
 		
 		}
 		
@@ -1123,13 +1141,14 @@ void train_network(network* net, int nb_epochs, int control_interv, real u_begin
 		}	
 	}
 	#endif
+
+	//printf("Test fin\n");
 }
 
 
 void forward_testset(network *net, int train_step, int repeat)
 {
 	//update out_size in case of forward with no training
-	
 	switch(net->net_layers[net->nb_layers-1]->type)
 	{
 		case CONV:
@@ -1153,8 +1172,8 @@ void forward_testset(network *net, int train_step, int repeat)
 	if(net->dynamic_load)
 	{
 		#ifdef CUDA
-		cuda_create_table(&(net->input), net->batch_size*(net->input_dim+1));
-		cuda_create_table(&(net->target), net->batch_size*(net->output_dim));
+		cuda_create_table(net, &(net->input), net->batch_size*(net->input_dim+1));
+		cuda_create_table(net, &(net->target), net->batch_size*(net->output_dim));
 		#endif
 	}
 	

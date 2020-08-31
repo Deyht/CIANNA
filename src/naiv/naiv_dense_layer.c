@@ -48,6 +48,7 @@ void naiv_forward_dense_layer(layer *current)
 	int i, j, b;
 	double h;
 	int nb_area_w, nb_area_h, depth;
+	void* ref_input;
 	
 	if(current->c_network->length == 0)
 		return;
@@ -56,26 +57,13 @@ void naiv_forward_dense_layer(layer *current)
 	
 	if(current->previous == NULL)
 		current->input = current->c_network->input;
-
 	
-	if(current->previous->type == DENSE)
-	{
-		#pragma omp parallel for private(i, j, h) collapse(2) schedule(guided, 2)
-		for(b = 0; b < current->c_network->batch_size; b++)
-		{
-			for(i = 0; i < d_param->nb_neurons+1; i++)
-			{
-				h = 0.0;
-				for(j = 0; j < d_param->in_size; j++)
-				{
-					h += d_param->weights[j*(d_param->nb_neurons+1) + i]
-							* current->input[b*d_param->in_size + j];
-				}
-				current->output[b*(d_param->nb_neurons+1)+i] = h;
-			}
-		}
-	}
-	else if(current->previous->type != DENSE)
+	ref_input = current->input;
+
+	float *f_weights = (float*) d_param->weights;
+	float *f_output = (float*) current->output;
+	
+	if(current->previous != NULL && current->previous->type != DENSE)
 	{
 		//Use a converted (flatten) input if needed
 		switch(current->previous->type)
@@ -98,31 +86,37 @@ void naiv_forward_dense_layer(layer *current)
 			nb_area_w * nb_area_h , nb_area_w * nb_area_h * depth + 1, depth, current->c_network->batch_size, 
 			(nb_area_w * nb_area_h * depth + 1) * current->c_network->batch_size);
 		
-		//Strongly affected by performance drop of cache miss
-		//Could be optimized by transposing the matrix first => better use OpenBLAS directly
-		#pragma omp parallel for private(i, j, h) collapse(2) schedule(guided, 4)
-		for(b = 0; b < current->c_network->batch_size; b++)
-		{
-			for(i = 0; i < d_param->nb_neurons+1; i++)
-			{
-				h = 0.0;
-				for(j = 0; j < d_param->in_size; j++)
-				{
-					h += d_param->weights[j*(d_param->nb_neurons+1) + i]
-							* d_param->flat_input[b*d_param->in_size + j];
-				}
-				current->output[b*(d_param->nb_neurons+1)+i] = h;
-			}
-		}
+		ref_input = d_param->flat_input;
 	}
 	
-	dropout_select(d_param->dropout_mask, d_param->nb_neurons+1, d_param->dropout_rate);
+	
+	float *f_input = (float*) ref_input;
+	//Strongly affected by performance drop of cache miss
+		//Could be optimized by transposing the matrix first => better use OpenBLAS directly
+	#pragma omp parallel for private(i, j, h) shared(f_weights) collapse(2) schedule(guided, 2)
+	for(b = 0; b < current->c_network->batch_size; b++)
+	{
+		for(i = 0; i < d_param->nb_neurons+1; i++)
+		{
+			h = 0.0;
+			for(j = 0; j < d_param->in_size; j++)
+			{
+				h += f_weights[j*(d_param->nb_neurons+1) + i]
+						* f_input[b*d_param->in_size + j];
+			}
+			
+			f_output[b*(d_param->nb_neurons+1)+i] = h;
+		}
+	}
 	
 	current->activation(current);
 	
 	if(d_param->dropout_rate > 0.01)
+	{
+		dropout_select(d_param->dropout_mask, d_param->nb_neurons+1, d_param->dropout_rate);
 		dropout_apply(current->output, current->c_network->batch_size, 
 			d_param->nb_neurons, d_param->dropout_mask);
+	}
 	
 }
 
@@ -134,14 +128,23 @@ void naiv_backward_dense_layer(layer* current)
 	int i, j, b;
 	double h;
 	int nb_area_w, nb_area_h, depth;
+	void* ref_input;
 	
 	d_param = (dense_param*) current->param;
+	
+	
+	float *f_weights = (float*) d_param->weights;
+	float *f_delta_o = (float*) current->delta_o;
+	float *f_flat_delta_o = (float*) d_param->flat_delta_o;
+	float *f_update = (float*) d_param->update;
+	
 	
 	if(d_param->dropout_rate > 0.01)
 		dropout_apply(current->delta_o, current->c_network->batch_size, d_param->nb_neurons,
 					d_param->dropout_mask);
 	
 	//######################## ERROR PROPAGATION ########################
+	ref_input = current->input;
 
 	//skip error prop if previous is the input layer
 	if(current->previous != NULL)
@@ -154,10 +157,10 @@ void naiv_backward_dense_layer(layer* current)
 				h = 0.0;
 				for(j = 0; j < d_param->nb_neurons+1; j++)
 				{
-					h += d_param->weights[i*(d_param->nb_neurons+1) + j]
-							* current->delta_o[b*(d_param->nb_neurons+1) + j];
+					h += f_weights[i*(d_param->nb_neurons+1) + j]
+							* f_delta_o[b*(d_param->nb_neurons+1) + j];
 				}
-				d_param->flat_delta_o[b*(d_param->in_size)+i] = h;
+				f_flat_delta_o[b*(d_param->in_size)+i] = h;
 			}
 		}
 		
@@ -192,41 +195,25 @@ void naiv_backward_dense_layer(layer* current)
 		
 	//########################  WEIGHTS UPDATE   ########################
 	
-	//based on the recovered delta_o provided by the next layer propagation
 	if(current->previous != NULL && current->previous->type != DENSE)
+		ref_input = d_param->flat_input;
+	
+	float *f_input = (float*) ref_input;
+	//based on the recovered delta_o provided by the next layer propagation
+
+	#pragma omp parallel for private(j, b, h) collapse(2) schedule(guided, 4)
+	for(i = 0; i <  d_param->in_size; i++)
 	{
-		#pragma omp parallel for private(j, b, h) collapse(2) schedule(guided, 4)
-		for(i = 0; i <  d_param->in_size; i++)
+		for(j = 0; j < d_param->nb_neurons+1; j++)
 		{
-			for(j = 0; j < d_param->nb_neurons+1; j++)
+			h = 0.0;
+			for(b = 0; b < current->c_network->batch_size; b++)
 			{
-				h = 0.0;
-				for(b = 0; b < current->c_network->batch_size; b++)
-				{
-					h += current->delta_o[b*(d_param->nb_neurons+1) + j]
-							* d_param->flat_input[b*d_param->in_size + i];
-				}
-				d_param->update[i*(d_param->nb_neurons+1)+j] = current->c_network->learning_rate*h 
-						+ current->c_network->momentum * d_param->update[i*(d_param->nb_neurons+1)+j];
+				h += f_delta_o[b*(d_param->nb_neurons+1) + j]
+						* f_input[b*d_param->in_size + i];
 			}
-		}
-	}
-	else
-	{
-		#pragma omp parallel for private(j, b, h) collapse(2) schedule(guided, 4)
-		for(i = 0; i <  d_param->in_size; i++)
-		{
-			for(j = 0; j < d_param->nb_neurons+1; j++)
-			{
-				h = 0.0;
-				for(b = 0; b < current->c_network->batch_size; b++)
-				{
-					h += current->delta_o[b*(d_param->nb_neurons+1) + j]
-							* current->input[b*d_param->in_size + i];
-				}
-				d_param->update[i*(d_param->nb_neurons+1)+j] = current->c_network->learning_rate*h 
-						+ current->c_network->momentum * d_param->update[i*(d_param->nb_neurons+1)+j];
-			}
+			f_update[i*(d_param->nb_neurons+1)+j] = current->c_network->learning_rate*h 
+					+ current->c_network->momentum * f_update[i*(d_param->nb_neurons+1)+j];
 		}
 	}
 
@@ -237,10 +224,13 @@ void naiv_backward_dense_layer(layer* current)
 
 //used to reshape output of Conv layer that as the result of filter 1 continuous for the all batch
 //convert into all filters continuous for image 1, then image 2, ...
-void flat_dense(real* in, real* out, real bias, int map_size, int flatten_size, int nb_map, int batch_size, int size)
+void flat_dense(void* in, void* out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, int size)
 {
 	int i;
 	int map_id, image_id, pos;
+	
+	float *f_in = (float*) in;
+	float *f_out = (float*) out;
 	
 	#pragma omp parallel for private(image_id, map_id, pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -250,17 +240,20 @@ void flat_dense(real* in, real* out, real bias, int map_size, int flatten_size, 
 		pos = (i % flatten_size)%map_size;
 		
 		if(map_id >= nb_map)
-			out[i] = bias;
+			f_out[i] = bias;
 		else
-			out[i] = in[map_id*(map_size*batch_size) + image_id*map_size + pos];
+			f_out[i] = f_in[map_id*(map_size*batch_size) + image_id*map_size + pos];
 	}
 }
 
 
-void reroll_batch(real* in, real* out, int map_size, int flatten_size, int nb_map, int batch_size, int size)
+void reroll_batch(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size)
 {
 	int i;
 	int map_id, image_id, pos;
+	
+	float *f_in = (float*) in;
+	float *f_out = (float*) out;
 	
 	#pragma omp parallel for private(image_id, map_id, pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -269,15 +262,15 @@ void reroll_batch(real* in, real* out, int map_size, int flatten_size, int nb_ma
 		image_id = (i % (map_size*batch_size))/map_size;
 		pos = (i % (map_size*batch_size))%map_size;
 		
-		out[i] = in[image_id*(flatten_size) + map_id*map_size + pos];
+		f_out[i] = f_in[image_id*(flatten_size) + map_id*map_size + pos];
 	}
 }
 
 
-void dropout_select(real* mask, int size, real drop_rate)
+void dropout_select(int* mask, int size, float drop_rate)
 {
 	int i;
-	real rand;
+	float rand;
 	
 	//#pragma omp parallel for private(rand) schedule(guided,4)
 	//OMP overhead is too high for "small" dense layers
@@ -290,20 +283,21 @@ void dropout_select(real* mask, int size, real drop_rate)
 		else
 			mask[i] = 1;
 	}
-
 }
 
 
-void dropout_apply(real* table, real batch_size, int dim, real* mask)
+void dropout_apply(void* table, int batch_size, int dim, int* mask)
 {
 	int i;
 	int j;
+	
+	float* f_table = (float*) table;
 	
 	for(i = 0; i < batch_size; i++)
 	{
 		for(j = 0; j < dim; j++)
 		{
-			table[i*(dim+1) + j] *= mask[j];
+			f_table[i*(dim+1) + j] *= mask[j];
 		}
 	}
 }

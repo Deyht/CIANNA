@@ -81,7 +81,7 @@ do
 	if [ $i = "PY_INTERF" ]
 	then
 		PY_INTERF=1
-		echo BUILD_PY_INTERF
+		echo BUILD PY_INTERF
 	fi
 done
 

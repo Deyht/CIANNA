@@ -1,8 +1,10 @@
 from distutils.core import setup, Extension
 import os
 
+
 #os.environ['USE_CUDA'] = '1'
 #os.environ['USE_BLAS'] = '1'
+#os.environ['USE_OPENMP'] = '1'
 
 cuda_obj = []
 cuda_extra = []

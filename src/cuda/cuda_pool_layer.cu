@@ -33,9 +33,12 @@ static pool_param *p_param;
 void cuda_forward_pool_layer(layer* current);
 void cuda_backward_pool_layer(layer* current);
 
-__global__ void  pooling_kernel(real *input, real *output, real* pool_map, int pool_size, int w_size, int w_size_out, int  length);
-__global__ void deltah_pool(real* delta_o, real* delta_o_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length);
-__global__ void deltah_pool_cont(real* delta_o, real* delta_o_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length);
+__global__ void  pooling_kernel_FP32(float* input, float* output, int* pool_map, int pool_size, int w_size, int w_size_out, int  length);
+__global__ void  pooling_kernel_FP16(half* input, half* output, int* pool_map, int pool_size, int w_size, int w_size_out, int  length);
+__global__ void deltah_pool_FP32(float* delta_o, float* delta_o_unpool, int* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length);
+__global__ void deltah_pool_FP16(half* delta_o, half* delta_o_unpool, int* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length);
+__global__ void deltah_pool_cont_FP32(float* delta_o, float* delta_o_unpool, int* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length);
+__global__ void deltah_pool_cont_FP16(half* delta_o, half* delta_o_unpool, int* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length);
 
 
 void cuda_pool_define(layer *current)
@@ -48,16 +51,16 @@ void cuda_convert_pool_layer(layer *current)
 {
 	p_param = (pool_param*)current->param;
 
-	cuda_convert_table(&(p_param->pool_map), p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
-		* current->c_network->batch_size);
-	cuda_convert_table(&(current->output), p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
-		* current->c_network->batch_size);
+	cuda_convert_table_int(current->c_network, &(p_param->pool_map), p_param->nb_area_w 
+		* p_param->nb_area_h * p_param->nb_maps * current->c_network->batch_size);
+	cuda_convert_table(current->c_network, &(current->output), p_param->nb_area_w 
+		* p_param->nb_area_h * p_param->nb_maps * current->c_network->batch_size);
 	
-	cuda_convert_table(&(current->delta_o), p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps
-		* current->c_network->batch_size);
+	cuda_convert_table(current->c_network, &(current->delta_o), p_param->nb_area_w 
+		* p_param->nb_area_h * p_param->nb_maps * current->c_network->batch_size);
 	
-	cuda_convert_table(&(p_param->temp_delta_o), p_param->prev_size_w * p_param->prev_size_h 
-		* p_param->prev_depth * current->c_network->batch_size);
+	cuda_convert_table(current->c_network, &(p_param->temp_delta_o), p_param->prev_size_w 
+		* p_param->prev_size_h * p_param->prev_depth * current->c_network->batch_size);
 }
 
 
@@ -75,9 +78,20 @@ void cuda_forward_pool_layer(layer* current)
     	(p_param->nb_area_h +  threadsPerBlock.y - 1) / threadsPerBlock.y,
     	(current->c_network->batch_size * p_param->nb_maps + threadsPerBlock.z - 1) / threadsPerBlock.z);
     
-	pooling_kernel<<< numBlocks , threadsPerBlock >>>(current->input, current->output, 
-		p_param->pool_map, p_param->p_size, p_param->prev_size_w, p_param->nb_area_w, 
-		p_param->nb_maps * current->c_network->batch_size);
+    switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:
+			pooling_kernel_FP32<<< numBlocks , threadsPerBlock >>>((float*)current->input, 
+				(float*)current->output, p_param->pool_map, p_param->p_size, p_param->prev_size_w,
+				p_param->nb_area_w, p_param->nb_maps * current->c_network->batch_size);
+			break;
+		case 1:
+			pooling_kernel_FP16<<< numBlocks , threadsPerBlock >>>((half*)current->input, 
+				(half*)current->output, p_param->pool_map, p_param->p_size, p_param->prev_size_w,
+				p_param->nb_area_w, p_param->nb_maps * current->c_network->batch_size);
+			break;
+	}
 }
 
 
@@ -90,18 +104,38 @@ void cuda_backward_pool_layer(layer* current)
 	
 		if(current->previous->type == CONV)
 		{
-			//array must be set to 0 as deltah_pool do not erase previous values
-			cudaMemset(current->previous->delta_o, 0.0, p_param->prev_depth * p_param->prev_size_w 
-				* p_param->prev_size_h * current->c_network->batch_size*sizeof(real));
-		
-			cu_blocks = (current->c_network->batch_size*(p_param->nb_maps * p_param->nb_area_w 
-				* p_param->nb_area_h) + cu_threads - 1) / cu_threads;
+			switch(current->c_network->use_cuda_TC)
+			{
+				default:
+				case 0:
+					//array must be set to 0 as deltah_pool do not erase previous values
+					cudaMemset(current->previous->delta_o, 0.0f, p_param->prev_depth 
+						* p_param->prev_size_w * p_param->prev_size_h 
+						* current->c_network->batch_size*sizeof(float));
+				
+					cu_blocks = (current->c_network->batch_size*(p_param->nb_maps * p_param->nb_area_w 
+						* p_param->nb_area_h) + cu_threads - 1) / cu_threads;
 
-			deltah_pool_cont<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o,
-					p_param->pool_map, p_param->p_size, current->c_network->length, 
-					current->c_network->batch_size, p_param->nb_maps * p_param->nb_area_w 
-					* p_param->nb_area_h, p_param->nb_area_w);
-			
+					deltah_pool_cont_FP32<<< cu_blocks, cu_threads >>>((float*)current->delta_o, 
+						(float*)current->previous->delta_o, p_param->pool_map, p_param->p_size, 
+						current->c_network->length, current->c_network->batch_size, p_param->nb_maps 
+						* p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w);
+					break;
+				case 1:
+					//array must be set to 0 as deltah_pool do not erase previous values
+					cudaMemset(current->previous->delta_o, 0.0f, p_param->prev_depth 
+						* p_param->prev_size_w * p_param->prev_size_h 
+						* current->c_network->batch_size*sizeof(half));
+				
+					cu_blocks = (current->c_network->batch_size*(p_param->nb_maps * p_param->nb_area_w 
+						* p_param->nb_area_h) + cu_threads - 1) / cu_threads;
+
+					deltah_pool_cont_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o, 
+						(half*)current->previous->delta_o, p_param->pool_map, p_param->p_size, 
+						current->c_network->length, current->c_network->batch_size, p_param->nb_maps 
+						* p_param->nb_area_w * p_param->nb_area_h, p_param->nb_area_w);
+					break;
+			}
 		}
 		
 		current->previous->deriv_activation(current->previous);
@@ -109,7 +143,7 @@ void cuda_backward_pool_layer(layer* current)
 }
 
 
-__global__ void  pooling_kernel(real *input, real *output, real* pool_map, int pool_size, int w_size, int w_size_out, int  length)
+__global__ void pooling_kernel_FP32(float* input, float* output, int* pool_map, int pool_size, int w_size, int w_size_out, int length)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int j = blockIdx.y*blockDim.y + threadIdx.y; 
@@ -131,14 +165,41 @@ __global__ void  pooling_kernel(real *input, real *output, real* pool_map, int p
 					x_max = x;
 					y_max = y;
 				}
-		pool_map[pos_out] = (real)(x_max*pool_size + y_max);
+		pool_map[pos_out] = (x_max*pool_size + y_max);
+		output[pos_out] = input[pos + x_max*w_size + y_max];
+	}
+}
+
+__global__ void pooling_kernel_FP16(half* input, half* output, int* pool_map, int pool_size, int w_size, int w_size_out, int length)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	int j = blockIdx.y*blockDim.y + threadIdx.y; 
+	int k = blockIdx.z*blockDim.z + threadIdx.z;
+	int x, y, x_max, y_max, pos, pos_out;
+	
+	pos_out = k*(w_size_out*w_size_out) + i + j*w_size_out;
+	
+	pos = k*w_size*w_size + i*pool_size + j*pool_size*w_size;
+	
+	if(i < w_size_out && j < w_size_out && k < length)
+	{
+		x_max = 0;
+		y_max = 0;
+		for(x = 0; x < pool_size; x++)
+			for(y = 0; y < pool_size; y++)
+				if(input[pos + x_max*w_size + y_max] < input[pos + x*w_size + y])
+				{
+					x_max = x;
+					y_max = y;
+				}
+		pool_map[pos_out] = (x_max*pool_size + y_max);
 		output[pos_out] = input[pos + x_max*w_size + y_max];
 	}
 }
 
 
 // Do the same thing as the funciton below but slightly slower
-__global__ void deltah_pool(real* delta_o, real* delta_o_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length)
+__global__ void deltah_pool_FP32(float* delta_o, float* delta_o_unpool, int* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int map_id, image_id, map_col, map_pos;
@@ -162,7 +223,51 @@ __global__ void deltah_pool(real* delta_o, real* delta_o_unpool, real* pool_map,
 		*delta_o_unpool = 0.0;
 }
 
-__global__ void deltah_pool_cont(real* delta_o, real* delta_o_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length)
+__global__ void deltah_pool_FP16(half* delta_o, half* delta_o_unpool, int* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	int map_id, image_id, map_col, map_pos;
+
+	if(i > batch_size*image_size)
+		return;
+
+	map_id = i / (map_size*batch_size);
+	image_id = i % (map_size*batch_size) / map_size;
+	map_col =  i % (map_size*batch_size) % map_size / column_length;
+	map_pos = i % (map_size*batch_size) % map_size % column_length;
+	
+	delta_o_unpool += (map_id * (map_size*batch_size) + image_id * map_size) * pool_size * pool_size;
+	delta_o_unpool += map_col * column_length * pool_size * pool_size + map_pos * pool_size;
+	delta_o_unpool += (int(pool_map[i])/pool_size) * column_length * pool_size 
+		+ (int(pool_map[i])%pool_size);
+	
+	if(i < len*image_size)
+		*delta_o_unpool = delta_o[i];
+	else
+		*delta_o_unpool = (half)0.0f;
+}
+
+__global__ void deltah_pool_cont_FP32(float* delta_o, float* delta_o_unpool, int* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	int pos;
+
+	pos = i;
+	
+	if(i < len*image_size)
+	{
+		//add mask of locations
+		delta_o_unpool += (i/column_length) * column_length * pool_size * pool_size 
+			+ (i%column_length) * (pool_size) + (int(pool_map[i])/pool_size) * column_length 
+			* pool_size + (int(pool_map[i])%pool_size);
+		
+		*delta_o_unpool = delta_o[pos];
+	}
+	
+}
+
+
+__global__ void deltah_pool_cont_FP16(half* delta_o, half* delta_o_unpool, int* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int pos;

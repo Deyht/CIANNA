@@ -47,17 +47,17 @@ void softmax_deriv(layer *previous);
 void softmax_deriv_output_error(layer *current);
 void softmax_output_error(layer *current);
 
-void ReLU_activation_fct(real *tab, int len, int dim, real leaking_factor);
-void ReLU_deriv_fct(real *deriv, real *value, int len, int dim, real leaking_factor, int size);
-void quadratic_deriv_output_error(real *delta_o, real *output, real *target, 
+void ReLU_activation_fct(void *tab, int len, int dim, float leaking_factor);
+void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, float leaking_factor, int size);
+void quadratic_deriv_output_error(void *delta_o, void *output, void *target, 
 	int dim, int len, int size);
-void quadratic_output_error(real *output_error, real *output, real *target, 
+void quadratic_output_error(void *output_error, void *output, void *target, 
 	int dim, int len, int size);
-void logistic_activation_fct(real *tab, real beta, real saturation, int dim, int len, int size);
-void logistic_deriv_fct(real *deriv, real* value, real beta, int len, int dim, int size);
-void softmax_activation_fct(real *tab, int len, int dim, int size);
-void cross_entropy_deriv_output_error(real *delta_o, real *output, real *target, int len, int dim, int size);
-void cross_entropy_output_error(real *output_error, real *output, real *target, int len, int dim, int size);
+void logistic_activation_fct(void *tab, float beta, float saturation, int dim, int len, int size);
+void logistic_deriv_fct(void *deriv, void* value, float beta, int len, int dim, int size);
+void softmax_activation_fct(void *tab, int len, int dim, int size);
+void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int size);
+void cross_entropy_output_error(void *output_error, void *output, void *target, int len, int dim, int size);
 
 //#####################################################
 
@@ -294,17 +294,18 @@ void ReLU_activation(layer *current)
 }
 
 //Is in fact a leaky ReLU, to obtain true ReLU define leaking_factor to 0
-void ReLU_activation_fct(real *tab, int len, int dim, real leaking_factor)
+void ReLU_activation_fct(void *tab, int len, int dim, float leaking_factor)
 {
 	int i;
 	int pos;
+	float *f_tab = (float*) tab;
 	
 	#pragma omp parallel for private(pos) schedule(guided,4)
 	for(i = 0; i < len; i++)
 	{
 		pos = i + i/dim;
-		if(tab[pos] <= 0.0)
-			tab[pos] *= leaking_factor;
+		if(f_tab[pos] <= 0.0)
+			f_tab[pos] *= leaking_factor;
 	}
 }
 
@@ -318,20 +319,22 @@ void ReLU_deriv(layer *previous)
 
 
 //should be adapted for both conv and dense layer if dim is properly defined
-void ReLU_deriv_fct(real *deriv, real *value, int len, int dim, real leaking_factor, int size)
+void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, float leaking_factor, int size)
 {
 	int i;
+	float *f_deriv = (float*) deriv;
+	float *f_value = (float*) value;
 	
 	#pragma omp parallel for schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
-			if(value[i] <= 0.0)
-				deriv[i] *= leaking_factor;
+			if(f_value[i] <= 0.0)
+				f_deriv[i] *= leaking_factor;
 		}
 		else
-			deriv[i] = 0.0;
+			f_deriv[i] = 0.0;
 	}
 }
 
@@ -357,10 +360,14 @@ void ReLU_output_error(layer* current)
 }
 
 
-void quadratic_deriv_output_error(real *delta_o, real *output, real *target, int len, int dim, int size)
+void quadratic_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int size)
 {
 	int i;
 	int pos;
+	
+	float *f_delta_o = (float*) delta_o;
+	float *f_output = (float*) output;
+	float *f_target = (float*) target;
 	
 	#pragma omp parallel for private(pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -368,21 +375,25 @@ void quadratic_deriv_output_error(real *delta_o, real *output, real *target, int
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
 			pos = i - i/(dim+1);
-			delta_o[i] = (output[i] - target[pos]);
+			f_delta_o[i] = (f_output[i] - f_target[pos]);
 		}
 		else
 		{
-			delta_o[i] = 0.0;
+			f_delta_o[i] = 0.0;
 		}
 	}
 }
 
 
 
-void quadratic_output_error(real *output_error, real *output, real *target, int len, int dim, int size)
+void quadratic_output_error(void *output_error, void *output, void *target, int len, int dim, int size)
 {
 	int i;
 	int pos;
+	
+	float *f_output_error = (float*) output_error;
+	float *f_output = (float*) output;
+	float *f_target = (float*) target;
 	
 	#pragma omp parallel for private(pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -390,7 +401,7 @@ void quadratic_output_error(real *output_error, real *output, real *target, int 
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
 			pos = i - i/(dim+1);
-			output_error[pos] = 0.5*(output[i] - target[pos])*(output[i] - target[pos]);
+			f_output_error[pos] = 0.5*(f_output[i] - f_target[pos])*(f_output[i] - f_target[pos]);
 		}
 	}
 }
@@ -414,10 +425,12 @@ void logistic_activation(layer *current)
 	logistic_activation_fct(current->output, param->beta, param->saturation, param->size,  param->dim, param->size);
 }
 
-void logistic_activation_fct(real *tab, real beta, real saturation, int len, int dim, int size)
+void logistic_activation_fct(void *tab, float beta, float saturation, int len, int dim, int size)
 {
 	int i = 0;
 	int pos;
+	
+	float *f_tab = (float*) tab;
 
 	#pragma omp parallel for private(pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -425,14 +438,14 @@ void logistic_activation_fct(real *tab, real beta, real saturation, int len, int
 		if(i < len)
 		{
 			pos = i + i / dim;
-			tab[pos] = -beta*tab[pos];
-			if(tab[pos] > saturation)
-				tab[pos] = saturation;
-			tab[pos] = 1.0/(1.0 + expf(tab[pos]));
+			f_tab[pos] = -beta*f_tab[pos];
+			if(f_tab[pos] > saturation)
+				f_tab[pos] = saturation;
+			f_tab[pos] = 1.0/(1.0 + expf(f_tab[pos]));
 		}
 		else
 		{
-			tab[i] = 0.0;
+			f_tab[i] = 0.0;
 		}
 	}
 }
@@ -448,19 +461,22 @@ void logistic_deriv(layer *previous)
 
 
 
-void logistic_deriv_fct(real *deriv, real* value, real beta, int len, int dim, int size)
+void logistic_deriv_fct(void *deriv, void* value, float beta, int len, int dim, int size)
 {
 	int i;
+	
+	float *f_deriv = (float*) deriv;
+	float *f_value = (float*) value;
 	
 	#pragma omp parallel for schedule(guided,4)
 	for(i = 0; i < size;  i++)
 	{
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
-			deriv[i] *= beta*value[i]*(1.0-value[i]);
+			f_deriv[i] *= beta*f_value[i]*(1.0-f_value[i]);
 		}
 		else
-			deriv[i] = 0.0;
+			f_deriv[i] = 0.0;
 	}
 }
 
@@ -498,15 +514,15 @@ void softmax_activation(layer *current)
 	softmax_activation_fct(current->output, current->c_network->length, param->dim, current->c_network->batch_size);
 }
 
-void softmax_activation_fct(real *tab, int len, int dim, int size)
+void softmax_activation_fct(void *tab, int len, int dim, int size)
 {
 	//difficult to optimize but can be invastigated
 	//provides a probabilistic output
 	int i;
 	int j;
-	real *pos;
-	real vmax;
-	real normal = 0.0000001;
+	float *pos;
+	float vmax;
+	float normal = 0.0000001;
 	
 	#pragma omp parallel for private(j, pos, vmax, normal) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -514,7 +530,7 @@ void softmax_activation_fct(real *tab, int len, int dim, int size)
 		normal = 0.0000001;
 		if(i < len)
 		{
-			pos = tab + i*(dim+1);
+			pos = (float*)tab + i*(dim+1);
 			
 			vmax = pos[0];
 			for(j = 1; j < dim; j++)
@@ -535,7 +551,7 @@ void softmax_activation_fct(real *tab, int len, int dim, int size)
 		}
 		else
 		{
-			pos = tab + i*(dim+1);		
+			pos = (float*)tab + i*(dim+1);		
 			for(j = 0; j < dim; j++)
 				pos[j] = 0.0;
 			pos[j] = 0.0;
@@ -571,10 +587,14 @@ void softmax_output_error(layer *current)
 }
 
 
-void cross_entropy_deriv_output_error(real *delta_o, real *output, real *target, int len, int dim, int size)
+void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int size)
 {
 	int i;
 	int pos;
+	
+	float *f_delta_o = (float*) delta_o; 
+	float *f_output = (float*) output;
+	float *f_target = (float*) target;
 	
 	#pragma omp parallel for private(pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -582,19 +602,23 @@ void cross_entropy_deriv_output_error(real *delta_o, real *output, real *target,
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
 			pos = i - i/(dim+1);
-			delta_o[i] = (output[i] - target[pos]);
+			f_delta_o[i] = (f_output[i] - f_target[pos]);
 		}
 		else
 		{
-			delta_o[i] = 0.0;
+			f_delta_o[i] = 0.0;
 		}
 	}
 }
 
-void cross_entropy_output_error(real *output_error, real *output, real *target, int len, int dim, int size)
+void cross_entropy_output_error(void *output_error, void *output, void *target, int len, int dim, int size)
 {
 	int i;
 	int pos;
+	
+	float *f_output_error = (float*) output_error;
+	float *f_output = (float*) output;
+	float *f_target = (float*) target;
 	
 	#pragma omp parallel for private(pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -602,10 +626,10 @@ void cross_entropy_output_error(real *output_error, real *output, real *target, 
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
 			pos = i - i/(dim+1);
-			if(output[i] > 0.00001)
-				output_error[pos] = -target[pos]*log(output[i]);
+			if(f_output[i] > 0.00001)
+				f_output_error[pos] = -f_target[pos]*log(f_output[i]);
 			else
-				output_error[pos] = -target[pos]*log(0.00001);
+				f_output_error[pos] = -f_target[pos]*log(0.00001);
 		}
 	}
 }

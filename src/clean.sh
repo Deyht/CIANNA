@@ -9,4 +9,4 @@ rm naiv/*.o
 
 rm ../main
 
-
+rm -rf build/

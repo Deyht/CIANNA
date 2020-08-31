@@ -29,8 +29,8 @@ static pool_param *p_param;
 //private
 void forward_pool_layer(layer* current);
 void backward_pool_layer(layer* current);
-void deltah_pool(real* delta_o, real* delta_o_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length);
-void deltah_pool_cont(real* delta_o, real* delta_o_unpool, real* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length);
+void deltah_pool(void* delta_o, void* delta_o_unpool, int* pool_map, int pool_size, int len, int batch_size, int image_size, int map_size, int column_length);
+void deltah_pool_cont(void* delta_o, void* delta_o_unpool, int* pool_map, int pool_size, int len, int batch_size, int image_size, int column_length);
 
 
 void pool_define(layer *current)
@@ -62,14 +62,14 @@ void forward_pool_layer(layer* current)
 				y_max = 0;
 				for(x = 0; x < p_param->p_size; x++)
 					for(y = 0; y < p_param->p_size; y++)
-						if(current->input[pos + x_max*p_param->prev_size_w + y_max] 
-							< current->input[pos + x*p_param->prev_size_w + y])
+						if(((float*)current->input)[pos + x_max*p_param->prev_size_w + y_max] 
+							< ((float*)current->input)[pos + x*p_param->prev_size_w + y])
 						{
 							x_max = x;
 							y_max = y;
 						}
-				p_param->pool_map[pos_out] = (real)(x_max*p_param->p_size + y_max);
-				current->output[pos_out] = current->input[pos + x_max*p_param->prev_size_w + y_max];
+				p_param->pool_map[pos_out] = x_max*p_param->p_size + y_max;
+				((float*)current->output)[pos_out] = ((float*)current->input)[pos + x_max*p_param->prev_size_w + y_max];
 			}
 }
 
@@ -90,7 +90,7 @@ void backward_pool_layer(layer* current)
 		{
 			//array must be set to 0 as deltah_pool do not erase previous values
 			memset(current->previous->delta_o, 0.0, p_param->prev_depth * p_param->prev_size_w 
-				* p_param->prev_size_h * current->c_network->batch_size*sizeof(real));
+				* p_param->prev_size_h * current->c_network->batch_size*sizeof(float));
 			
 			#pragma omp parallel for private(pos) schedule(guided,4)
 			for(i = 0; i < current->c_network->length*image_size; i++)
@@ -100,7 +100,7 @@ void backward_pool_layer(layer* current)
 					+ (i%column_length) * p_param->p_size + (((int)p_param->pool_map[i])/p_param->p_size) 
 					* column_length * p_param->p_size + (((int)p_param->pool_map[i])%p_param->p_size);
 				
-				current->previous->delta_o[pos] = current->delta_o[i];
+				((float*)current->previous->delta_o)[pos] = ((float*)current->delta_o)[i];
 			}	
 		}
 		

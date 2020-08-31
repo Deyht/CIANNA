@@ -41,14 +41,15 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	PyArrayObject *py_dims;
 	int i;
 	double bias = 0.1;
-	int dims[3] = {1,1,1}, out_dim, b_size, comp_int = C_CUDA, network_id = nb_networks, dynamic_load = 0;
+	int dims[3] = {1,1,1}, out_dim, b_size, comp_int = C_CUDA, network_id = nb_networks;
+	int dynamic_load = 0, mixed_precision = 0;
 	char string_comp[10];
 	const char *comp_meth = "C_CUDA";
-	static char *kwlist[] = {"dims", "out_dim", "bias", "b_size", "comp_meth", "network_id", "dynamic_load", NULL};
+	static char *kwlist[] = {"dims", "out_dim", "bias", "b_size", "comp_meth", "network_id", "dynamic_load", "mixed_precision", NULL};
 	
 	b_size = 10;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oid|isii", kwlist, &py_dims, &out_dim, &bias, &b_size, &comp_meth, &network_id, &dynamic_load))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oid|isiii", kwlist, &py_dims, &out_dim, &bias, &b_size, &comp_meth, &network_id, &dynamic_load, &mixed_precision))
 	    return Py_None;
 	
 	for(i = 0; i < py_dims->dimensions[0]; i++)
@@ -72,7 +73,7 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 		sprintf(string_comp, "NAIV");
 	}
 	
-    init_network(network_id, dims, out_dim, bias, b_size, comp_int, dynamic_load);
+    init_network(network_id, dims, out_dim, bias, b_size, comp_int, dynamic_load, mixed_precision);
     
 	printf("Network have been initialized with : \nInput dimensions: %dx%dx%d \nOutput dimension: %d \nBatch size: %d \nUsing %s compute methode\n\n", dims[0], dims[1], dims[2], out_dim, b_size, string_comp);
 	if(dynamic_load)
@@ -133,14 +134,14 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 						for(m = 0; m < networks[network_id]->input_width; m++)
 						{
 							if(!flat)
-	data->input[i][j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height 
+	((float*)data->input[i])[j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height 
 		* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
 		= *((float*)(py_data->data + (i*networks[network_id]->batch_size 
 		* networks[network_id]->input_depth*networks[network_id]->input_height 
 		+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
 		+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]));
 							else
-	data->input[i][j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height
+	((float*)data->input[i])[j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height
 		* networks[network_id]->input_width + l * networks[network_id]->input_width + m] 
 		= *((float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
 		* py_data->strides[0] + (k*networks[network_id]->input_height 
@@ -156,7 +157,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 				if(i*networks[network_id]->batch_size + j >= data->size)
 					continue;
 				for(k = 0; k < networks[network_id]->output_dim; k++)
-					data->target[i][j*networks[network_id]->output_dim + k] 
+					((float*)data->target[i])[j*networks[network_id]->output_dim + k] 
 					= *(float*)(py_target->data + i * (networks[network_id]->batch_size 
 					* py_target->strides[0]) + j * py_target->strides[0] + k 
 					* py_target->strides[1]);
@@ -165,11 +166,17 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	printf("Done !\n");
 	
 	#ifdef CUDA
-	if(networks[network_id]->compute_method == C_CUDA && !networks[network_id]->dynamic_load)
+	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 0)
 	{
 		printf("Converting dataset to GPU device (CUDA)\n");
 		cuda_convert_dataset(networks[network_id], data);
 	}
+	else if(networks[network_id]->dynamic_load == 1 && networks[network_id]->use_cuda_TC)
+	{
+		printf("Converting dataset into host stored FP16\n");
+		cuda_convert_host_dataset_FP32(networks[network_id], data);
+	}
+	
 	#endif
 	printf("\n");
 	
@@ -199,11 +206,11 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 	}
 	
 	if(strcmp(input_data_type,"UINT8") == 0)
-		input_data_type_C = UINT8;
+		input_data_type_C = c_UINT8;
 	else if(strcmp(input_data_type,"UINT16") == 0)
-		input_data_type_C = UINT16;
+		input_data_type_C = c_UINT16;
 	else if(strcmp(input_data_type,"FP32") == 0)
-		input_data_type_C = FP32;
+		input_data_type_C = c_FP32;
 	else
 	{
 		printf("ERROR : Unsuported datatype %s\n", input_data_type);
@@ -227,7 +234,7 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 	
 	switch(input_data_type_C)
 	{
-		case UINT8:
+		case c_UINT8:
 		{
 			unsigned char *temp_input;
 			datasize = sizeof(unsigned char);
@@ -268,7 +275,7 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 			break;
 		}
 			
-		case UINT16:
+		case c_UINT16:
 		{
 			unsigned short *temp_input;
 			datasize = sizeof(unsigned short);
@@ -308,7 +315,7 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 			free(temp_input);
 			break;
 		}
-		case FP32:
+		case c_FP32:
 		default:
 		{
 			float *temp_input;
@@ -353,11 +360,11 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 	
 	
 	if(strcmp(output_data_type,"UINT8") == 0)
-		output_data_type_C = UINT8;
+		output_data_type_C = c_UINT8;
 	else if(strcmp(output_data_type,"UINT16") == 0)
-		output_data_type_C = UINT16;
+		output_data_type_C = c_UINT16;
 	else if(strcmp(output_data_type,"FP32") == 0)
-		output_data_type_C = FP32;
+		output_data_type_C = c_FP32;
 	else
 	{
 		printf("ERROR : Unsuported datatype %s\n", output_data_type);
@@ -367,7 +374,7 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 	
 	switch(output_data_type_C)
 	{
-		case UINT8:
+		case c_UINT8:
 		{
 			unsigned char *temp_output;
 			datasize = sizeof(unsigned char);
@@ -389,7 +396,7 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 			break;
 		}
 			
-		case UINT16:
+		case c_UINT16:
 		{
 			unsigned short *temp_output;
 			datasize = sizeof(unsigned short);
@@ -410,7 +417,7 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 			break;
 		}
 			
-		case FP32:
+		case c_FP32:
 		default:
 		{
 			float *temp_output;
@@ -454,11 +461,11 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 	    return Py_None;
 	
 	if(strcmp(input_data_type,"UINT8") == 0)
-		input_data_type_C = UINT8;
+		input_data_type_C = c_UINT8;
 	else if(strcmp(input_data_type,"UINT16") == 0)
-		input_data_type_C = UINT16;
+		input_data_type_C = c_UINT16;
 	else if(strcmp(input_data_type,"FP32") == 0)
-		input_data_type_C = FP32;
+		input_data_type_C = c_FP32;
 	else
 	{
 		printf("ERROR : Unsuported datatype %s\n", input_data_type);
@@ -467,11 +474,11 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 	
 	
 	if(strcmp(output_data_type,"UINT8") == 0)
-		output_data_type_C = UINT8;
+		output_data_type_C = c_UINT8;
 	else if(strcmp(output_data_type,"UINT16") == 0)
-		output_data_type_C = UINT16;
+		output_data_type_C = c_UINT16;
 	else if(strcmp(output_data_type,"FP32") == 0)
-		output_data_type_C = FP32;
+		output_data_type_C = c_FP32;
 	else
 	{
 		printf("ERROR : Unsuported datatype %s\n", output_data_type);
@@ -532,12 +539,10 @@ static PyObject* py_normalize_datasets(PyObject* self, PyObject *args, PyObject 
 		exit(EXIT_FAILURE);
 	}
 	
-	
 	c_offset_input = (float*) calloc(offset_input->dimensions[0], sizeof(float));
 	c_norm_input = (float*) calloc(norm_input->dimensions[0], sizeof(float));
 	c_offset_output = (float*) calloc(offset_output->dimensions[0], sizeof(float));
 	c_norm_output = (float*) calloc(norm_output->dimensions[0], sizeof(float));
-	
 	
 	for(i = 0; i < offset_input->dimensions[0]; i++)
 		c_offset_input[i] = *(double *)(offset_input->data + i*offset_input->strides[0]);

@@ -51,17 +51,32 @@ void cuda_softmax_deriv(layer *previous);
 void cuda_softmax_deriv_output_error(layer *current);
 void cuda_softmax_output_error(layer *current);
 
-__global__ void ReLU_activation_kernel(real *tab, int len, int dim, real leaking_factor);
-__global__ void ReLU_deriv_kernel(real *deriv, real *value, int len, int dim, real leaking_factor, int size);
-__global__ void quadratic_deriv_output_error_kernel(real *delta_o, real *output, real *target, 
+__global__ void ReLU_activation_kernel_FP32(float *tab, int len, int dim, float leaking_factor);
+__global__ void ReLU_activation_kernel_FP16(half *tab, int len, int dim, float leaking_factor);
+__global__ void ReLU_deriv_kernel_FP32(float *deriv, float *value, int len, int dim, float leaking_factor, int size);
+__global__ void ReLU_deriv_kernel_FP16(half *deriv, half *value, int len, int dim, float leaking_factor, int size);
+__global__ void quadratic_deriv_output_error_kernel_FP32(float *delta_o, float *output, float *target, 
 	int dim, int len, int size);
-__global__ void quadratic_output_error_kernel(real *output_error, real *output, real *target, 
+__global__ void quadratic_deriv_output_error_kernel_FP16(half *delta_o, half *output, half *target, 
 	int dim, int len, int size);
-__global__ void logistic_activation_kernel(real *tab, real beta, real saturation, int dim, int len, int size);
-__global__ void logistic_deriv_kernel(real *deriv, real* value, real beta, int len, int dim, int size);
-__global__ void softmax_activation_kernel(real *tab, int len, int dim, int size);
-__global__ void cross_entropy_deriv_output_error_kernel(real *delta_o, real *output, real *target, int len, int dim, int size);
-__global__ void cross_entropy_output_error_kernel(real *output_error, real *output, real *target, int len, int dim, int size);
+__global__ void quadratic_output_error_kernel_FP32(float *output_error, float *output, float *target, 
+	int dim, int len, int size);
+__global__ void quadratic_output_error_kernel_FP16(float *output_error, half *output, half *target, 
+	int dim, int len, int size);
+__global__ void logistic_activation_kernel_FP32(float *tab, float beta, float saturation, int dim, int len, int size);
+__global__ void logistic_activation_kernel_FP16(half *tab, float beta, float saturation, int dim, int len, int size);
+__global__ void logistic_deriv_kernel_FP32(float *deriv, float *value, float beta, int len, int dim, int size);
+__global__ void logistic_deriv_kernel_FP16(half *deriv, half *value, float beta, int len, int dim, int size, half scaling);
+__global__ void softmax_activation_kernel_FP32(float *tab, int len, int dim, int size);
+__global__ void softmax_activation_kernel_FP16(half *tab, int len, int dim, int size);
+__global__ void cross_entropy_deriv_output_error_kernel_FP32(float *delta_o, float *output, float *target, 
+	int len, int dim, int size);
+__global__ void cross_entropy_deriv_output_error_kernel_FP16(half *delta_o, half *output, half *target, 
+	int len, int dim, int size);
+__global__ void cross_entropy_output_error_kernel_FP32(float *output_error, float *output, float *target, 
+	int len, int dim, int size);
+__global__ void cross_entropy_output_error_kernel_FP16(float *output_error, half *output, half *target, 
+	int len, int dim, int size);
 
 
 void cuda_define_activation(layer *current)
@@ -159,18 +174,45 @@ void cuda_linear_deriv(layer *previous)
 void cuda_linear_deriv_output_error(layer *current)
 {	
 	linear_param *param = (linear_param*)current->activ_param;
-	//printf("%d %d\n",param->size, param->dim);
+	
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
-	quadratic_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output,
-		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:
+			quadratic_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
+				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
+				(param->dim+1)*current->c_network->length, param->dim, param->size);
+			break;
+		case 1:
+			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
+				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
+				(param->dim+1)*current->c_network->length, param->dim, param->size);
+			break;
+	}
 }
 
 void cuda_linear_output_error(layer *current)
 {	
 	linear_param *param = (linear_param*)current->activ_param;
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
-	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(current->c_network->output_error, 
-		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
+	
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:
+			quadratic_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
+				(float*)current->c_network->output_error, (float*)current->output,
+				(float*)current->c_network->target, (param->dim+1)*current->c_network->length, 
+				param->dim, param->size);
+			break;
+		case 1:
+			quadratic_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
+				(float*)current->c_network->output_error, (half*)current->output,
+				(half*)current->c_network->target, (param->dim+1)*current->c_network->length,
+				param->dim, param->size);
+			break;
+	}
 }
 
 
@@ -186,23 +228,44 @@ void cuda_linear_output_error(layer *current)
 
 void cuda_ReLU_activation(layer *current)
 {
-
-	//printf("relu activation\n");
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
-	ReLU_activation_kernel <<< cu_blocks, cu_threads >>>(current->output, param->size, param->dim, 
-		param->leaking_factor);
+	
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:
+			ReLU_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output, 
+				param->size, param->dim, param->leaking_factor);
+			break;
+		case 1:
+			ReLU_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output, 
+				param->size, param->dim, param->leaking_factor);
+			break;
+	}
 }
 
-//Is in fact a leaky ReLU, to obtain true ReLU define leaking_factor to 0
-__global__ void ReLU_activation_kernel(real *tab, int len, int dim, real leaking_factor)
+//Is in fact a leaky ReLU, to obtain true ReLU set leaking_factor to 0
+__global__ void ReLU_activation_kernel_FP32(float *tab, int len, int dim, float leaking_factor)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 
 	if(i < len)
 	{
 		i += i/dim;
-		if(tab[i] <= 0.0)
+		if(tab[i] <= 0.0f)
+			tab[i] *= leaking_factor;
+	}
+}
+
+__global__ void ReLU_activation_kernel_FP16(half *tab, int len, int dim, float leaking_factor)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+
+	if(i < len)
+	{
+		i += i/dim;
+		if(tab[i] <= (half)0.0f)
 			tab[i] *= leaking_factor;
 	}
 }
@@ -212,14 +275,22 @@ void cuda_ReLU_deriv(layer *previous)
 {
 	ReLU_param *param = (ReLU_param*)previous->activ_param;
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
-	ReLU_deriv_kernel<<< cu_blocks, cu_threads >>>(previous->delta_o, previous->output, param->size, param->dim,
-		param->leaking_factor, param->size);
 	
+	switch(previous->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:
+			ReLU_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)previous->delta_o, 
+				(float*)previous->output, param->size, param->dim, param->leaking_factor, param->size);
+			break;
+		case 1:
+			ReLU_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)previous->delta_o, 
+				(half*)previous->output, param->size, param->dim, param->leaking_factor, param->size);
+			break;
+	}
 }
 
-
-//should be adapted for both conv and dense layer if dim is properly defined
-__global__ void ReLU_deriv_kernel(real *deriv, real *value, int len, int dim, real leaking_factor, int size)
+__global__ void ReLU_deriv_kernel_FP32(float *deriv, float *value, int len, int dim, float leaking_factor, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
@@ -228,36 +299,80 @@ __global__ void ReLU_deriv_kernel(real *deriv, real *value, int len, int dim, re
 	
 	if(i < len && (i+1)%(dim+1) != 0)
 	{
-		if(value[i] <= 0.0)
+		if(value[i] <= 0.0f)
 			deriv[i] *= leaking_factor;
 	}
 	else
-		deriv[i] = 0.0;
+		deriv[i] = 0.0f;
+}
+
+
+__global__ void ReLU_deriv_kernel_FP16(half *deriv, half *value, int len, int dim, float leaking_factor, int size)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	
+	if(i >= size)
+		return;
+	
+	if(i < len && (i+1)%(dim+1) != 0)
+	{
+		if(value[i] <= (half)0.0f)
+			deriv[i] *= leaking_factor;
+	}
+	else
+		deriv[i] = 0.0f;
 }
 
 // Should re write a output function to take into account ReLU for Conv output format
 void cuda_ReLU_deriv_output_error(layer* current)
 {
 	ReLU_param *param = (ReLU_param*)current->activ_param;
-	
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
-	quadratic_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output,
-		current->c_network->target, (param->dim+1) * current->c_network->length, param->dim, param->size);
-	ReLU_deriv_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output, 
-		param->size, param->dim, param->leaking_factor, param->size);
+	
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:
+			quadratic_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
+				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
+				(param->dim+1) * current->c_network->length, param->dim, param->size);
+			ReLU_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->delta_o, 
+				(float*)current->output, param->size, param->dim, param->leaking_factor, param->size);
+			break;
+		case 1:
+			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
+				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
+				(param->dim+1) * current->c_network->length, param->dim, param->size);
+			ReLU_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o,
+				(half*)current->output,	param->size, param->dim, param->leaking_factor, param->size);
+			break;
+	}
 }
 
 void cuda_ReLU_output_error(layer* current)
 {
-	ReLU_param *param = (ReLU_param*)current->activ_param;
-	
+	ReLU_param *param = (ReLU_param*)current->activ_param;	
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
-	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(current->c_network->output_error, 
-		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, 
-		param->dim, param->size);
+	
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:
+			quadratic_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
+				(float*)current->c_network->output_error, (float*)current->output, 
+				(float*)current->c_network->target, (param->dim+1)*current->c_network->length, 
+				param->dim, param->size);
+			break;
+		case 1:
+			quadratic_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
+				(float*)current->c_network->output_error, (half*)current->output, 
+				(half*)current->c_network->target, (param->dim+1)*current->c_network->length, 
+				param->dim, param->size);
+			break;
+	}
 }
 
-__global__ void quadratic_deriv_output_error_kernel(real *delta_o, real *output, real *target, int len, int dim, int size)
+__global__ void quadratic_deriv_output_error_kernel_FP32(float *delta_o, float *output, float *target, int len, int dim, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int pos;
@@ -272,13 +387,11 @@ __global__ void quadratic_deriv_output_error_kernel(real *delta_o, real *output,
 	}
 	else
 	{
-		delta_o[i] = 0.0;
+		delta_o[i] = 0.0f;
 	}
 }
 
-
-
-__global__ void quadratic_output_error_kernel(real *output_error, real *output, real *target, int len, int dim, int size)
+__global__ void quadratic_deriv_output_error_kernel_FP16(half *delta_o, half *output, half *target, int len, int dim, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int pos;
@@ -289,7 +402,44 @@ __global__ void quadratic_output_error_kernel(real *output_error, real *output, 
 	if(i < len && (i+1)%(dim+1) != 0)
 	{
 		pos = i - i/(dim+1);
-		output_error[pos] = 0.5*(output[i] - target[pos])*(output[i] - target[pos]);
+		delta_o[i] = (output[i] - target[pos])*(half)TC_scale_factor;
+	}
+	else
+	{
+		delta_o[i] = (half)0.0f;
+	}
+}
+
+
+
+__global__ void quadratic_output_error_kernel_FP32(float *output_error, float *output, float *target, int len, int dim, int size)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	int pos;
+	
+	if(i >= size)
+		return;
+	
+	if(i < len && (i+1)%(dim+1) != 0)
+	{
+		pos = i - i/(dim+1);
+		output_error[pos] = 0.5f*(output[i] - target[pos])*(output[i] - target[pos]);
+	}
+}
+
+
+__global__ void quadratic_output_error_kernel_FP16(float *output_error, half *output, half *target, int len, int dim, int size)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	int pos;
+	
+	if(i >= size)
+		return;
+	
+	if(i < len && (i+1)%(dim+1) != 0)
+	{
+		pos = i - i/(dim+1);
+		output_error[pos] = (0.5f)*(float)(output[i] - target[pos])*(float)(output[i] - target[pos]);
 	}
 }
 
@@ -308,12 +458,23 @@ __global__ void quadratic_output_error_kernel(real *output_error, real *output, 
 void cuda_logistic_activation(layer *current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
-	
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
-	logistic_activation_kernel<<< cu_blocks, cu_threads >>>(current->output, param->beta, param->saturation, param->size,  param->dim, param->size);
+
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:	
+			logistic_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output,
+				param->beta, param->saturation, param->size, param->dim, param->size);
+			break;
+		case 1:
+			logistic_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output, 
+				param->beta, param->saturation, param->size, param->dim, param->size);
+			break;
+	}
 }
 
-__global__ void logistic_activation_kernel(real *tab, real beta, real saturation, int len, int dim, int size)
+__global__ void logistic_activation_kernel_FP32(float *tab, float beta, float saturation, int len, int dim, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
@@ -325,12 +486,39 @@ __global__ void logistic_activation_kernel(real *tab, real beta, real saturation
 		i += i / dim;
 		tab[i] = -beta*tab[i];
 		if(tab[i] > saturation)
-			tab[i] = saturation;
-		tab[i] = 1.0/(1.0 + expf(tab[i]));
+			tab[i] = expf(saturation);
+		tab[i] = 1.0f/(1.0f + expf(tab[i]));
 	}
 	else
 	{
-		tab[i] = 0.0;
+		tab[i] = 0.0f;
+	}
+}
+
+__global__ void logistic_activation_kernel_FP16(half *tab, float beta, float saturation, int len, int dim, int size)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	
+	if(i >= size)
+		return;
+		
+	half half_one = (half) 1.0f;
+	half half_beta = (half) beta;
+	half half_saturation = (half) saturation;
+	
+	//Check if the function works better with compute in FP32 than with FP16
+	//It might be the case due to the exponential
+	if(i < len)
+	{
+		i += i / dim;
+		tab[i] = -half_beta*tab[i];
+		if(tab[i] > half_saturation)
+			tab[i] = hexp(half_saturation);
+		tab[i] = half_one/(half_one + hexp(tab[i]));
+	}
+	else
+	{
+		tab[i] = (half)0.0f;
 	}
 }
 
@@ -340,13 +528,24 @@ void cuda_logistic_deriv(layer *previous)
 {
 	logistic_param *param = (logistic_param*)previous->activ_param;
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
-	logistic_deriv_kernel <<< cu_blocks, cu_threads >>>(previous->delta_o, previous->output, param->beta,
-		param->size, param->dim, param->size);
+	
+	switch(previous->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:	
+			logistic_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)previous->delta_o, 
+				(float*)previous->output, param->beta, param->size, param->dim, param->size);
+			break;
+		case 1:
+			logistic_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)previous->delta_o,
+				(half*)previous->output, param->beta, param->size, param->dim, param->size, (half)1.0f);
+			break;
+	}
 }
 
 
 
-__global__ void logistic_deriv_kernel(real *deriv, real* value, real beta, int len, int dim, int size)
+__global__ void logistic_deriv_kernel_FP32(float *deriv, float *value, float beta, int len, int dim, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
@@ -355,10 +554,27 @@ __global__ void logistic_deriv_kernel(real *deriv, real* value, real beta, int l
 	
 	if(i < len && (i+1)%(dim+1) != 0)
 	{
-		deriv[i] *= beta*value[i]*(1.0-value[i]);
+		deriv[i] *= beta*value[i]*(1.0f-value[i]);
 	}
 	else
-		deriv[i] = 0.0;
+		deriv[i] = 0.0f;
+}
+
+__global__ void logistic_deriv_kernel_FP16(half *deriv, half *value, float beta, int len, int dim, int size, half scaling)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	
+	if(i >= size)
+		return;
+		
+	half half_beta = (half) beta;
+	
+	if(i < len && (i+1)%(dim+1) != 0)
+	{
+		deriv[i] *= half_beta*value[i]*((half)1.0f-value[i])*scaling;
+	}
+	else
+		deriv[i] = 0.0f;
 }
 
 
@@ -366,10 +582,27 @@ void cuda_logistic_deriv_output_error(layer* current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
-	quadratic_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output,
-		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
-	logistic_deriv_kernel <<< cu_blocks, cu_threads >>>(current->delta_o, current->output, param->beta,
-		(param->dim+1)*current->c_network->length, param->dim, param->size);
+	
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:	
+			quadratic_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
+				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
+				(param->dim+1)*current->c_network->length, param->dim, param->size);
+			logistic_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->delta_o,
+			 	(float*)current->output, param->beta, (param->dim+1)*current->c_network->length,
+			 	param->dim, param->size);
+			break;
+		case 1:
+			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
+				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
+				(param->dim+1)*current->c_network->length, param->dim, param->size);
+			logistic_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o, 
+				(half*)current->output, param->beta, (param->dim+1)*current->c_network->length,
+				param->dim, param->size, (half)TC_scale_factor);
+			break;
+	}
 	
 }
 
@@ -377,9 +610,23 @@ void cuda_logistic_output_error(layer* current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
-	quadratic_output_error_kernel<<< cu_blocks, cu_threads >>>(current->c_network->output_error, 
-		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, 
-		param->dim, param->size);	
+	
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:	
+			quadratic_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
+				(float*)current->c_network->output_error, (float*)current->output,
+				(float*)current->c_network->target, (param->dim+1)*current->c_network->length, 
+				param->dim, param->size);
+			break;
+		case 1:
+			quadratic_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
+				(float*)current->c_network->output_error, (half*)current->output, 
+				(half*)current->c_network->target, (param->dim+1)*current->c_network->length, 
+				param->dim, param->size);
+			break;
+	}		
 }
 
 //#####################################################
@@ -395,18 +642,30 @@ void cuda_softmax_activation(layer *current)
 {
 	softmax_param *param = (softmax_param*)current->activ_param;
 	cu_blocks = (current->c_network->batch_size + cu_threads - 1) / cu_threads;
-	softmax_activation_kernel<<< cu_blocks, cu_threads >>>(current->output, current->c_network->length, param->dim, current->c_network->batch_size);
+	
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:	
+			softmax_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output,
+				current->c_network->length, param->dim, current->c_network->batch_size);
+			break;
+		case 1:
+			softmax_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output,
+				current->c_network->length, param->dim, current->c_network->batch_size);
+			break;
+	}
 }
 
-__global__ void softmax_activation_kernel(real *tab, int len, int dim, int size)
+__global__ void softmax_activation_kernel_FP32(float *tab, int len, int dim, int size)
 {
 	//difficult to optimize but can be invastigated
 	//provides a probabilistic output
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int j;
-	real *pos;
-	real vmax;
-	real normal = 0.0000001;
+	float *pos;
+	float vmax;
+	float normal = 0.0000001f;
 	
 	if(i >= size)
 		return;
@@ -425,19 +684,62 @@ __global__ void softmax_activation_kernel(real *tab, int len, int dim, int size)
 			pos[j] = expf(pos[j]-vmax);
 			normal += pos[j];
 		}		
-		pos[j] = 0.0;
+		pos[j] = 0.0f;
 		
 		for(j = 0; j < dim; j++)
 				pos[j] /= normal;
 				
-		pos[j] = 0.0;
+		pos[j] = 0.0f;
 	}
 	else
 	{
 		pos = tab + i*(dim+1);		
 		for(j = 0; j < dim; j++)
-			pos[j] = 0.0;
-		pos[j] = 0.0;
+			pos[j] = 0.0f;
+		pos[j] = 0.0f;
+	}
+}
+
+__global__ void softmax_activation_kernel_FP16(half *tab, int len, int dim, int size)
+{
+	//difficult to optimize but can be invastigated
+	//provides a probabilistic output
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	int j;
+	half *pos;
+	half vmax;
+	float normal = 0.0000001f;
+	
+	if(i >= size)
+		return;
+		
+	if(i < len)
+	{
+		pos = tab + i*(dim+1);
+		
+		vmax = pos[0];
+		for(j = 1; j < dim; j++)
+			if(pos[j] > vmax)
+				vmax = pos[j];
+		
+		for(j = 0; j < dim; j++)
+		{	
+			pos[j] = hexp(pos[j]-vmax);
+			normal += (float)pos[j];
+		}		
+		pos[j] = 0.0f;
+		
+		for(j = 0; j < dim; j++)
+			pos[j] /= (half)normal;
+				
+		pos[j] = 0.0f;
+	}
+	else
+	{
+		pos = tab + i*(dim+1);		
+		for(j = 0; j < dim; j++)
+			pos[j] = 0.0f;
+		pos[j] = 0.0f;
 	}
 }
 
@@ -452,28 +754,52 @@ void cuda_softmax_deriv_output_error(layer *current)
 {
 	//use by default a cross entropy error
 	softmax_param *param = (softmax_param*)current->activ_param;
-	
 	cu_blocks = ((param->dim+1)*current->c_network->batch_size + cu_threads - 1) / cu_threads;
-	cross_entropy_deriv_output_error_kernel<<< cu_blocks, cu_threads >>>(current->delta_o, current->output,
-		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, 
-		(param->dim+1)*current->c_network->batch_size);
-		
+	
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:
+			cross_entropy_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
+				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
+				(param->dim+1)*current->c_network->length, param->dim, 
+				(param->dim+1) * current->c_network->batch_size);
+			break;
+		case 1:
+			cross_entropy_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
+				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
+				(param->dim+1)*current->c_network->length, param->dim, 
+				(param->dim+1)*current->c_network->batch_size);
+			break;
+	}
 }
 
 void cuda_softmax_output_error(layer *current)
 {
 	//use by default a cross entropy error
 	softmax_param *param = (softmax_param*)current->activ_param;
-	
 	cu_blocks = ((param->dim+1)*current->c_network->batch_size + cu_threads - 1) / cu_threads;
-	cross_entropy_output_error_kernel<<< cu_blocks, cu_threads >>>(current->c_network->output_error,
-		current->output, current->c_network->target, (param->dim+1)*current->c_network->length,
-		param->dim, (param->dim+1)*current->c_network->batch_size);
-		
+	
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case 0:
+			cross_entropy_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
+				(float*)current->c_network->output_error, (float*)current->output, 
+				(float*)current->c_network->target, (param->dim+1)*current->c_network->length,
+				param->dim, (param->dim+1)*current->c_network->batch_size);
+			break;
+		case 1:
+			cross_entropy_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
+				(float*)current->c_network->output_error, (half*)current->output, 
+				(half*)current->c_network->target, (param->dim+1)*current->c_network->length,
+				param->dim, (param->dim+1)*current->c_network->batch_size);
+			break;
+	}
 }
 
 
-__global__ void cross_entropy_deriv_output_error_kernel(real *delta_o, real *output, real *target, int len, int dim, int size)
+__global__ void cross_entropy_deriv_output_error_kernel_FP32(float *delta_o, float *output, float *target, int len, int dim, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int pos;
@@ -488,11 +814,30 @@ __global__ void cross_entropy_deriv_output_error_kernel(real *delta_o, real *out
 	}
 	else
 	{
-		delta_o[i] = 0.0;
+		delta_o[i] = 0.0f;
 	}
 }
 
-__global__ void cross_entropy_output_error_kernel(real *output_error, real *output, real *target, int len, int dim, int size)
+__global__ void cross_entropy_deriv_output_error_kernel_FP16(half *delta_o, half *output, half *target, int len, int dim, int size)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	int pos;
+	
+	if(i >= size)
+		return;
+	
+	if(i < len && (i+1)%(dim+1) != 0)
+	{
+		pos = i - i/(dim+1);
+		delta_o[i] = (output[i] - target[pos])*(half)TC_scale_factor;
+	}
+	else
+	{
+		delta_o[i] = 0.0f;
+	}
+}
+
+__global__ void cross_entropy_output_error_kernel_FP32(float *output_error, float *output, float *target, int len, int dim, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int pos;
@@ -504,9 +849,27 @@ __global__ void cross_entropy_output_error_kernel(real *output_error, real *outp
 	{
 		pos = i - i/(dim+1);
 		if(output[i] > 0.00001)
-			output_error[pos] = -target[pos]*log(output[i]);
+			output_error[pos] = -target[pos]*logf(output[i]);
 		else
-			output_error[pos] = -target[pos]*log(0.00001);
+			output_error[pos] = -target[pos]*logf(0.00001f);
+	}
+}
+
+__global__ void cross_entropy_output_error_kernel_FP16(float *output_error, half *output, half *target, int len, int dim, int size)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	int pos;
+	
+	if(i >= size)
+		return;
+	
+	if(i < len && (i+1)%(dim+1) != 0)
+	{
+		pos = i - i/(dim+1);
+		if((float)output[i] > 0.00001f)
+			output_error[pos] = -(float)target[pos]*logf((float)output[i]);
+		else
+			output_error[pos] = -(float)target[pos]*logf(0.00001f);
 	}
 }
 
