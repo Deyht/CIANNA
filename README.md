@@ -35,7 +35,7 @@ me at : david.cornu@utinam.cnrs.fr
 
 
 #############################################################
-##                         Installation
+##                         Installation (DEPRECATED)
 #############################################################
 
 WARNING : Currently, the framework only work using CUDA (version 9.2 minimum, 10.1 up 2 recommended).
