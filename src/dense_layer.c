@@ -86,7 +86,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	float bias_padding_value;
 	layer* current;
 	
-	if(net->compute_method == CUDA && net->use_cuda_TC && nb_neurons % 8 == 0)
+	if(net->compute_method == C_CUDA && net->use_cuda_TC && nb_neurons % 8 == 0)
 		nb_neurons -= 1;
 	
 	current = (layer*) malloc(sizeof(layer));

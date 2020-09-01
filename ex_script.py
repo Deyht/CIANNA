@@ -1,4 +1,5 @@
 import numpy as np
+#import sys
 #sys.path.insert(0,'/path/to/CIANNA/src/build/lib.linux-x86_64-X.X')
 import CIANNA as cnn
 
@@ -27,7 +28,7 @@ if(1):
 
 	start = time.perf_counter()
 	
-	cnn.init_network(np.array([28,28,1]),10,0.1,64,'C_BLAS', dynamic_load=1, mixed_precision=1)
+	cnn.init_network(np.array([28,28,1]),10,0.1,64,'C_CUDA', dynamic_load=1, mixed_precision=1)
 
 	cnn.create_dataset("TRAIN", 60000, data_train, target_train, flat=0)
 	cnn.create_dataset("VALID", 10000, data_valid, target_valid, flat=0)
