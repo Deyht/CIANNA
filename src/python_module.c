@@ -489,7 +489,13 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 	printf("Loading dataset from file %s ...\n",filename);
 	
 	data = load_formated_dataset(networks[network_id], filename, input_data_type_C, output_data_type_C);
+	normalize_dataset(networks[network_id], data);
 	
+	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 0)
+		cuda_convert_dataset(networks[network_id], &data);
+	else if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 1 
+					&& networks[network_id]->use_cuda_TC)
+		cuda_convert_host_dataset_FP32(networks[network_id], &data);
 	
 	if(strcmp(dataset_type,"TRAIN") == 0)
 	{
@@ -515,7 +521,7 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 
 
 
-static PyObject* py_normalize_datasets(PyObject* self, PyObject *args, PyObject *kwargs)
+static PyObject* py_set_normalize_factors(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	PyArrayObject *offset_input, *norm_input, *offset_output, *norm_output;
 	float *c_offset_input, *c_norm_input, *c_offset_output, *c_norm_output;
@@ -554,13 +560,9 @@ static PyObject* py_normalize_datasets(PyObject* self, PyObject *args, PyObject 
 		c_norm_output[i] = *(double *)(norm_output->data + i*norm_output->strides[0]);
 	
 	printf("%f %f %f %f\n", c_offset_input[0], c_norm_input[0], c_offset_output[0], c_norm_output[0]);
-		
-	normalize_datasets(networks[network_id], c_offset_input, c_norm_input,
-		dim_size_input, c_offset_output, c_norm_output, dim_size_output);
-
-
-	free(c_offset_input); free(c_norm_input);
-	free(c_offset_output); free(c_norm_output);
+	
+	set_normalize_dataset_parameters(networks[network_id], c_offset_input, c_norm_input, dim_size_input,
+		c_offset_output, c_norm_output, dim_size_output);
 	
 	return Py_None;
 }
@@ -720,7 +722,7 @@ static PyMethodDef CIANNAMethods[] = {
     { "create_dataset", (PyCFunction)py_create_dataset, METH_VARARGS | METH_KEYWORDS, "Allocate dataset structure and return a corresponding object" },
     { "write_formated_dataset", (PyCFunction)py_write_formated_dataset, METH_VARARGS | METH_KEYWORDS, "Write a proper numpy table onto a formated binary dataset file"},
     { "load_formated_dataset", (PyCFunction)py_load_formated_dataset, METH_VARARGS | METH_KEYWORDS, "Read a formated binary dataset file and directly store it into a network dataset"},
-    { "normalize_datasets", (PyCFunction)py_normalize_datasets, METH_VARARGS | METH_KEYWORDS, "Apply normalization transformation on all the datasets already loaded in the C framework"},
+    { "set_normalize_factors", (PyCFunction)py_set_normalize_factors, METH_VARARGS | METH_KEYWORDS, "Set normalization factor for transformation on all the datasets subsequently loaded (with formated loading) in the C framework"},
     { "dense_create", (PyCFunction)py_dense_create, METH_VARARGS | METH_KEYWORDS, "Add a dense layer to the network" },
     { "conv_create",(PyCFunction)py_conv_create, METH_VARARGS | METH_KEYWORDS, "Add a convolutional layer to the network" },
     { "pool_create",(PyCFunction)py_pool_create, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },

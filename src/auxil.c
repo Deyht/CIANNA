@@ -114,6 +114,7 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, floa
 	networks[network_number]->compute_method = u_compute_method;
 	networks[network_number]->nb_layers = 0;
 	networks[network_number]->epoch = 0;
+	networks[network_number]->norm_factor_defined = 0;
 	
 	networks[network_number]->output_error = (float*) calloc(networks[network_number]->batch_size*
 		networks[network_number]->output_dim, sizeof(float));
@@ -523,53 +524,61 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 	return data;
 }
 
-
-
-void normalize_datasets(network *net, float *offset_input, float *norm_input, int dim_size_input, float *offset_output, float *norm_output, int dim_size_output)
+void set_normalize_dataset_parameters(network *net, float *offset_input, float *norm_input, int dim_size_input, float *offset_output, float *norm_output, int dim_size_output)
 {
-	int i, j, k, l, n;
+	net->norm_factor_defined = 1;
+
+ 	net->offset_input = offset_input;
+ 	net->offset_output = offset_output;
+	net->norm_input = norm_input;
+	net->norm_output = norm_output;
+	net->dim_size_input = dim_size_input;
+	net->dim_size_output = dim_size_output;
+}
+
+void normalize_dataset(network *net, Dataset c_data)
+{
+	int i, j, k, l;
 	
-	Dataset *c_data[3];
+	int nb_dim_in = net->input_dim / net->dim_size_input;
+	int nb_dim_out = net->output_dim / net->dim_size_output;
 	
-	int nb_dim_in = net->input_dim / dim_size_input;
-	int nb_dim_out = net->output_dim / dim_size_output;
+	if(net->norm_factor_defined != 1)
+		return;
 	
-	c_data[0] = &(net->train);
-	c_data[1] = &(net->valid);
-	c_data[2] = &(net->test);
-	
-	for(n = 0; n < 3; n++)
+	for(i = 0; i < c_data.nb_batch; i++)
 	{
-		for(i = 0; i < c_data[n]->nb_batch; i++)
+		for(j = 0; j < net->batch_size; j++)
 		{
-			for(j = 0; j < net->batch_size; j++)
+			if(i*net->batch_size + j >= c_data.size)
+				continue;
+			for(k = 0; k < nb_dim_in; k++)
 			{
-				if(i*net->batch_size + j >= c_data[n]->size)
-					continue;
-				for(k = 0; k < nb_dim_in; k++)
+				for(l = 0; l < net->dim_size_input; l++)
 				{
-					for(l = 0; l < dim_size_input; l++)
-					{
-						((float**)c_data[n]->input)[i][j*(net->input_dim+1) + k*dim_size_input + l] += offset_input[k];
-						((float**)c_data[n]->input)[i][j*(net->input_dim+1) + k*dim_size_input + l] /= norm_input[k];
-					}
+					((float**)c_data.input)[i][j*(net->input_dim+1) + k*net->dim_size_input + l] 
+						+= net->offset_input[k];
+					((float**)c_data.input)[i][j*(net->input_dim+1) + k*net->dim_size_input + l] 
+						/= net->norm_input[k];
 				}
 			}
 		}
-		
-		for(i = 0; i < c_data[n]->nb_batch; i++)
+	}
+	
+	for(i = 0; i < c_data.nb_batch; i++)
+	{
+		for(j = 0; j < net->batch_size; j++)
 		{
-			for(j = 0; j < net->batch_size; j++)
+			if(i*net->batch_size + j >= c_data.size)
+				continue;
+			for(k = 0; k < nb_dim_out; k++)
 			{
-				if(i*net->batch_size + j >= c_data[n]->size)
-					continue;
-				for(k = 0; k < nb_dim_out; k++)
+				for(l = 0; l < net->dim_size_output; l++)
 				{
-					for(l = 0; l < dim_size_output; l++)
-					{
-						((float**)c_data[n]->target)[i][j*(net->output_dim) + k*dim_size_output + l] += offset_output[k];
-						((float**)c_data[n]->target)[i][j*(net->output_dim) + k*dim_size_output + l] /= norm_output[k];
-					}
+					((float**)c_data.target)[i][j*(net->output_dim) + k*net->dim_size_output + l] 
+						+= net->offset_output[k];
+					((float**)c_data.target)[i][j*(net->output_dim) + k*net->dim_size_output + l] 
+						/= net->norm_output[k];
 				}
 			}
 		}

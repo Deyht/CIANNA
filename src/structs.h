@@ -117,6 +117,12 @@ struct network
 	void* output_error;
 	void* output_error_cuda;
 
+	//Normalization parameters used for the formated dataset laoding
+	int norm_factor_defined; 
+	float *offset_input, *offset_output;
+	float *norm_input, *norm_output;
+	int dim_size_input, dim_size_output;
+
 };
 
 
