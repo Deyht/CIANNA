@@ -45,7 +45,7 @@ if(1):
 	cnn.dense_create(nb_neurons=256, activation="RELU", drop_rate=0.2)
 	cnn.dense_create(nb_neurons=10, activation="SOFTMAX")
 	
-	cnn.train_network(nb_epoch=5, learning_rate=0.0002, end_learning_rate=0.0001, control_interv=1, momentum=0.9, decay=0.009, confmat=1, shuffle_gpu=0, save_each=20)
+	cnn.train_network(nb_epoch=10, learning_rate=0.0002, end_learning_rate=0.0001, control_interv=1, momentum=0.9, decay=0.009, confmat=1, shuffle_gpu=0, save_each=20)
 	
 	end = time.perf_counter()
 	print(end-start)

@@ -847,7 +847,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
-				cuda_get_table(net, net->output_error, temp_error, net->batch_size*net->output_dim);
+				cuda_get_table_FP32(net, net->output_error, temp_error, net->batch_size*net->output_dim);
 				net->output_error = temp_error;	
 				if(saving == 1)
 				{
