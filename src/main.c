@@ -52,9 +52,9 @@ int main()
 	
 	init_network(0, dims, out_dim, 0.1, 64, C_CUDA, 1, 1);
 	
-	train_size = 128;
-	test_size = 128;
-	valid_size = 128;
+	//train_size = 128;
+	//test_size = 128;
+	//valid_size = 128;
 	
 	networks[0]->train = create_dataset(networks[0], train_size);
 	networks[0]->test  = create_dataset(networks[0], test_size );
@@ -174,7 +174,7 @@ int main()
 	
 	printf("Start learning phase ...\n");
 	
-	train_network(networks[0], 1, 1, 0.0002, 0.0001, 0.9, 0.009, 1, 5, 0, 1);
+	train_network(networks[0], 5, 1, 0.0002, 0.0001, 0.9, 0.009, 1, 5, 0, 1);
 
 	exit(EXIT_SUCCESS);
 }

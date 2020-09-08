@@ -8,7 +8,7 @@ import time
 
 #Regular loading scheme
 
-if(1):
+if(0):
 
 	print ("Reading inputs ... ", end = "", flush=True)
 	#max_rows argument requires python 3.7
@@ -103,11 +103,11 @@ if(0):
 # Prevent memory double usage and reduce intermediate disk usage
 
 
-if(0):
+if(1):
 
-	cnn.init_network(np.array([28,28,1]),10,0.1,64,'C_CUDA', dynamic_load=1, mixed_precision=1)
+	cnn.init_network(np.array([28,28,1]),10,0.1,16,'C_CUDA', dynamic_load=1, mixed_precision=1)
 
-	"""
+	
 	print ("Reading inputs ... ", end = "", flush=True)
 	#max_rows argument require python 3.7
 	#mnist.dat can be split to ease the reading
@@ -124,6 +124,7 @@ if(0):
 	target_test = np.loadtxt("mnist_dat/mnist.dat", skiprows=(80000*28 + 70000)+6,max_rows=10000,dtype="float32")
 	print ("Done !", flush=True)
 	
+	print (np.shape(target_train))
 	#Data was already normalized, this is an exemple to illustrate how to reduce inermediate disk usage
 	data_train *= 255.0
 	data_valid *= 255.0
@@ -135,7 +136,7 @@ if(0):
 	
 	del (data_train, data_valid, data_test, target_train, target_valid, target_test)
 	
-	"""
+	
 	
 	cnn.set_normalize_factors(np.array([0.0]),np.array([255.0]),28*28, np.array([0.0]),np.array([1.0]),10)
 	

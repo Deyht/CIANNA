@@ -45,7 +45,7 @@ __global__ void cuda_reroll_delta_o_FP32(float* in, float* out, int map_size, in
 __global__ void cuda_reroll_delta_o_FP16(half* in, half* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 __global__ void im2col_kernel_v4_FP32(float* output, float* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
 __global__ void im2col_kernel_v4_FP16(half* output, half* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
-
+__global__ void im2col_kernel_v5_FP16(half* output, half* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
 
 
 void cuda_conv_define(layer *current)
@@ -159,6 +159,8 @@ void cuda_forward_conv_layer(layer *current)
 	else
 		dim_a = 8;
 	
+	//dim_c = 1; dim_b = 1; dim_a = 32;
+	
 	dim3 threadsPerBlock2(dim_a, dim_b, dim_c);
 	//create numBlocks regarding the layer dimensions
     dim3 numBlocks2(((c_param->prev_size_w * c_param->prev_size_h) + threadsPerBlock2.x - 1) / threadsPerBlock2.x,
@@ -268,6 +270,8 @@ void cuda_backward_conv_layer(layer *current)
 			dim_a = 4;
 		else
 			dim_a = 8;
+			
+		//dim_c = 1; dim_b = 1; dim_a = 32;
 		
 		dim3 threadsPerBlock2(dim_a, dim_b, dim_c);
 		//create numBlocks regarding the layer dimensions
@@ -287,7 +291,7 @@ void cuda_backward_conv_layer(layer *current)
 					c_param->prev_size_w, 0);
 				break;
 			case 1:
-				im2col_kernel_v4_FP16<<< numBlocks2, threadsPerBlock2 >>>((half*)c_param->im2col_delta_o,
+				im2col_kernel_v4_FP16<<< numBlocks2, threadsPerBlock2>>>((half*)c_param->im2col_delta_o,
 					(half*)current->delta_o, c_param->nb_area_w * c_param->nb_area_h, 
 					(c_param->prev_size_w * c_param->prev_size_h) * flat_f_size, 1, back_padding,
 					c_param->stride - 1 , c_param->nb_filters, depth_padding, image_padding,
@@ -431,6 +435,52 @@ __global__ void im2col_kernel_v4_FP16(half* output, half* input, int image_size,
 	}
 }
 
+//Attempt to reduce compute charge of kernel -> no effect on P2000, must check on less memory bound GPU like V100
+/*
+__global__ void im2col_kernel_v5_FP16(half* output, half* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias)
+{
+	int z = blockIdx.x*blockDim.x + threadIdx.x;
+	int d = blockIdx.y*blockDim.y + threadIdx.y;
+	int i = blockIdx.z*blockDim.z + threadIdx.z;
+	
+	half local_pix;
+	
+	int w, h, x, y;
+	int pos_w_filter, pos_h_filter;
+	int loc_a, loc_b;
+	
+	if( i < batch_size)
+	{	
+		if(d < depth)
+		{
+			input += d * depth_padding + i*(image_padding + bias);
+			output += d * f_size*f_size + i*(flat_image_size);
+			if(z < image_size)
+			{
+				local_pix = input[z];
+			
+				w = (z % w_size)*(1 + internal_padding) + padding;
+				h = (z / w_size)*(1 + internal_padding) + padding;
+				 
+				for(y = h/stride; (h-y*stride < f_size) && (y >= 0); y -= 1)
+				{
+					//pos_h_filter = (h-y*stride)*f_size;
+					loc_a = (h-y*stride)*f_size + y*nb_area_w*flat_f_size;
+					for(x = w/stride; (w-x*stride < f_size) && (x >= 0); x -= 1)
+					{
+						//pos_w_filter = w-x*stride;
+						loc_b = loc_a + x*flat_f_size + w-x*stride;
+						if(loc_b >= 0 && loc_b < flat_image_size)
+							output[loc_b] = local_pix;
+					}
+				}
+			}
+		}
+	}
+}
+*/
+
+
 __global__ void cuda_rotate_filter_matrix_FP32(float* in, float* out, int nb_rows, int depth_size, int nb_filters_in, int len)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
@@ -453,6 +503,7 @@ __global__ void cuda_rotate_filter_matrix_FP32(float* in, float* out, int nb_row
 	}
 	
 }
+
 
 __global__ void cuda_rotate_filter_matrix_FP16(half* in, half* out, int nb_rows, int depth_size, int nb_filters_in, int len)
 {

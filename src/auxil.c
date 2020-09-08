@@ -173,6 +173,24 @@ void print_table(float* tab, int column_size, int nb_column)
 	printf("\n");
 }
 
+void print_epoch_advance(int epoch, int c_batch, int nb_batch)
+{
+	int i;
+	int size = 60;
+	
+	if(c_batch == 0)
+		printf("\nEpoch: %d\n", epoch);
+	
+	printf("\e[?25l");
+	printf("\r[");
+	for(i = 0; i < size*((float)c_batch/nb_batch); i++)
+		printf("#");
+	for(i = size*((float)c_batch/nb_batch); i < size; i++)
+		printf("-");
+	printf("] %d/%d     ", c_batch, nb_batch);
+	printf("\e[?25h");
+}
+
 void free_dataset(Dataset data)
 {
 	int i;
@@ -1078,6 +1096,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		//Loop on all batch for one epoch
 		for(j = 0; j < net->train.nb_batch; j++)
 		{
+			print_epoch_advance(net->epoch, j+1, net->train.nb_batch);
+		
 			if(j == net->train.nb_batch-1 && net->train.size%net->batch_size > 0)
 				net->length = net->train.size%net->batch_size;
 			else
@@ -1122,7 +1142,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		
 		if(((net->epoch) % control_interv == 0) || (i == nb_epochs - 1))
 		{
-			printf("Epoch: %d\n", net->epoch);
+			printf("\nControl step epoch: %d\n", net->epoch);
 			printf("Net. training perf.: %0.2f items/s\n", items_per_s);
 			printf("Learning rate : %g\n", net->learning_rate);
 			compute_error(net, net->valid, 0, show_confmat, 1);
