@@ -40,11 +40,14 @@ float ellapsed_time(struct timeval tstart)
 
 void init_network(int network_number, int u_input_dim[3], int u_output_dim, float in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load, int u_use_cuda_TC)
 {
+	network *net;
 
-	networks[network_number] = (network*) malloc(sizeof(network));
-	networks[network_number]->id = network_number;
-	networks[network_number]->dynamic_load = u_dynamic_load;
-	networks[network_number]->use_cuda_TC = u_use_cuda_TC;
+	net = (network*) malloc(sizeof(network));
+	networks[network_number] = net;
+	
+	net->id = network_number;
+	net->dynamic_load = u_dynamic_load;
+	net->use_cuda_TC = u_use_cuda_TC;
 	
 	//Additional security, but all statements should be safe on its own
 	//note that FP32/FP32 Tensore Core operation exist (different than TF32)
@@ -87,46 +90,49 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, floa
 		is_init = 1;
 	}
 
-	networks[network_number]->input_width = u_input_dim[0]; 
-	networks[network_number]->input_height = u_input_dim[1];
-	networks[network_number]->input_depth = u_input_dim[2];
-	networks[network_number]->input_dim = u_input_dim[0]*u_input_dim[1]*u_input_dim[2];
-	networks[network_number]->output_dim = u_output_dim;
+	net->input_width = u_input_dim[0]; 
+	net->input_height = u_input_dim[1];
+	net->input_depth = u_input_dim[2];
+	net->input_dim = u_input_dim[0]*u_input_dim[1]*u_input_dim[2];
+	net->output_dim = u_output_dim;
 	
-	networks[network_number]->input_bias = in_bias;
+	net->input_bias = in_bias;
 	if(u_batch_size > 1)
 	{
-		networks[network_number]->batch_size = u_batch_size;
-		networks[network_number]->batch_param = OFF;
+		net->batch_size = u_batch_size;
+		net->batch_param = OFF;
 	}
 	else if(u_batch_size == 1)
 	{
-		networks[network_number]->batch_size = 1;
-		networks[network_number]->batch_param = SGD;
+		net->batch_size = 1;
+		net->batch_param = SGD;
 		printf("Automatically switch to SGD scheme (batch_size = 1)\n");
 	}
 	else if(u_batch_size <= 0)
 	{
-		networks[network_number]->batch_size = 1024;
-		networks[network_number]->batch_param = FULL;
-		printf("Undefined batch size -> automatic value is 1024\n");
+		net->batch_size = 256;
+		net->batch_param = FULL;
+		printf("Undefined batch size -> automatic value is 256\n");
 	}
-	networks[network_number]->compute_method = u_compute_method;
-	networks[network_number]->nb_layers = 0;
-	networks[network_number]->epoch = 0;
-	networks[network_number]->norm_factor_defined = 0;
+	net->compute_method = u_compute_method;
+	net->nb_layers = 0;
+	net->epoch = 0;
+	net->norm_factor_defined = 0;
 	
-	networks[network_number]->output_error = (float*) calloc(networks[network_number]->batch_size*
-		networks[network_number]->output_dim, sizeof(float));
+	net->output_error = (float*) calloc(net->batch_size * net->output_dim, sizeof(float));
 	
 	if(u_compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		cuda_create_table_FP32(networks[network_number], (float**)&networks[network_number]->output_error_cuda, 
-			networks[network_number]->batch_size*networks[network_number]->output_dim);
-		
+		cuda_create_table_FP32(net, (float**)&net->output_error_cuda, net->batch_size * net->output_dim);
 		#endif
 	}
+}
+
+
+void set_extra_net_parameter(char* name, network* net)
+{
+	
 }
 
 
@@ -173,13 +179,10 @@ void print_table(float* tab, int column_size, int nb_column)
 	printf("\n");
 }
 
-void print_epoch_advance(int epoch, int c_batch, int nb_batch)
+void print_epoch_advance(int c_batch, int nb_batch)
 {
 	int i;
 	int size = 60;
-	
-	if(c_batch == 0)
-		printf("\nEpoch: %d\n", epoch);
 	
 	printf("\e[?25l");
 	printf("\r[");
@@ -816,11 +819,15 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	{
 		init_timing(&ep_timer);
 		if(repeat > 1)
-		printf("Forward repeat step: %d /%d\n", r+1, repeat);
+			printf("Forward repeat step: %d /%d\n", r+1, repeat);
 		total_error = 0.0;
 		
+		if(repeat <= 1)
+			printf("\nForward: %d\n", net->epoch);
 		for(j = 0; j < data.nb_batch; j++)
 		{
+			print_epoch_advance(j+1, net->test.nb_batch);
+		
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
@@ -934,7 +941,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		//f_err = fopen("error.txt", "a");
 		
 		items_per_s = data.size/ellapsed_time(ep_timer);
-		printf("Net. forward perf.: %0.2f items/s\n", items_per_s);
+		printf("\nNet. forward perf.: %0.2f items/s\n", items_per_s);
 		printf("Cumulated error: \t %g\n", total_error/data.size);
 		
 		//fprintf(f_err, "%g\n",  total_error/data.size);
@@ -1029,14 +1036,15 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			if(shuffle_gpu)
 			{
 				
-				index_shuffle = (void*) calloc(net->train.size,sizeof(void));
+				index_shuffle = (void*) calloc(net->train.size,sizeof(int));
 				for(i = 0; i < net->train.size; i++)
 					index_shuffle[i] = i;
-				index_shuffle_device = (void*)  calloc(net->train.size,sizeof(void));
+				index_shuffle_device = (void*)  calloc(net->train.size,sizeof(int));
 				cuda_convert_dataset(net, &shuffle_duplicate);
 				cuda_convert_table_int(net, &index_shuffle_device, net->train.size);
 			}
 		}
+		
 	}
 	#endif
 	
@@ -1094,9 +1102,10 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		init_timing(&ep_timer);
 		
 		//Loop on all batch for one epoch
+		printf("\nEpoch: %d\n", net->epoch);
 		for(j = 0; j < net->train.nb_batch; j++)
 		{
-			print_epoch_advance(net->epoch, j+1, net->train.nb_batch);
+			print_epoch_advance(j+1, net->train.nb_batch);
 		
 			if(j == net->train.nb_batch-1 && net->train.size%net->batch_size > 0)
 				net->length = net->train.size%net->batch_size;

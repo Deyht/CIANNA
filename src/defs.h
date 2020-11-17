@@ -52,8 +52,6 @@
 
 static const double two_pi = 2.0*3.14159265358979323846;
 
-#define TC_scale_factor 1.0f
-
 #endif //DEFS_H
 
 

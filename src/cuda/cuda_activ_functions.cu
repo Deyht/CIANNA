@@ -58,7 +58,7 @@ __global__ void ReLU_deriv_kernel_FP16(half *deriv, half *value, int len, int di
 __global__ void quadratic_deriv_output_error_kernel_FP32(float *delta_o, float *output, float *target, 
 	int dim, int len, int size);
 __global__ void quadratic_deriv_output_error_kernel_FP16(half *delta_o, half *output, half *target, 
-	int dim, int len, int size);
+	int dim, int len, int size, half TC_scale_factor);
 __global__ void quadratic_output_error_kernel_FP32(float *output_error, float *output, float *target, 
 	int dim, int len, int size);
 __global__ void quadratic_output_error_kernel_FP16(float *output_error, half *output, half *target, 
@@ -72,7 +72,7 @@ __global__ void softmax_activation_kernel_FP16(half *tab, int len, int dim, int 
 __global__ void cross_entropy_deriv_output_error_kernel_FP32(float *delta_o, float *output, float *target, 
 	int len, int dim, int size);
 __global__ void cross_entropy_deriv_output_error_kernel_FP16(half *delta_o, half *output, half *target, 
-	int len, int dim, int size);
+	int len, int dim, int size, half TC_scale_factor);
 __global__ void cross_entropy_output_error_kernel_FP32(float *output_error, float *output, float *target, 
 	int len, int dim, int size);
 __global__ void cross_entropy_output_error_kernel_FP16(float *output_error, half *output, half *target, 
@@ -187,7 +187,7 @@ void cuda_linear_deriv_output_error(layer *current)
 		case 1:
 			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
-				(param->dim+1)*current->c_network->length, param->dim, param->size);
+				(param->dim+1)*current->c_network->length, param->dim, param->size, TC_scale_factor);
 			break;
 	}
 }
@@ -342,7 +342,7 @@ void cuda_ReLU_deriv_output_error(layer* current)
 		case 1:
 			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
-				(param->dim+1) * current->c_network->length, param->dim, param->size);
+				(param->dim+1) * current->c_network->length, param->dim, param->size, TC_scale_factor);
 			ReLU_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o,
 				(half*)current->output,	param->size, param->dim, param->leaking_factor, param->size);
 			break;
@@ -391,7 +391,7 @@ __global__ void quadratic_deriv_output_error_kernel_FP32(float *delta_o, float *
 	}
 }
 
-__global__ void quadratic_deriv_output_error_kernel_FP16(half *delta_o, half *output, half *target, int len, int dim, int size)
+__global__ void quadratic_deriv_output_error_kernel_FP16(half *delta_o, half *output, half *target, int len, int dim, int size, half TC_scale_factor)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int pos;
@@ -597,7 +597,7 @@ void cuda_logistic_deriv_output_error(layer* current)
 		case 1:
 			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
-				(param->dim+1)*current->c_network->length, param->dim, param->size);
+				(param->dim+1)*current->c_network->length, param->dim, param->size, TC_scale_factor);
 			logistic_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o, 
 				(half*)current->output, param->beta, (param->dim+1)*current->c_network->length,
 				param->dim, param->size, (half)TC_scale_factor);
@@ -769,7 +769,7 @@ void cuda_softmax_deriv_output_error(layer *current)
 			cross_entropy_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
 				(param->dim+1)*current->c_network->length, param->dim, 
-				(param->dim+1)*current->c_network->batch_size);
+				(param->dim+1)*current->c_network->batch_size, TC_scale_factor);
 			break;
 	}
 }
@@ -818,7 +818,7 @@ __global__ void cross_entropy_deriv_output_error_kernel_FP32(float *delta_o, flo
 	}
 }
 
-__global__ void cross_entropy_deriv_output_error_kernel_FP16(half *delta_o, half *output, half *target, int len, int dim, int size)
+__global__ void cross_entropy_deriv_output_error_kernel_FP16(half *delta_o, half *output, half *target, int len, int dim, int size, half TC_scale_factor)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int pos;
