@@ -52,10 +52,9 @@ The following arguments can be associated can be used to specify compute methods
    - PY_INTERF : build the Python interface at the end
 
    Multiple parameters can be used at the same time:
-```
-./compile.cp CUDA OPEN_MP BLAS PY_INTERF
-```
-
+   ```
+   ./compile.cp CUDA OPEN_MP BLAS PY_INTERF
+   ```
    NB: These parameters ***allow*** the use of specific features, they do not ***enable*** it. For example you can compile with all the parameters and choose to use CUDA or BLAS at execution time.
 
 3. The previous script create a *main* executable which is by default a simple example performing MNIST classification.
@@ -66,13 +65,13 @@ If you choose to work using the C interface you must edit *src/main.c* and recom
 4. You can build a Python interface to use the framework.
 First check if any path or compile option need to be adapted for your need in the file *src/python_module_setup.py* (GCC, CUDA, OpenBLAS, ...).
 Then, the interface can be build automatically by adding the PY_INTERF argument to the *compile.cp* command, or manually by going into the *src* directory and execute:
-```
-python3 python_module_setup.py build
-```
+   ```
+   python3 python_module_setup.py build
+   ```
    If you want to provide access to the framework system wide, you can use:
-```
-sudo python3 python_module_setup.py install
-```
+   ```
+   sudo python3 python_module_setup.py install
+   ```
    If you want to call the locally built interface you must add the path in your Python script (see example).
 
    The created Python interface module has no dependency with *main.c* and therefore
