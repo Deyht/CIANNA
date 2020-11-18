@@ -46,17 +46,17 @@ CIANNA is codded in C99 and requires at least a C compiler to be used. Additiona
 
 3. Execute *compile.cp* to compile the source code.
 The following arguments can be associated can be used to specify compute methods to compile
-- CUDA 	  : compile additional cuda files
-- OPEN_MP   : add multi-thread for some operations (for C_NAIV and C_BLAS)
-- BLAS 	  : add OpenBLAS gemm (mutli-threaded) operations
-- PY_INTERF : build the Python interface at the end
+   - CUDA 	  : compile additional cuda files
+   - OPEN_MP   : add multi-thread for some operations (for C_NAIV and C_BLAS)
+   - BLAS 	  : add OpenBLAS gemm (mutli-threaded) operations
+   - PY_INTERF : build the Python interface at the end
 
-Multiple parameters can be used at the same time:
+   Multiple parameters can be used at the same time:
 ```
 ./compile.cp CUDA OPEN_MP BLAS PY_INTERF
 ```
 
-NB: These parameters ***allow*** the use of specific features, they do not ***enable*** it. For example you can compile with all the parameters and choose to use CUDA or BLAS at execution time.
+   NB: These parameters ***allow*** the use of specific features, they do not ***enable*** it. For example you can compile with all the parameters and choose to use CUDA or BLAS at execution time.
 
 3. The previous script create a *main* executable which is by default a simple example performing MNIST classification.
 If you choose to work using the C interface you must edit *src/main.c* and recompile using *compile.cp*. (A more convenient C interface is at work.)
@@ -69,13 +69,13 @@ Then, the interface can be build automatically by adding the PY_INTERF argument 
 ```
 python3 python_module_setup.py build
 ```
-If you want to provide access to the framework system wide, you can use:
+   If you want to provide access to the framework system wide, you can use:
 ```
 sudo python3 python_module_setup.py install
 ```
-If you want to call the locally built interface you must add the path in your Python script (see example).
+   If you want to call the locally built interface you must add the path in your Python script (see example).
 
-The created Python interface module has no dependency with *main.c* and therefore
+   The created Python interface module has no dependency with *main.c* and therefore
 any code can be written with the interface with no need for new compilation.
 
 
