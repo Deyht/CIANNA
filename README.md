@@ -13,60 +13,58 @@ See Copyight (C) and [License](#License) terms.
 
 
 #############################################################
-##          /!\ /!\ /!\ /!\ WARNING /!\ /!\ /!\ /!\
+##          /!\ /!\ /!\ WARNING /!\ /!\ /!\
 #############################################################
 
-THIS FRAMEWORK IS NEITHER IN A STABLE NOR FINISHED STATE.
-IF YOU WHERE GRANTED ACCESS TO THIS REPOSITORY / CODE BY ANY OTHER WAY
-THAN THROUGH A CONTACT WITH THE AUTHOR, PLEASE TAKE CONTACT BEFORE USING IT.
-
-If in need for any help, information, advises, ... please contact
-me at : david.cornu@utinam.cnrs.fr
-
-#############################################################
-##          /!\ /!\ /!\ /!\ WARNING /!\ /!\ /!\ /!\
-#############################################################
+CIANNA is not in a "released" / "stable" state. It means that the framework and the associated interfaces are subject to significant changes between versions. One must pay attention to what have been changed before updating to a more recent version.
 
 
-
-
-
+I can provide some help, information, advises, ... please contact
+me at: david.cornu@observatoiredeparis.psl.eu
+Be aware that i am not a support team all by myself.
 
 
 
 #############################################################
-##                         Installation (DEPRECATED)
+##                         Installation
 #############################################################
 
-WARNING : Currently, the framework only work using CUDA (version 9.2 minimum, 10.1 up 2 recommended).
-It will soon support basic CPU implementation and an OpenBLAS version, both with an OpenMP multi-thread support.
+#### Dependencies
 
+CIANNA is codded in C99 and requires at least a C compiler to be used. Additionally, it supports several compute methods:
+- C_NAIV: No dependency, very simple CPU implementation (mainly for pedagogical purpose). Support basic multi-CPU with OpenMP.
+- C_BLAS: Require OpenBLAS, much more optimized multi-CPU implementation. Non-matrix operations can also be multi-threaded with OpenMP. (We recommend an OpenMP installation for OpenBLAS)
+- C_CUDA: (Recommended) Most efficient implementation relying on Nvidia GPU. Require a recent version of CUDA (At least CUDA 10.1, and latest CUDA 11.1 recommended)
 
-1. Edit the shell script *train.cp* to update the few paths regarding your own system
-(Check the various paths, for cuda check all the references to cublas and nvcc, 
-also think to update the -arch parameter to fit your GPU architecture)
+#### How to install and compile
 
-2. Execute *train.cp* to compile the source code
-It can (and currently must) be associated with parameters to specify specific parts to compile
-CUDA 	: compile additional cuda files
-OPEN_MP : add multi-thread for some operations
-BLAS 	: add OpenBLAS gemm (mutli-threaded) operations
+1. Clone the git repository
 
-Multiple parameters can be used at the same time ex:
+2. Edit the shell script *compile.cp* to update the few paths regarding your own system
+(Check the various paths (GCC, CUDA, OpenBLAS, ...), for CUDA check all the references to cublas and nvcc, also think to update the -arch parameter to fit your GPU architecture)
+
+3. Execute *compile.cp* to compile the source code.
+The following arguments can be associated can be used to specify compute methods to compile
+CUDA 	  : compile additional cuda files
+OPEN_MP   : add multi-thread for some operations (for C_NAIV and C_BLAS)
+BLAS 	  : add OpenBLAS gemm (mutli-threaded) operations
+PY_INTERF : build the Python interface at the end
+
+Multiple parameters can be used at the same time:
 ```
-./train.cp CUDA OPEN_MP BLAS
+./compile.cp CUDA OPEN_MP BLAS PY_INTERF
 ```
 
-NB: These parameters ***allow*** the use of specific features, they do not ***enable*** it. For example you can compile
-with all the parameters and choose to use CUDA or BLAS at execution time.
+NB: These parameters ***allow*** the use of specific features, they do not ***enable*** it. For example you can compile with all the parameters and choose to use CUDA or BLAS at execution time.
 
-3. It creates a *main* executable which is by default a simple example performing MNIST classification.
-If you choose to work using the C language you must edit *src/main.c* and recompile using *train.cp*.
+3. The previous script create a *main* executable which is by default a simple example performing MNIST classification.
+If you choose to work using the C interface you must edit *src/main.c* and recompile using *compile.cp*. (A more convenient C interface is at work.)
 
-4. OPTIONAL: You can build a Python interface to use the framework.
-To do so you must compile with the desire options using *train.cp*.
-First check if any path or compile option need to be adapted for your need in the file *src/python_module_setup.py*
-Then you can go in the *src* directory and execute:
+#### Optional step
+
+4. You can build a Python interface to use the framework.
+First check if any path or compile option need to be adapted for your need in the file *src/python_module_setup.py* (GCC, CUDA, OpenBLAS, ...).
+Then, the interface can be build automatically by adding the PY_INTERF argument to the *compile.cp* command, or manually by going into the *src* directory and execute:
 ```
 python3 python_module_setup.py build
 ```
@@ -74,7 +72,7 @@ If you want to provide access to the framework system wide, you can use:
 ```
 sudo python3 python_module_setup.py install
 ```
-If you want to call the locally built interface you must add the path in your Python script (see example) 
+If you want to call the locally built interface you must add the path in your Python script (see example).
 
 The created Python interface module has no dependency with *main.c* and therefore
 any code can be written with the interface with no need for new compilation.
@@ -87,11 +85,10 @@ any code can be written with the interface with no need for new compilation.
 #############################################################
 
 There is currently no tutorial on how to use either the main C code or the Python interface.
-Users could have be given specific instructions by the author, or should have a good C (and CUDA) knowledge
-to figure out how to use the framework by themselves.
+Users could have be given specific instructions by the author, or should have a good C (and CUDA) knowledge to figure out how to use the framework by themselves.
 
 This framework take into account for various modern neural network optimizations. 
-However, since there is no automated gradient optimization, it will happen that the network gradient "explode" or"vanish". 
+However, since there is no automated gradient optimization, it might happen that the network gradient "explode" or "vanish" on specific conditions. 
 Users must be aware of those issues and be able to identify them in order to make proper use of the framework.
 
 

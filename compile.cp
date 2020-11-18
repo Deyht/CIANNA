@@ -123,6 +123,9 @@ gcc $compile_opt -std=c99 -o \
 ../main main.o $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o -lm $arg $defines_variables
 echo "#####  End of link edition and executable creation  #####"
 
+#External C library -> work in progress
+#ar rcs cianna.a $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o
+
 #rm *.o *.gch
 
 if [ $PY_INTERF ]
