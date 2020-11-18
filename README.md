@@ -21,6 +21,7 @@ CIANNA is not in a "released" / "stable" state. It means that the framework and 
 
 I can provide some help, information, advises, ... please contact
 me at: david.cornu@observatoiredeparis.psl.eu
+
 Be aware that i am not a support team all by myself.
 
 
@@ -32,9 +33,9 @@ Be aware that i am not a support team all by myself.
 #### Dependencies
 
 CIANNA is codded in C99 and requires at least a C compiler to be used. Additionally, it supports several compute methods:
-- C_NAIV: No dependency, very simple CPU implementation (mainly for pedagogical purpose). Support basic multi-CPU with OpenMP.
-- C_BLAS: Require OpenBLAS, much more optimized multi-CPU implementation. Non-matrix operations can also be multi-threaded with OpenMP. (We recommend an OpenMP installation for OpenBLAS)
-- C_CUDA: (Recommended) Most efficient implementation relying on Nvidia GPU. Require a recent version of CUDA (At least CUDA 10.1, and latest CUDA 11.1 recommended)
+- **C_NAIV**: No dependency, very simple CPU implementation (mainly for pedagogical purpose). Support basic multi-CPU with OpenMP.
+- **C_BLAS**: Require OpenBLAS, much more optimized multi-CPU implementation. Non-matrix operations can also be multi-threaded with OpenMP. (We recommend an OpenMP installation for OpenBLAS)
+- **C_CUDA**: (Recommended) Most efficient implementation relying on Nvidia GPU. Require a recent version of CUDA (At least CUDA 10.1, and latest CUDA 11.1 recommended)
 
 #### How to install and compile
 
@@ -45,10 +46,10 @@ CIANNA is codded in C99 and requires at least a C compiler to be used. Additiona
 
 3. Execute *compile.cp* to compile the source code.
 The following arguments can be associated can be used to specify compute methods to compile
-CUDA 	  : compile additional cuda files
-OPEN_MP   : add multi-thread for some operations (for C_NAIV and C_BLAS)
-BLAS 	  : add OpenBLAS gemm (mutli-threaded) operations
-PY_INTERF : build the Python interface at the end
+- CUDA 	  : compile additional cuda files
+- OPEN_MP   : add multi-thread for some operations (for C_NAIV and C_BLAS)
+- BLAS 	  : add OpenBLAS gemm (mutli-threaded) operations
+- PY_INTERF : build the Python interface at the end
 
 Multiple parameters can be used at the same time:
 ```
