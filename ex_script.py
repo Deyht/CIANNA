@@ -51,8 +51,7 @@ cnn.dense_create(nb_neurons=1024, activation="RELU", drop_rate=0.5)
 cnn.dense_create(nb_neurons=256, activation="RELU", drop_rate=0.2)
 cnn.dense_create(nb_neurons=10, activation="SOFTMAX")
 
-cnn.train_network(nb_epoch=10, learning_rate=0.0002, \
-	control_interv=1, momentum=0.9, confmat=1, save_each=20)
+cnn.train_network(nb_epoch=10, learning_rate=0.0002, momentum=0.9, confmat=1, save_each=20)
 
 
 
