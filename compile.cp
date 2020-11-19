@@ -36,7 +36,7 @@ defines_variables="-D MAX_LAYERS_NB=100 -D MAX_NETWOKRS_NB=10 -D CUDA_THREADS_PE
 gcc_compile_dir="/usr/bin/gcc"
 openblas_include_dir="/opt/OpenBLAS/include/"
 openblas_lib_dir="/opt/OpenBLAS/lib"
-cuda_lib_path="/usr/local/cuda-10.2/lib64"
+cuda_lib_path="/usr/local/cuda-11.1/lib64"
 compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
 
 ######################################################
