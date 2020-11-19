@@ -32,7 +32,7 @@
 //         Public variables
 //######################################
 
-extern network *networks[MAX_NETWOKRS_NB];
+extern network *networks[MAX_NETWORKS_NB];
 extern int nb_networks;
 extern int is_init;
 extern int verbose;
