@@ -826,7 +826,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			printf("\nForward: %d\n", net->epoch);
 		for(j = 0; j < data.nb_batch; j++)
 		{
-			print_epoch_advance(j+1, net->test.nb_batch);
+			print_epoch_advance(j+1, net->data.nb_batch);
 		
 			if(net->compute_method == C_CUDA)
 			{
