@@ -40,5 +40,5 @@ setup(name = 'CIANNA',
 	extra_objects=['conv_layer.o', 'dense_layer.o', 'pool_layer.o', 'activ_functions.o', 'initializers.o', 'vars.o', 'auxil.o', 'naiv/naiv_dense_layer.o', 'naiv/naiv_conv_layer.o', 'naiv/naiv_pool_layer.o'] + cuda_obj + blas_obj,
 	include_dirs= cuda_include + blas_include,
 	extra_link_args=['-std=c99'] + cuda_extra + blas_extra + open_mp_extra,
-	define_macros=[('MAX_LAYERS_NB', '100'), ('MAX_NETWOKRS_NB','10')] + cuda_macro + blas_macro)])
+	define_macros=[('MAX_LAYERS_NB', '100'), ('MAX_NETWORKS_NB','10')] + cuda_macro + blas_macro)])
 
