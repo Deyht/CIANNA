@@ -37,6 +37,8 @@ CIANNA is codded in C99 and requires at least a C compiler to be used. Additiona
 - **C_BLAS**: Require OpenBLAS, much more optimized multi-CPU implementation. Non-matrix operations can also be multi-threaded with OpenMP. (We recommend an OpenMP installation for OpenBLAS)
 - **C_CUDA**: (Recommended) Most efficient implementation relying on Nvidia GPU. Require a recent version of CUDA (At least CUDA 10.1, and latest CUDA 11.1 recommended)
 
+More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/Sytem-Requirements) page
+
 #### How to install and compile
 
 1. Clone the git repository
@@ -84,8 +86,8 @@ any code can be written with the interface with no need for new compilation.
 ##                   Various Recommandations
 #############################################################
 
-There is currently no tutorial on how to use either the main C code or the Python interface.
-Users could have be given specific instructions by the author, or should have a good C (and CUDA) knowledge to figure out how to use the framework by themselves.
+Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/How-to-use-(Python-interface)) Wiki page. The Wiki page containing all the interface function details is under construction.
+Also "Troubleshooting" and "F.A.Q" pages will be added soon.
 
 This framework take into account various modern neural network optimizations. 
 However, since there is no automated gradient optimization, it might happen that the network gradient "explode" or "vanish" on specific conditions. 
