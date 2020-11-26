@@ -207,6 +207,7 @@ typedef struct ReLU_param
 {
 	int size;
 	int dim;
+	int biased_dim;
 	float leaking_factor;
 
 } ReLU_param;
@@ -215,6 +216,7 @@ typedef struct logistic_param
 {
 	int size;
 	int dim;
+	int biased_dim;
 	float beta;
 	float saturation;
 	
@@ -223,6 +225,7 @@ typedef struct logistic_param
 typedef struct softmax_param
 {
 	int dim;
+	int biased_dim;
 		
 } softmax_param;
 
@@ -230,6 +233,7 @@ typedef struct linear_param
 {
 	int size;
 	int dim;
+	int biased_dim;
 	
 } linear_param;
 

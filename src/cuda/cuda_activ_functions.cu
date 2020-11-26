@@ -182,12 +182,12 @@ void cuda_linear_deriv_output_error(layer *current)
 		case 0:
 			quadratic_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
-				(param->dim+1)*current->c_network->length, param->dim, param->size);
+				(param->biased_dim)*current->c_network->length, param->dim, param->size);
 			break;
 		case 1:
 			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
-				(param->dim+1)*current->c_network->length, param->dim, param->size, TC_scale_factor);
+				(param->biased_dim)*current->c_network->length, param->dim, param->size, TC_scale_factor);
 			break;
 	}
 }
@@ -203,13 +203,13 @@ void cuda_linear_output_error(layer *current)
 		case 0:
 			quadratic_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output,
-				(float*)current->c_network->target, (param->dim+1)*current->c_network->length, 
+				(float*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
 				param->dim, param->size);
 			break;
 		case 1:
 			quadratic_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output,
-				(half*)current->c_network->target, (param->dim+1)*current->c_network->length,
+				(half*)current->c_network->target, (param->biased_dim)*current->c_network->length,
 				param->dim, param->size);
 			break;
 	}
@@ -335,14 +335,14 @@ void cuda_ReLU_deriv_output_error(layer* current)
 		case 0:
 			quadratic_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
-				(param->dim+1) * current->c_network->length, param->dim, param->size);
+				(param->biased_dim) * current->c_network->length, param->dim, param->size);
 			ReLU_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->delta_o, 
 				(float*)current->output, param->size, param->dim, param->leaking_factor, param->size);
 			break;
 		case 1:
 			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
-				(param->dim+1) * current->c_network->length, param->dim, param->size, TC_scale_factor);
+				(param->biased_dim) * current->c_network->length, param->dim, param->size, TC_scale_factor);
 			ReLU_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o,
 				(half*)current->output,	param->size, param->dim, param->leaking_factor, param->size);
 			break;
@@ -360,13 +360,13 @@ void cuda_ReLU_output_error(layer* current)
 		case 0:
 			quadratic_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output, 
-				(float*)current->c_network->target, (param->dim+1)*current->c_network->length, 
+				(float*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
 				param->dim, param->size);
 			break;
 		case 1:
 			quadratic_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output, 
-				(half*)current->c_network->target, (param->dim+1)*current->c_network->length, 
+				(half*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
 				param->dim, param->size);
 			break;
 	}
@@ -465,11 +465,11 @@ void cuda_logistic_activation(layer *current)
 		default:
 		case 0:	
 			logistic_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output,
-				param->beta, param->saturation, param->size, param->dim, param->size);
+				param->beta, param->saturation, (param->biased_dim)*current->c_network->length, param->dim, param->size);
 			break;
 		case 1:
 			logistic_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output, 
-				param->beta, param->saturation, param->size, param->dim, param->size);
+				param->beta, param->saturation, (param->biased_dim)*current->c_network->length, param->dim, param->size);
 			break;
 	}
 }
@@ -534,11 +534,11 @@ void cuda_logistic_deriv(layer *previous)
 		default:
 		case 0:	
 			logistic_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)previous->delta_o, 
-				(float*)previous->output, param->beta, param->size, param->dim, param->size);
+				(float*)previous->output, param->beta, (param->biased_dim)*previous->c_network->length, param->dim, param->size);
 			break;
 		case 1:
 			logistic_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)previous->delta_o,
-				(half*)previous->output, param->beta, param->size, param->dim, param->size, (half)1.0f);
+				(half*)previous->output, param->beta, (param->biased_dim)*previous->c_network->length, param->dim, param->size, (half)1.0f);
 			break;
 	}
 }
@@ -589,17 +589,17 @@ void cuda_logistic_deriv_output_error(layer* current)
 		case 0:	
 			quadratic_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
-				(param->dim+1)*current->c_network->length, param->dim, param->size);
+				(param->biased_dim)*current->c_network->length, param->dim, param->size);
 			logistic_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->delta_o,
-			 	(float*)current->output, param->beta, (param->dim+1)*current->c_network->length,
+			 	(float*)current->output, param->beta, (param->biased_dim)*current->c_network->length,
 			 	param->dim, param->size);
 			break;
 		case 1:
 			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
-				(param->dim+1)*current->c_network->length, param->dim, param->size, TC_scale_factor);
+				(param->biased_dim)*current->c_network->length, param->dim, param->size, TC_scale_factor);
 			logistic_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o, 
-				(half*)current->output, param->beta, (param->dim+1)*current->c_network->length,
+				(half*)current->output, param->beta, (param->biased_dim)*current->c_network->length,
 				param->dim, param->size, (half)TC_scale_factor);
 			break;
 	}
@@ -617,13 +617,13 @@ void cuda_logistic_output_error(layer* current)
 		case 0:	
 			quadratic_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output,
-				(float*)current->c_network->target, (param->dim+1)*current->c_network->length, 
+				(float*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
 				param->dim, param->size);
 			break;
 		case 1:
 			quadratic_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output, 
-				(half*)current->c_network->target, (param->dim+1)*current->c_network->length, 
+				(half*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
 				param->dim, param->size);
 			break;
 	}		
@@ -754,7 +754,7 @@ void cuda_softmax_deriv_output_error(layer *current)
 {
 	//use by default a cross entropy error
 	softmax_param *param = (softmax_param*)current->activ_param;
-	cu_blocks = ((param->dim+1)*current->c_network->batch_size + cu_threads - 1) / cu_threads;
+	cu_blocks = ((param->biased_dim)*current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	switch(current->c_network->use_cuda_TC)
 	{
@@ -762,14 +762,14 @@ void cuda_softmax_deriv_output_error(layer *current)
 		case 0:
 			cross_entropy_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
-				(param->dim+1)*current->c_network->length, param->dim, 
-				(param->dim+1) * current->c_network->batch_size);
+				(param->biased_dim)*current->c_network->length, param->dim, 
+				(param->biased_dim) * current->c_network->batch_size);
 			break;
 		case 1:
 			cross_entropy_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
-				(param->dim+1)*current->c_network->length, param->dim, 
-				(param->dim+1)*current->c_network->batch_size, TC_scale_factor);
+				(param->biased_dim)*current->c_network->length, param->dim, 
+				(param->biased_dim)*current->c_network->batch_size, TC_scale_factor);
 			break;
 	}
 }
@@ -778,7 +778,7 @@ void cuda_softmax_output_error(layer *current)
 {
 	//use by default a cross entropy error
 	softmax_param *param = (softmax_param*)current->activ_param;
-	cu_blocks = ((param->dim+1)*current->c_network->batch_size + cu_threads - 1) / cu_threads;
+	cu_blocks = ((param->biased_dim)*current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	switch(current->c_network->use_cuda_TC)
 	{
@@ -787,13 +787,13 @@ void cuda_softmax_output_error(layer *current)
 			cross_entropy_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output, 
 				(float*)current->c_network->target, (param->dim+1)*current->c_network->length,
-				param->dim, (param->dim+1)*current->c_network->batch_size);
+				param->dim, (param->biased_dim)*current->c_network->batch_size);
 			break;
 		case 1:
 			cross_entropy_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output, 
 				(half*)current->c_network->target, (param->dim+1)*current->c_network->length,
-				param->dim, (param->dim+1)*current->c_network->batch_size);
+				param->dim, (param->biased_dim)*current->c_network->batch_size);
 			break;
 	}
 }

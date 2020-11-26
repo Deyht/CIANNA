@@ -62,6 +62,7 @@ void conv_define_activation_param(layer *current)
 			((ReLU_param*)current->activ_param)->size = c_param->nb_area_w * 
 				c_param->nb_area_h * c_param->nb_filters * current->c_network->batch_size;
 			((ReLU_param*)current->activ_param)->dim = ((ReLU_param*)current->activ_param)->size;
+			((ReLU_param*)current->activ_param)->biased_dim = ((ReLU_param*)current->activ_param)->dim;
 			((ReLU_param*)current->activ_param)->leaking_factor = 0.01;
 			c_param->bias_value = 0.1;
 			break;
@@ -71,6 +72,7 @@ void conv_define_activation_param(layer *current)
 			((logistic_param*)current->activ_param)->size = c_param->nb_area_w 
 				* c_param->nb_area_h *  c_param->nb_filters * current->c_network->batch_size;
 			((logistic_param*)current->activ_param)->dim = ((logistic_param*)current->activ_param)->size;
+			((logistic_param*)current->activ_param)->biased_dim = ((logistic_param*)current->activ_param)->dim;
 			((logistic_param*)current->activ_param)->beta = 1.0;
 			((logistic_param*)current->activ_param)->saturation = 10.0;
 			c_param->bias_value = -1.0;
@@ -93,6 +95,7 @@ void conv_define_activation_param(layer *current)
 			((linear_param*)current->activ_param)->size = c_param->nb_area_w * 
 				c_param->nb_area_h * c_param->nb_filters * current->c_network->batch_size;
 			((linear_param*)current->activ_param)->dim = ((linear_param*)current->activ_param)->size;
+			((linear_param*)current->activ_param)->biased_dim = ((linear_param*)current->activ_param)->dim;
 			c_param->bias_value = 0.5;
 			break;
 	

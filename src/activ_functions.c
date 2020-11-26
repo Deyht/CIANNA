@@ -265,14 +265,14 @@ void linear_deriv_output_error(layer *current)
 {
 	linear_param *param = (linear_param*)current->activ_param;
 	quadratic_deriv_output_error(current->delta_o, current->output,
-		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
+		current->c_network->target, (param->biased_dim)*current->c_network->length, param->dim, param->size);
 }
 
 void linear_output_error(layer *current)
 {	
 	linear_param *param = (linear_param*)current->activ_param;
 	quadratic_output_error(current->c_network->output_error, 
-		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
+		current->output, current->c_network->target, (param->biased_dim)*current->c_network->length, param->dim, param->size);
 }
 
 
@@ -344,7 +344,7 @@ void ReLU_deriv_output_error(layer* current)
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	
 	quadratic_deriv_output_error(current->delta_o, current->output, current->c_network->target,
-		(param->dim+1) * current->c_network->length, param->dim, param->size);
+		(param->biased_dim) * current->c_network->length, param->dim, param->size);
 	ReLU_deriv_fct(current->delta_o, current->output, 
 		param->size, param->dim, param->leaking_factor, param->size);
 }
@@ -355,7 +355,7 @@ void ReLU_output_error(layer* current)
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	
 	quadratic_output_error(current->c_network->output_error, 
-		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, 
+		current->output, current->c_network->target, (param->biased_dim)*current->c_network->length, 
 		param->dim, param->size);
 }
 
@@ -422,7 +422,7 @@ void logistic_activation(layer *current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
 	
-	logistic_activation_fct(current->output, param->beta, param->saturation, param->size,  param->dim, param->size);
+	logistic_activation_fct(current->output, param->beta, param->saturation, (param->biased_dim)*current->c_network->length,  param->dim, param->size);
 }
 
 void logistic_activation_fct(void *tab, float beta, float saturation, int len, int dim, int size)
@@ -456,7 +456,7 @@ void logistic_deriv(layer *previous)
 {
 	logistic_param *param = (logistic_param*)previous->activ_param;
 	logistic_deriv_fct(previous->delta_o, previous->output, param->beta,
-		param->size, param->dim, param->size);
+		(param->biased_dim)*previous->c_network->length, param->dim, param->size);
 }
 
 
@@ -485,9 +485,9 @@ void logistic_deriv_output_error(layer* current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
 	quadratic_deriv_output_error(current->delta_o, current->output,
-		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, param->size);
+		current->c_network->target, (param->biased_dim)*current->c_network->length, param->dim, param->size);
 	logistic_deriv_fct(current->delta_o, current->output, param->beta,
-		(param->dim+1)*current->c_network->length, param->dim, param->size);
+		(param->biased_dim)*current->c_network->length, param->dim, param->size);
 	
 }
 
@@ -495,7 +495,7 @@ void logistic_output_error(layer* current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
 	quadratic_output_error(current->c_network->output_error, 
-		current->output, current->c_network->target, (param->dim+1)*current->c_network->length, 
+		current->output, current->c_network->target, (param->biased_dim)*current->c_network->length, 
 		param->dim, param->size);	
 }
 
@@ -571,8 +571,8 @@ void softmax_deriv_output_error(layer *current)
 	//use by default a cross entropy error
 	softmax_param *param = (softmax_param*)current->activ_param;
 	cross_entropy_deriv_output_error(current->delta_o, current->output,
-		current->c_network->target, (param->dim+1)*current->c_network->length, param->dim, 
-		(param->dim+1)*current->c_network->batch_size);
+		current->c_network->target, (param->biased_dim)*current->c_network->length, param->dim, 
+		(param->biased_dim)*current->c_network->batch_size);
 		
 }
 
@@ -581,8 +581,8 @@ void softmax_output_error(layer *current)
 	//use by default a cross entropy error
 	softmax_param *param = (softmax_param*)current->activ_param;
 	cross_entropy_output_error(current->c_network->output_error,
-		current->output, current->c_network->target, (param->dim+1)*current->c_network->length,
-		param->dim, (param->dim+1)*current->c_network->batch_size);
+		current->output, current->c_network->target, (param->biased_dim)*current->c_network->length,
+		param->dim, (param->biased_dim)*current->c_network->batch_size);
 		
 }
 

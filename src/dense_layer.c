@@ -47,6 +47,7 @@ void dense_define_activation_param(layer *current)
 			((ReLU_param*)current->activ_param)->size = (d_param->nb_neurons + 1) 
 				* current->c_network->batch_size;
 			((ReLU_param*)current->activ_param)->dim = d_param->nb_neurons;
+			((ReLU_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
 			((ReLU_param*)current->activ_param)->leaking_factor = 0.01;
 			d_param->bias_value = 0.1;
 			break;
@@ -56,6 +57,8 @@ void dense_define_activation_param(layer *current)
 			((logistic_param*)current->activ_param)->size = (d_param->nb_neurons+1) 
 				* current->c_network->batch_size;
 			((logistic_param*)current->activ_param)->dim = d_param->nb_neurons;
+			((logistic_param*)current->activ_param)->dim = ((logistic_param*)current->activ_param)->size;
+			((logistic_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
 			((logistic_param*)current->activ_param)->beta = 1.0;
 			((logistic_param*)current->activ_param)->saturation = 10.0;
 			d_param->bias_value = -1.0;
@@ -64,6 +67,7 @@ void dense_define_activation_param(layer *current)
 		case SOFTMAX:
 			current->activ_param = (softmax_param*) malloc(sizeof(softmax_param));
 			((softmax_param*)current->activ_param)->dim = d_param->nb_neurons;
+			((softmax_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
 			d_param->bias_value = -1.0;
 			break;
 			
@@ -73,6 +77,7 @@ void dense_define_activation_param(layer *current)
 			((linear_param*)current->activ_param)->size = (d_param->nb_neurons + 1) 
 				* current->c_network->batch_size;
 			((linear_param*)current->activ_param)->dim = d_param->nb_neurons;
+			((linear_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
 			//Change to expect output between 0 and 1
 			d_param->bias_value = 0.5;
 			break;
