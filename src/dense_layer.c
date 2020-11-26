@@ -57,7 +57,6 @@ void dense_define_activation_param(layer *current)
 			((logistic_param*)current->activ_param)->size = (d_param->nb_neurons+1) 
 				* current->c_network->batch_size;
 			((logistic_param*)current->activ_param)->dim = d_param->nb_neurons;
-			((logistic_param*)current->activ_param)->dim = ((logistic_param*)current->activ_param)->size;
 			((logistic_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
 			((logistic_param*)current->activ_param)->beta = 1.0;
 			((logistic_param*)current->activ_param)->saturation = 10.0;
