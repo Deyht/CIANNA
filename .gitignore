@@ -1,0 +1,24 @@
+# Object files
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Executables
+fwd
+train
+main
+
+# results data
+step_*.dat
+fwd_step_*.dat
+*.log
+*.dat
+*.nvvp
+error.txt
+input.dat
+./fwd_res/*
+./src/build
+
