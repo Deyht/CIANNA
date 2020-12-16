@@ -486,7 +486,7 @@ __global__ void logistic_activation_kernel_FP32(float *tab, float beta, float sa
 		i += i / dim;
 		tab[i] = -beta*tab[i];
 		if(tab[i] > saturation)
-			tab[i] = expf(saturation);
+			tab[i] = saturation;
 		tab[i] = 1.0f/(1.0f + expf(tab[i]));
 	}
 	else
@@ -513,7 +513,7 @@ __global__ void logistic_activation_kernel_FP16(half *tab, float beta, float sat
 		i += i / dim;
 		tab[i] = -half_beta*tab[i];
 		if(tab[i] > half_saturation)
-			tab[i] = hexp(half_saturation);
+			tab[i] = half_saturation;
 		tab[i] = half_one/(half_one + hexp(tab[i]));
 	}
 	else
