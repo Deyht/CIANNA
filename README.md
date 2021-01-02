@@ -24,6 +24,16 @@ me at: david.cornu@observatoiredeparis.psl.eu
 
 Be aware that i am not a support team all by myself.
 
+#### Acess to CIANNA-experimental build
+
+Some new features that require importante changes in CIANNA are made in a private repository.
+The current CIANNA_exp build implement:
+- (Done) Advanced object detection using a YOLO-like prediction
+- (In progress) Elliptical objects detection
+- (In progress) 3D convolution filters
+- (In progress) New mixed precision types (TF32, BF16, ...)
+
+Access to CIANNA_exp is presently only granted to close colaborators, or can be exceptionally requested by direct contact.
 
 
 #############################################################
