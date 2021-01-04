@@ -19,10 +19,8 @@ See Copyight (C) and [License](#License) terms.
 CIANNA is not in a "released" / "stable" state. It means that the framework and the associated interfaces are subject to significant changes between versions. One must pay attention to what have been changed before updating to a more recent version.
 
 
-I can provide some help, information, advises, ... please contact
-me at: david.cornu@observatoiredeparis.psl.eu
-
-Be aware that i am not a support team all by myself.
+I can provide some help, informations, advises, ... 
+please contact me at: david.cornu@observatoiredeparis.psl.eu
 
 #### Acess to CIANNA-experimental build
 
