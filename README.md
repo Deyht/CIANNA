@@ -12,9 +12,7 @@ See Copyight (C) and [License](#License) terms.
 
 
 
-#############################################################
 ##          /!\ /!\ /!\ WARNING /!\ /!\ /!\
-#############################################################
 
 CIANNA is not in a "released" / "stable" state. It means that the framework and the associated interfaces are subject to significant changes between versions. One must pay attention to what have been changed before updating to a more recent version.
 
@@ -34,9 +32,8 @@ The current CIANNA_exp build implement:
 Access to CIANNA_exp is presently only granted to close colaborators, or can be exceptionally requested by direct contact.
 
 
-#############################################################
 ##                         Installation
-#############################################################
+
 
 #### Dependencies
 
@@ -90,9 +87,7 @@ any code can be written with the interface with no need for new compilation.
 
 
 
-#############################################################
 ##                   Various Recommandations
-#############################################################
 
 Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/How-to-use-(Python-interface)) Wiki page. The Wiki page containing all the interface function details is under construction.
 Also "Troubleshooting" and "F.A.Q" pages will be added soon.
@@ -105,7 +100,6 @@ Users must be aware of those issues and be able to identify them in order to mak
 \ 
 
 
-########################################################################################
 
 #### License
 
