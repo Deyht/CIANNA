@@ -91,8 +91,8 @@ void conv_define_activation_param(layer *current)
 			
 		case YOLO:
 			current->activ_param = (yolo_param*) malloc(sizeof(yolo_param));
-			((yolo_param*)current->activ_param)->nb_box = 5;
-			((yolo_param*)current->activ_param)->nb_class = 20;
+			((yolo_param*)current->activ_param)->nb_box = 8;
+			((yolo_param*)current->activ_param)->nb_class = 1;
 			((yolo_param*)current->activ_param)->size = c_param->nb_area_w 
 				* c_param->nb_area_h *  c_param->nb_filters * current->c_network->batch_size;
 			((yolo_param*)current->activ_param)->dim = ((yolo_param*)current->activ_param)->size;
