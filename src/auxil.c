@@ -42,7 +42,7 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, floa
 {
 
 	printf("############################################################\n\
-CIANNA V-0.9 EXPERIMENTAL BUILD (08/2020), by D.Cornu\n\
+CIANNA V-0.9.2 EXPERIMENTAL BUILD (01/2021), by D.Cornu\n\
 ############################################################\n\n");
 
 
@@ -124,6 +124,13 @@ CIANNA V-0.9 EXPERIMENTAL BUILD (08/2020), by D.Cornu\n\
 	net->nb_layers = 0;
 	net->epoch = 0;
 	net->norm_factor_defined = 0;
+	
+	//YOLO null setting
+	net->yolo_nb_box = 0;
+	net->yolo_prior_w = NULL;
+	net->yolo_prior_h = NULL;
+	net->yolo_nb_class = 0;
+
 }
 
 

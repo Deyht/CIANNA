@@ -68,6 +68,7 @@ void output_deriv_error(layer* current);
 void print_activ_param(FILE *f, int type);
 void get_string_activ_param(char* activ, int type);
 int load_activ_param(char *type);
+int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class);
 
 //dense_layer.c
 void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, FILE *f_load);

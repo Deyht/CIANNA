@@ -91,8 +91,17 @@ void conv_define_activation_param(layer *current)
 			
 		case YOLO:
 			current->activ_param = (yolo_param*) malloc(sizeof(yolo_param));
-			((yolo_param*)current->activ_param)->nb_box = 8;
-			((yolo_param*)current->activ_param)->nb_class = 1;
+			if(current->c_network->yolo_nb_box*(5+current->c_network->yolo_nb_class) 
+					!= c_param->nb_filters)
+			{
+				printf("ERROR: Nb filters size mismatch in YOLO dimensions!\n");
+				exit(EXIT_FAILURE);
+			}	
+			((yolo_param*)current->activ_param)->nb_box = current->c_network->yolo_nb_box;
+			((yolo_param*)current->activ_param)->nb_class = current->c_network->yolo_nb_class;
+			//Priors table must be sent to GPU memory if C_CUDA
+			((yolo_param*)current->activ_param)->prior_w = current->c_network->yolo_prior_w;
+			((yolo_param*)current->activ_param)->prior_h = current->c_network->yolo_prior_h;
 			((yolo_param*)current->activ_param)->size = c_param->nb_area_w 
 				* c_param->nb_area_h *  c_param->nb_filters * current->c_network->batch_size;
 			((yolo_param*)current->activ_param)->dim = ((yolo_param*)current->activ_param)->size;
@@ -241,8 +250,8 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 		case C_CUDA:
 			#ifdef CUDA
 			cuda_conv_define(current);
-			cuda_define_activation(current);
 			cuda_convert_conv_layer(current);
+			cuda_define_activation(current);
 			#endif
 			break;
 		case C_BLAS:

@@ -59,6 +59,8 @@ void softmax_activation_fct(void *tab, int len, int dim, int size);
 void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int size);
 void cross_entropy_output_error(void *output_error, void *output, void *target, int len, int dim, int size);
 
+int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class);
+
 //#####################################################
 
 
@@ -645,14 +647,30 @@ void cross_entropy_output_error(void *output_error, void *output, void *target, 
 }
 
 
-
-
-
-
-
 //#####################################################
 
 
+//#####################################################
+//          Soft-Max activation related funcitons
+//#####################################################
 
 
+int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class)
+{
+	if(net->yolo_prior_w != NULL)
+		free(net->yolo_prior_w);
+	if(net->yolo_prior_h != NULL)
+		free(net->yolo_prior_h);
+
+	net->yolo_nb_box = nb_box;
+	net->yolo_prior_w = prior_w;
+	net->yolo_prior_h = prior_h;
+	net->yolo_nb_class = nb_class;
+	
+	
+	return(nb_box*(5+nb_class));
+}
+
+
+//#####################################################
 

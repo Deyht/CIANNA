@@ -701,6 +701,32 @@ static PyObject* py_pool_create(PyObject* self, PyObject *args, PyObject *kwargs
 	return Py_None;
 }
 
+static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	int i;
+	int nb_box, nb_class;
+	int network_id = 0;
+	PyArrayObject *py_prior_w = NULL, *py_prior_h = NULL;
+	float *C_prior_w, *C_prior_h;
+	static char *kwlist[] = {"nb_box","prior_w", "prior_h", "nb_class", "network", NULL};
+
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iOOi|i", kwlist, 
+			&nb_box, &py_prior_w, &py_prior_h, &nb_class, &network_id))
+	    return PyLong_FromLong(0);
+
+	C_prior_w = (float*) calloc(nb_box,sizeof(float));
+	C_prior_h = (float*) calloc(nb_box,sizeof(float));
+	
+	for(i = 0; i < nb_box; i++)
+	{ 
+		C_prior_w[i] = *((float*)(py_prior_w->data + i * py_prior_w->strides[0]));
+		C_prior_h[i] = *((float*)(py_prior_h->data + i * py_prior_h->strides[0]));
+	}
+	
+	return PyLong_FromLong(set_yolo_params(networks[network_id], nb_box, C_prior_w, C_prior_h, nb_class));
+}
+
+
 static PyObject* py_load_network(PyObject* self, PyObject* args)
 {
 	char* file = "relative_path_to_the_save_file_location_which_must_be_long_enough";
@@ -766,6 +792,7 @@ static PyMethodDef CIANNAMethods[] = {
     { "set_normalize_factors", (PyCFunction)py_set_normalize_factors, METH_VARARGS | METH_KEYWORDS, "Set normalization factor for transformation on all the datasets subsequently loaded (with formated loading) in the C framework"},
     { "dense_create", (PyCFunction)py_dense_create, METH_VARARGS | METH_KEYWORDS, "Add a dense layer to the network" },
     { "conv_create",(PyCFunction)py_conv_create, METH_VARARGS | METH_KEYWORDS, "Add a convolutional layer to the network" },
+    { "set_yolo_params",(PyCFunction)py_set_yolo_params, METH_VARARGS | METH_KEYWORDS, "Set parameters for YOLO output layout" },
     { "pool_create",(PyCFunction)py_pool_create, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },
     { "train_network", (PyCFunction)py_train_network, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
     { "forward_network", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },

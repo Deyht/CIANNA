@@ -118,6 +118,12 @@ struct network
 	int length;
 	void* output_error;
 	void* output_error_cuda;
+	
+	//Possible yolo_param
+	int yolo_nb_box;
+	float* yolo_prior_w;
+	float* yolo_prior_h;
+	int yolo_nb_class;
 
 	//Normalization parameters used for the formated dataset laoding
 	int norm_factor_defined; 
@@ -235,6 +241,8 @@ typedef struct yolo_param
 {
 	int nb_box;
 	int nb_class;
+	float *prior_w;
+	float *prior_h;
 	int size;
 	int dim;
 	int biased_dim;
