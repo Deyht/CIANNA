@@ -757,8 +757,14 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 	printf("py_nb_epoch %d, py_control_interv %d, py_learning_rate %f, py_end_learning_rate %f , py_momentum %f, py_decay %f, py_confmat %d, save_net %d, shuffle_gpu %d , shuffle_every %d \n", 
 		py_nb_epoch, py_control_interv, py_learning_rate, py_end_learning_rate, py_momentum, 
 		py_decay, py_confmat, save_net, shuffle_gpu, shuffle_every);
+		
+	// GIL MACRO : Allow to serialize C thread with python threads
+	Py_BEGIN_ALLOW_THREADS
+		
 	train_network(networks[network_id], py_nb_epoch, py_control_interv, 
 		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_net, shuffle_gpu, shuffle_every);
+		
+	Py_END_ALLOW_THREADS
 
 	return Py_None;
 }
