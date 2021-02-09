@@ -134,12 +134,6 @@ CIANNA V-0.9.2 EXPERIMENTAL BUILD (01/2021), by D.Cornu\n\
 }
 
 
-void set_extra_net_parameter(char* name, network* net)
-{
-	
-}
-
-
 Dataset create_dataset(network *net, int nb_elem)
 {
 	int i,j;
@@ -939,22 +933,44 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			
 			pos = 0;
 			batch_error = 0;
-			for(k = 0; k < net->length; k++)
+			switch(net->net_layers[net->nb_layers-1]->type)
 			{
-				for(l = 0; l < net->out_size; l++)
-				{
-					pos++;
-					batch_error += ((float*)net->output_error)[pos];
-					total_error += ((float*)net->output_error)[pos];
-				}
-				
-				if(confusion_matrix && net->compute_method != C_CUDA)
-				{
-					arg1 = argmax(&(((float*)net->target)[k*net->output_dim]), net->output_dim);
-					arg2 = argmax(&(((float*)net->net_layers[net->nb_layers-1]->output)[k*(net->output_dim+1)]),
-						net->output_dim);
-					mat[arg1][arg2]++;
-				}
+				default:
+				case DENSE:
+					for(k = 0; k < net->length; k++)
+					{
+						for(l = 0; l < net->out_size; l++)
+						{
+							pos++;
+							batch_error += ((float*)net->output_error)[pos];
+							total_error += ((float*)net->output_error)[pos];
+						}
+						
+						if(confusion_matrix && net->compute_method != C_CUDA)
+						{
+							arg1 = argmax(&(((float*)net->target)[k*net->output_dim]), net->output_dim);
+							arg2 = argmax(&(((float*)net->net_layers[net->nb_layers-1]->output)[k*(net->output_dim+1)]),
+								net->output_dim);
+							mat[arg1][arg2]++;
+						}
+					}
+					break;
+				case CONV:
+					c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
+					int batch_offset = c_param->nb_area_w*c_param->nb_area_h;
+					int filter_offset = batch_offset*net->batch_size;
+					for(k = 0; k < net->length; k++)
+					{
+						for(l = 0; l < c_param->nb_filters; l++)
+						{
+							for(m = 0; m < batch_offset; m++)
+							{
+								batch_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+								total_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+							}
+						}
+					}
+					break;
 			}
 			batch_error /= net->length;
 			
@@ -1038,7 +1054,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 
 void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every)
 {
-	int i, j, k;
+	int i, j, k, l, m;
 	float begin_learn_rate;
 	float end_learn_rate;
 	float decay;
@@ -1047,7 +1063,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	struct timeval ep_timer;
 	float items_per_s = 0.0;
 	int batch_loc;
-	int pos, l;
+	int pos;
+	conv_param *c_param;
 	
 	#ifdef CUDA
 	Dataset shuffle_duplicate;
@@ -1173,18 +1190,10 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			
 			for(k = 0; k < net->nb_layers; k++)
 			{
-				//printf("Forward layer %d\n", k);
 				net->net_layers[k]->forward(net->net_layers[k]);
 			}
 			
-			//cuda_print_table(net, net->input, net->batch_size*256*256*3, 256);
-			//cuda_print_table(net, net->net_layers[net->nb_layers-1]->output, net->batch_size*(75*8*8), 75);
-			//cuda_print_table(net, net->target, net->batch_size*(1+56*5), (1+56*5));
-			
 			output_deriv_error(net->net_layers[net->nb_layers-1]);
-			//printf("Output deriv error\n");
-			//cuda_print_table(net, net->net_layers[net->nb_layers-1]->delta_o, net->batch_size*(75*8*8), 75);
-			//exit(1);
 			
 			//Propagate error through all layers
 			for(k = 0; k < net->nb_layers; k++)
@@ -1212,13 +1221,32 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			}
 			pos = 0;
 			batch_error = 0;
-			for(k = 0; k < net->length; k++)
+			switch(net->net_layers[net->nb_layers-1]->type)
 			{
-				for(l = 0; l < net->out_size; l++)
-				{
-					pos++;
-					batch_error += ((float*)net->output_error)[pos];
-				}
+				default:
+				case DENSE:
+					for(k = 0; k < net->length; k++)
+					{
+						for(l = 0; l < net->out_size; l++)
+						{
+							pos++;
+							batch_error += ((float*)net->output_error)[pos];
+						}
+					}
+					break;
+				case CONV:
+					c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
+					int batch_offset = c_param->nb_area_w*c_param->nb_area_h;
+					int filter_offset = batch_offset*net->batch_size;
+					for(k = 0; k < net->length; k++)
+					{
+						for(l = 0; l < c_param->nb_filters; l++)
+						{
+							for(m = 0; m < batch_offset; m++)
+								batch_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+						}
+					}
+					break;
 			}
 			batch_error /= net->length;
 			
@@ -1266,7 +1294,6 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	}
 	#endif
 
-	//printf("Test fin\n");
 }
 
 

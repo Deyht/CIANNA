@@ -230,9 +230,10 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 	int size, flat = 0;
 	int network_id = nb_networks-1;
 	int datasize;
-	static char *kwlist[] = {"filename", "size", "input", "input_dtype","target", "output_dtype", "flat", "network_id", "filename", NULL};
+	int silent_mode = 0;
+	static char *kwlist[] = {"filename", "size", "input", "input_dtype", "target", "output_dtype", "flat", "network_id", "silent", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOsOs|ii", kwlist, &filename, &size, &py_data, &input_data_type, &py_target, &output_data_type, &flat, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOsOs|iii", kwlist, &filename, &size, &py_data, &input_data_type, &py_target, &output_data_type, &flat, &network_id, &silent_mode))
 	    return Py_None;
 	
 	if(py_data == NULL || py_target == NULL)
@@ -253,9 +254,10 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 		exit(EXIT_FAILURE);
 	}
 	
-	
-	printf("Saving formated file: %s\n", filename);
-	
+	if(silent_mode == 0)
+	{
+		printf("Saving formated file: %s\n", filename);
+	}
 	
 	FILE *f = NULL;
 	f = fopen(filename, "wb");
