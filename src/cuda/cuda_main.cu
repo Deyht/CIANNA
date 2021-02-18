@@ -375,20 +375,6 @@ void cuda_update_weights(network* net, void *weights, void* update, int size)
 	}
 }
 
-/*
-__global__ void cuda_update_weights_dropout(void *weights, void* update, int size, void *drop_mask, int dim)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int pos;
-	
-	if(i < size)
-	{
-		pos = i%dim;
-		if(pos != dim - 1) 
-			weights[i] -= drop_mask[pos]*update[i];
-	}
-}
-*/
 
 void cuda_print_table_FP32(network* net, float* tab, int size, int return_every)
 {

@@ -595,3 +595,5 @@ __global__ void cuda_reroll_delta_o_FP16(half* in, half* out, int map_size, int 
 
 
 
+
+

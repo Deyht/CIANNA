@@ -91,14 +91,15 @@ void conv_define_activation_param(layer *current)
 			
 		case YOLO:
 			current->activ_param = (yolo_param*) malloc(sizeof(yolo_param));
-			if(current->c_network->yolo_nb_box*(5+current->c_network->yolo_nb_class) 
-					!= c_param->nb_filters)
+			if(current->c_network->yolo_nb_box*(5+current->c_network->yolo_nb_class
+					+ current->c_network->yolo_nb_param) != c_param->nb_filters)
 			{
 				printf("ERROR: Nb filters size mismatch in YOLO dimensions!\n");
 				exit(EXIT_FAILURE);
 			}	
 			((yolo_param*)current->activ_param)->nb_box = current->c_network->yolo_nb_box;
 			((yolo_param*)current->activ_param)->nb_class = current->c_network->yolo_nb_class;
+			((yolo_param*)current->activ_param)->nb_param = current->c_network->yolo_nb_param;
 			//Priors table must be sent to GPU memory if C_CUDA
 			((yolo_param*)current->activ_param)->prior_w = current->c_network->yolo_prior_w;
 			((yolo_param*)current->activ_param)->prior_h = current->c_network->yolo_prior_h;

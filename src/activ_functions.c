@@ -59,7 +59,7 @@ void softmax_activation_fct(void *tab, int len, int dim, int size);
 void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int size);
 void cross_entropy_output_error(void *output_error, void *output, void *target, int len, int dim, int size);
 
-int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class);
+int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class, int nb_param);
 
 //#####################################################
 
@@ -426,7 +426,7 @@ void quadratic_output_error(void *output_error, void *output, void *target, int 
 
 
 //#####################################################
-//          Logistic activation related funcitons
+//          Logistic activation related functions
 //#####################################################
 
 
@@ -516,7 +516,7 @@ void logistic_output_error(layer* current)
 
 
 //#####################################################
-//          Soft-Max activation related funcitons
+//          Soft-Max activation related functions
 //#####################################################
 
 
@@ -651,11 +651,11 @@ void cross_entropy_output_error(void *output_error, void *output, void *target, 
 
 
 //#####################################################
-//          Soft-Max activation related funcitons
+//          Soft-Max activation related functions
 //#####################################################
 
 
-int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class)
+int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class, int nb_param)
 {
 	if(net->yolo_prior_w != NULL)
 		free(net->yolo_prior_w);
@@ -666,9 +666,10 @@ int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, in
 	net->yolo_prior_w = prior_w;
 	net->yolo_prior_h = prior_h;
 	net->yolo_nb_class = nb_class;
+	net->yolo_nb_param = nb_param;
 	
 	
-	return(nb_box*(5+nb_class));
+	return(nb_box*(5+nb_class+nb_param));
 }
 
 

@@ -68,7 +68,7 @@ void output_deriv_error(layer* current);
 void print_activ_param(FILE *f, int type);
 void get_string_activ_param(char* activ, int type);
 int load_activ_param(char *type);
-int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class);
+int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class, int nb_param);
 
 //dense_layer.c
 void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, FILE *f_load);
@@ -135,6 +135,7 @@ extern cudaDataType cuda_data_type;
 extern cudaDataType cuda_compute_type;
 void cuda_master_weight_FP32_to_FP16(float *master, half *copy, int size);
 void cuda_update_weights(network* net, void *weights, void* update, int size);
+
 //__global__ void cuda_update_weights_dropout(void *weights, void* update, int size, int *drop_mask, int dim);
 __device__ int cuda_argmax(void* tab, int dim_out);
 #endif

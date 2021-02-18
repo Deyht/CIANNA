@@ -124,6 +124,7 @@ struct network
 	float* yolo_prior_w;
 	float* yolo_prior_h;
 	int yolo_nb_class;
+	int yolo_nb_param;
 
 	//Normalization parameters used for the formated dataset laoding
 	int norm_factor_defined; 
@@ -241,6 +242,7 @@ typedef struct yolo_param
 {
 	int nb_box;
 	int nb_class;
+	int nb_param;
 	float *prior_w;
 	float *prior_h;
 	int size;

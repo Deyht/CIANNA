@@ -706,14 +706,14 @@ static PyObject* py_pool_create(PyObject* self, PyObject *args, PyObject *kwargs
 static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	int i;
-	int nb_box, nb_class;
+	int nb_box, nb_class, nb_param;
 	int network_id = 0;
 	PyArrayObject *py_prior_w = NULL, *py_prior_h = NULL;
 	float *C_prior_w, *C_prior_h;
-	static char *kwlist[] = {"nb_box","prior_w", "prior_h", "nb_class", "network", NULL};
+	static char *kwlist[] = {"nb_box","prior_w", "prior_h", "nb_class", "nb_param", "network", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iOOi|i", kwlist, 
-			&nb_box, &py_prior_w, &py_prior_h, &nb_class, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iOOii|i", kwlist, 
+			&nb_box, &py_prior_w, &py_prior_h, &nb_class, &nb_param, &network_id))
 	    return PyLong_FromLong(0);
 
 	C_prior_w = (float*) calloc(nb_box,sizeof(float));
@@ -725,7 +725,7 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 		C_prior_h[i] = *((float*)(py_prior_h->data + i * py_prior_h->strides[0]));
 	}
 	
-	return PyLong_FromLong(set_yolo_params(networks[network_id], nb_box, C_prior_w, C_prior_h, nb_class));
+	return PyLong_FromLong(set_yolo_params(networks[network_id], nb_box, C_prior_w, C_prior_h, nb_class, nb_param));
 }
 
 
