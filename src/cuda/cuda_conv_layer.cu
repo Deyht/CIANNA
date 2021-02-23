@@ -163,7 +163,7 @@ void cuda_forward_conv_layer(layer *current)
 	
 	dim3 threadsPerBlock2(dim_a, dim_b, dim_c);
 	//create numBlocks regarding the layer dimensions
-    dim3 numBlocks2(((c_param->prev_size_w * c_param->prev_size_h) + threadsPerBlock2.x - 1) / threadsPerBlock2.x,
+	dim3 numBlocks2(((c_param->prev_size_w * c_param->prev_size_h) + threadsPerBlock2.x - 1) / threadsPerBlock2.x,
     	(c_param->prev_depth + threadsPerBlock2.y - 1) / threadsPerBlock2.y,
     	(current->c_network->batch_size + threadsPerBlock2.z - 1) / threadsPerBlock2.z);
     
@@ -211,9 +211,8 @@ void cuda_backward_conv_layer(layer *current)
 	int image_padding;
 	int flat_f_size;
 	int dim_a, dim_b, dim_c;
-	
+
 	c_param = (conv_param*) current->param;
-	
 	
 	//######################## ERROR PROPAGATION ########################
 	
@@ -299,7 +298,7 @@ void cuda_backward_conv_layer(layer *current)
 					c_param->prev_size_w, 0);
 				break;
 		}
-		
+
 		cublasGemmEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, c_param->prev_size_w * c_param->prev_size_h 
 			* current->c_network->batch_size, c_param->prev_depth, c_param->f_size * c_param->f_size 
 			* c_param->nb_filters, &cu_alpha, c_param->im2col_delta_o, cuda_data_type, c_param->f_size 
@@ -316,7 +315,6 @@ void cuda_backward_conv_layer(layer *current)
 	
 	//########################  WEIGHTS UPDATE   ########################
 	
-
 	//based on the recovered delta_o provided by the next layer propagation
 	//CUBLAS_OP_N ,in this case, is a transpose of regular input (see forward function)
 	cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, c_param->flat_f_size, c_param->nb_filters, 

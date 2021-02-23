@@ -827,7 +827,6 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			printf("\nForward: %d\n", net->epoch);
 		for(j = 0; j < data.nb_batch; j++)
 		{
-			print_epoch_advance(j+1, data.nb_batch, batch_error);
 		
 			if(net->compute_method == C_CUDA)
 			{
@@ -974,7 +973,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					break;
 			}
 			batch_error /= net->length;
-			
+			print_epoch_advance(j+1, data.nb_batch, batch_error);
+
 			if(confusion_matrix && net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
@@ -1164,7 +1164,6 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		printf("\nEpoch: %d\n", net->epoch);
 		for(j = 0; j < net->train.nb_batch; j++)
 		{
-			print_epoch_advance(j+1, net->train.nb_batch, batch_error);
 		
 			if(j == net->train.nb_batch-1 && net->train.size%net->batch_size > 0)
 				net->length = net->train.size%net->batch_size;
@@ -1250,7 +1249,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 					break;
 			}
 			batch_error /= net->length;
-			
+			print_epoch_advance(j+1, net->train.nb_batch, batch_error);
+
 		}
 		
 		items_per_s = net->train.size/ellapsed_time(ep_timer); 

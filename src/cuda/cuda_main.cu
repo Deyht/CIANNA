@@ -27,8 +27,8 @@
 
 static int cu_blocks;
 int cu_threads = CUDA_THREADS_PER_BLOCKS;
-float cu_alpha = 1.0, cu_beta = 0.0;
-float TC_scale_factor = 1.0;
+float cu_alpha = 1.0f, cu_beta = 0.0f;
+float TC_scale_factor = 16.0f;
 cublasHandle_t cu_handle;
 cudaDataType cuda_data_type = CUDA_R_32F;
 cudaDataType cuda_compute_type = CUDA_R_32F;
@@ -350,13 +350,13 @@ __global__ void cuda_update_weights_FP32(float *weights, float* update, int size
 	}
 }
 
-__global__ void cuda_update_weights_FP16_mixed(float *weights, half* update, int size, int scale_factor)
+__global__ void cuda_update_weights_FP16_mixed(float *weights, half* update, int size, float TC_scale_factor)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
 	if(i < size)
 	{
-		weights[i] -= (float)update[i]*1.0f/scale_factor;
+		weights[i] -= (float)update[i] / TC_scale_factor;
 	}
 }
 
@@ -371,7 +371,7 @@ void cuda_update_weights(network* net, void *weights, void* update, int size)
 			break;
 		case 1:
 			cuda_update_weights_FP16_mixed<<< cu_blocks, cu_threads >>>((float*)weights, (half*)update, size, TC_scale_factor);
-			break;	
+			break;
 	}
 }
 
