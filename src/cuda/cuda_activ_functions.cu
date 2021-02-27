@@ -1489,7 +1489,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			}
 			
 			//linear activation of additional parameters
-			if(max_IoU > 0.0f)
+			if(max_IoU > 0.3f)
 			{
 				for(k = 0; k < nb_param; k++)
 				{
@@ -1934,7 +1934,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			}
 			
 			//linear error of additional parameters
-			if(max_IoU > 0.0f)
+			if(max_IoU > 0.3f)
 			{
 				for(k = 0; k < nb_param; k++)
 				{
