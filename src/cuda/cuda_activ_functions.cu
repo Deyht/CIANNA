@@ -1266,7 +1266,7 @@ __global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, floa
 						output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset];
 			}
 			
-			if(max_IoU > 0.3)
+			if(max_IoU > 0.5f)
 			{
 				//linear activation of additional parameters
 				for(k = 0; k < nb_param; k++)
@@ -1532,9 +1532,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 					*((float)output[(j*(5+nb_class+nb_param)+4)*f_offset]-0.0f));
 
 				for(k = 0; k < nb_param; k++)
-	                                delta_o[(j*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = (half)
-						(TC_scale_factor*lambda_noobj*((float)output[(j*(5+nb_class+nb_param)
-                                                +5+nb_class+k)*f_offset] - 0.0f));
+	                                delta_o[(j*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = (half) 0.0f;
 			}
 			for(k = 0; k < nb_class; k++)
 				delta_o[(j*(5+nb_class+nb_param)+5+k)*f_offset] = (half) 0.0f;
@@ -1979,11 +1977,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 					*((float)output[(j*(5+nb_class+nb_param)+4)*f_offset]-0.0f);
 			
 				for(k = 0; k < nb_param; k++)
-					output_error[(j*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] =
-						0.5f*lambda_noobj*((float)output[(j*(5+nb_class+nb_param)
-						+5+nb_class+k)*f_offset] - 0.0f)
-						*((float)output[(j*(5+nb_class+nb_param)
-						+5+nb_class+k)*f_offset] - 0.0f);
+					output_error[(j*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 0.0f;
 
 			}
 			for(k = 0; k < nb_class; k++)

@@ -96,7 +96,7 @@ void conv_define_activation_param(layer *current)
 			{
 				printf("ERROR: Nb filters size mismatch in YOLO dimensions!\n");
 				exit(EXIT_FAILURE);
-			}	
+			}
 			((yolo_param*)current->activ_param)->nb_box = current->c_network->yolo_nb_box;
 			((yolo_param*)current->activ_param)->nb_class = current->c_network->yolo_nb_class;
 			((yolo_param*)current->activ_param)->nb_param = current->c_network->yolo_nb_param;
