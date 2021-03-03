@@ -946,14 +946,14 @@ void cuda_YOLO_activation(layer *current)
 		default:
 		case 0:
 			YOLO_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output,
-				4.0f/*a_param->beta*/, a_param->saturation, 
+				2.0f/*a_param->beta*/, a_param->saturation, 
 				c_param->nb_area_w*c_param->nb_area_h*current->c_network->batch_size, 
 				a_param->biased_dim*current->c_network->length,
 				a_param->nb_class, a_param->nb_param, a_param->size);
 			break;
 		case 1:
 			YOLO_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output,
-				4.0f/*a_param->beta*/, a_param->saturation, 
+				2.0f/*a_param->beta*/, a_param->saturation, 
 				c_param->nb_area_w*c_param->nb_area_h*current->c_network->batch_size,
 				a_param->biased_dim*current->c_network->length,
 				a_param->nb_class, a_param->nb_param, a_param->size);
@@ -1035,7 +1035,7 @@ void cuda_YOLO_deriv_output_error(layer *current)
 		case 0:
 			YOLO_deriv_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, 
-				(float*)current->c_network->target, 4.0f/*a_param->beta*/, current->c_network->output_dim, 
+				(float*)current->c_network->target, 2.0f/*a_param->beta*/, current->c_network->output_dim, 
 				c_param->nb_area_w*c_param->nb_area_h, a_param->cell_w, a_param->cell_h, 
 				c_param->nb_area_w, c_param->nb_area_h, a_param->nb_box, a_param->nb_class,
 				a_param->nb_param, a_param->prior_w, a_param->prior_h,
@@ -1045,7 +1045,7 @@ void cuda_YOLO_deriv_output_error(layer *current)
 		case 1:
 			YOLO_deriv_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, 
-				(half*)current->c_network->target, 4.0f/*a_param->beta*/, current->c_network->output_dim, 
+				(half*)current->c_network->target, 2.0f/*a_param->beta*/, current->c_network->output_dim, 
 				c_param->nb_area_w*c_param->nb_area_h, a_param->cell_w, a_param->cell_h, 
 				c_param->nb_area_w, c_param->nb_area_h, a_param->nb_box, a_param->nb_class,
 				a_param->nb_param, a_param->prior_w, a_param->prior_h,
