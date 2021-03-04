@@ -36,8 +36,8 @@ defines_variables="-D MAX_LAYERS_NB=100 -D MAX_NETWORKS_NB=10 -D CUDA_THREADS_PE
 gcc_compile_dir="/usr/bin/gcc"
 openblas_include_dir="/opt/OpenBLAS/include/"
 openblas_lib_dir="/opt/OpenBLAS/lib"
-cuda_lib_path="/shared/apps/cuda/11.1/lib64"
-#cuda_lib_path="/usr/local/cuda-11.1/lib64"
+#cuda_lib_path="/shared/apps/cuda/11.1/lib64"
+cuda_lib_path="/usr/local/cuda-11.1/lib64"
 compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
 
 ######################################################
@@ -47,7 +47,7 @@ for i in $*
 do
 	if [ $i  = "CUDA" ]
 	then
-		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart -arch=sm_70"
+		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart -arch=sm_60"
 		arg="$arg -D CUDA -lcublas -lcudart -L $cuda_lib_path "
 		cuda_src="cuda_main.cu cuda_conv_layer.cu cuda_dense_layer.cu cuda_pool_layer.cu cuda_activ_functions.cu"
 		cuda_obj="cuda/cuda_main.o cuda/cuda_conv_layer.o cuda/cuda_dense_layer.o cuda/cuda_pool_layer.o cuda/cuda_activ_functions.o"
@@ -93,7 +93,7 @@ then
 
 #compiling the cuda part if needed
 cd ./cuda
-/shared/apps/cuda/11.1/bin/nvcc --compiler-bindir $gcc_compile_dir -Xcompiler "$compile_opt" \
+nvcc --compiler-bindir $gcc_compile_dir -Xcompiler "$compile_opt" \
 -O3 -c $cuda_src $cuda_arg $defines_variables -lm
 echo "#####  End of CUDA compilation  #####"
 cd ..

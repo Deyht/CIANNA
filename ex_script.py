@@ -1,7 +1,7 @@
 
 import numpy as np
-#import sys
-#sys.path.insert(0,'/path/to/CIANNA/src/build/lib.linux-x86_64-X.X')
+import sys
+sys.path.insert(0,'/home/dcornu/Work/MINERVA/YOLO_SDC1_standalone/CIANNA_exp/src/build/lib.linux-x86_64-3.8')
 import CIANNA as cnn
 
 ############################################################################
@@ -35,7 +35,7 @@ print ("Done !", flush=True)
 #Details about the functions and parameters are given in the GitHub Wiki
 
 cnn.init_network(dims=np.array([28,28,1]), out_dim=10, \
-		bias=0.1, b_size=32,comp_meth='C_CUDA') #Change to C_BLAS or C_NAIV
+		bias=0.1, b_size=32,comp_meth='C_CUDA', dynamic_load = 1, mixed_precision = 1) #Change to C_BLAS or C_NAIV
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train, flat=0)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid, flat=0)
@@ -48,16 +48,18 @@ cnn.conv_create(f_size=5, nb_filters=8, stride=1, padding=2, activation="RELU")
 cnn.pool_create(pool_size=2)
 cnn.conv_create(f_size=5, nb_filters=16, stride=1, padding=2, activation="RELU")
 cnn.pool_create(pool_size=2)
-cnn.dense_create(nb_neurons=1024, activation="RELU", drop_rate=0.5)
-cnn.dense_create(nb_neurons=256, activation="RELU", drop_rate=0.2)
+#cnn.dense_create(nb_neurons=1024, activation="RELU", drop_rate=0.5)
+cnn.conv_create(f_size=1, nb_filters=128, stride=1, padding=0, activation="RELU", drop_rate = 0.5)
+#cnn.dense_create(nb_neurons=256, activation="RELU", drop_rate=0.2)
+cnn.conv_create(f_size=1, nb_filters=64, stride=1, padding=0, activation="RELU", drop_rate = 0.2)
 cnn.dense_create(nb_neurons=10, activation="SOFTMAX")
 
 
-cnn.train_network(nb_epoch=10, learning_rate=0.0002, momentum=0.9, confmat=1, save_each=20)
+cnn.train_network(nb_epoch=30, learning_rate=0.0002, momentum=0.9, confmat=1, save_each=20)
 #Change save_each in previous function to save network weights
 
 #Uncomment to save network prediction
-#cnn.forward_network()
+#cnn.forward_network(repeat=1)
 
 exit()
 

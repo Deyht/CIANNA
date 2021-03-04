@@ -42,7 +42,7 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, floa
 {
 
 	printf("############################################################\n\
-CIANNA V-0.9.2.1 EXPERIMENTAL BUILD (02/2021), by D.Cornu\n\
+CIANNA V-0.9.2.2 EXPERIMENTAL BUILD (03/2021), by D.Cornu\n\
 ############################################################\n\n");
 
 

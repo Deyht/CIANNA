@@ -129,7 +129,7 @@ void conv_define_activation_param(layer *current)
 
 
 //Used to allocate a convolutionnal layer
-void conv_create(network *net, layer *previous, int f_size, int nb_filters, int stride, int padding, int activation, FILE *f_load)
+void conv_create(network *net, layer *previous, int f_size, int nb_filters, int stride, int padding, int activation, float drop_rate, FILE *f_load)
 {
 	int i, j;
 	layer *current;
@@ -149,6 +149,7 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	c_param->stride = stride;
 	c_param->padding = padding;
 	c_param->nb_filters = nb_filters;
+	c_param->dropout_rate = drop_rate;
 	
 	current->previous = previous;
 	
@@ -198,6 +199,7 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	c_param->filters = (float*) malloc(nb_filters * c_param->flat_f_size * sizeof(float));
 	//allocate the update for the filters
 	c_param->update = (float*) calloc(nb_filters * c_param->flat_f_size, sizeof(float));
+	c_param->dropout_mask = (int*) calloc(c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h), sizeof(int));
 	
 	c_param->rotated_filters = (float*) malloc(nb_filters * (c_param->flat_f_size-1) * sizeof(float));
 	
@@ -310,7 +312,7 @@ void conv_save(FILE *f, layer *current)
 	c_param = (conv_param*)current->param;	
 	
 	fprintf(f,"C");
-	fprintf(f, "%df%d.%ds%dp", c_param->nb_filters, c_param->f_size, c_param->stride, c_param->padding);
+	fprintf(f, "%df%d.%ds%dp%fd", c_param->nb_filters, c_param->f_size, c_param->stride, c_param->padding, c_param->dropout_rate);
 	print_activ_param(f, current->activation_type);
 	fprintf(f, "\n");
 	
@@ -353,19 +355,20 @@ void conv_save(FILE *f, layer *current)
 void conv_load(network *net, FILE *f)
 {
 	int nb_filters, f_size, stride, padding;
+	float drop_rate;
 	char activ_type[20];
 	layer *previous;
 	
 	printf("Loading conv layer, L:%d\n", net->nb_layers);
 	
-	fscanf(f, "%df%d.%ds%dp%s\n", &nb_filters, &f_size, &stride, &padding, activ_type);
+	fscanf(f, "%df%d.%ds%dp%fd%s\n", &nb_filters, &f_size, &stride, &padding, &drop_rate, activ_type);
 	
 	if(net->nb_layers <= 0)
 		previous = NULL;
 	else
 		previous = net->net_layers[net->nb_layers-1];
 	
-	conv_create(net, previous, f_size, nb_filters, stride, padding, load_activ_param(activ_type), f);
+	conv_create(net, previous, f_size, nb_filters, stride, padding, load_activ_param(activ_type), drop_rate, f);
 }
 
 

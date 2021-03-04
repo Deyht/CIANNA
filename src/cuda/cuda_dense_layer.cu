@@ -216,11 +216,12 @@ void cuda_backward_dense_layer(layer* current)
 
 	d_param = (dense_param*) current->param;	
 	
-	dim3 threadsPerBlock(8, 32);
-	dim3 numBlocks((current->c_network->batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
-			(d_param->nb_neurons + threadsPerBlock.y - 1) / threadsPerBlock.y);
 	if(d_param->dropout_rate > 0.01)
 	{
+		dim3 threadsPerBlock(8, 32);
+		dim3 numBlocks((current->c_network->batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
+			(d_param->nb_neurons + threadsPerBlock.y - 1) / threadsPerBlock.y);
+			
 		switch(current->c_network->use_cuda_TC)
 		{
 			default:

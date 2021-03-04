@@ -649,11 +649,13 @@ static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs
 {	
 	int f_size, nb_filters, stride, padding, prev_layer = -1, i_activ = RELU, network_id = nb_networks-1;
 	const char *activation = "RELU";
-	static char *kwlist[] = {"f_size", "nb_filters", "stride", "padding", "activation", "prev_layer", "network", NULL};
+	double drop_rate = 0.0;
+	static char *kwlist[] = {"f_size", "nb_filters", "stride", "padding", "activation", "prev_layer", "drop_rate", "network", NULL};
 	layer* prev;
 	
 	stride = 1; padding = 0;
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "ii|iisii", kwlist, &f_size, &nb_filters, &stride, &padding, &activation, &prev_layer, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "ii|iisidi", kwlist, &f_size, &nb_filters, &stride, &padding, 
+		&activation, &prev_layer, &drop_rate, &network_id))
 	    return Py_None;
 	    
 	if(prev_layer == -1)
@@ -675,7 +677,7 @@ static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	conv_create(networks[network_id], prev, f_size, nb_filters, stride, padding, i_activ, NULL);
+	conv_create(networks[network_id], prev, f_size, nb_filters, stride, padding, i_activ, drop_rate, NULL);
 	
 	return Py_None;
 }
@@ -824,7 +826,7 @@ PyMODINIT_FUNC PyInit_CIANNA(void)
 	import_array();
 	
 	printf("###################################################################\n\
-Importing CIANNA Python module V-p.0.4 , by D.Cornu\n\
+Importing CIANNA Python module V-p.0.5 , by D.Cornu\n\
 ###################################################################\n\n");
 
 	PyObject *m;

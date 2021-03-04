@@ -146,23 +146,11 @@ int main()
 	#endif
 	
 	
-	/*
-	conv_create(networks[0], NULL, 5, 6, 1, 2, RELU, NULL);
+	conv_create(networks[0], NULL, 5, 8, 1, 2, RELU, 0.0, NULL);
 	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 2, RELU, NULL);
+	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 2, RELU, 0.0, NULL);
 	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 3, 48, 1, 1, RELU, NULL);
-	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 1024, RELU, 0.5, NULL);
-	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.0, NULL);
-	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 
-		networks[0]->output_dim, SOFTMAX, 0.0, NULL);*/
-	
-	
-	conv_create(networks[0], NULL, 5, 8, 1, 2, RELU, NULL);
-	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 2, RELU, NULL);
-	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	//conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 3, 48, 1, 1, RELU, NULL);
+	//conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 3, 48, 1, 1, RELU, 0.0, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 1024, RELU, 0.5, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.2, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 

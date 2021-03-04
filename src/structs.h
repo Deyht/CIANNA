@@ -183,8 +183,11 @@ typedef struct conv_param
 	void *rotated_filters;
 	void *temp_delta_o;
 	void *update;
+	int* dropout_mask;
+	void* block_state;
 	
 	float bias_value;
+	float dropout_rate;
 
 } conv_param;
 
