@@ -1090,12 +1090,12 @@ void cuda_YOLO_output_error(layer *current)
 }
 
 
-__device__ float gpu_IoU(int* output, int* target)
+__device__ float gpu_IoU(float* output, float* target)
 {
-	int inter_w, inter_h, inter_2d, uni_2d;
+	float inter_w, inter_h, inter_2d, uni_2d;
 	
-	inter_w = max(0, min(output[2], target[2]) - max(output[0], target[0]));
-	inter_h = max(0, min(output[3], target[3]) - max(output[1], target[1]));
+	inter_w = max(0.0f, min(output[2], target[2]) - max(output[0], target[0]));
+	inter_h = max(0.0f, min(output[3], target[3]) - max(output[1], target[1]));
 	inter_2d = inter_w * inter_h;
 	uni_2d =  abs(output[2]-output[0])*abs(output[3]-output[1])
 			+ abs(target[2]-target[0])*abs(target[3]-target[1])
@@ -1120,20 +1120,20 @@ __global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, floa
 	int cell_x, cell_y;
 	int obj_cx, obj_cy;
 	int f_offset;
-	int *box_in_pix;
-	int *c_box_in_pix;
+	float *box_in_pix;
+	float *c_box_in_pix;
 	float obj_in_offset[4];
 	
-	int obj_surf;
-	int dist_surf;
+	float obj_surf;
+	float dist_surf;
 	
 	int *box_locked;
 	
 	float lambda_coord = 2.0, lambda_size = 2.0, lambda_noobj = 0.5, obj_scale = 2.0;
-	int out_int[4], targ_int[4];
+	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
-	box_in_pix = (int*) malloc(nb_box*4*sizeof(int));
+	box_in_pix = (float*) malloc(nb_box*4*sizeof(float));
 	
 	c_batch = i / flat_output_size;
 	target += flat_target_size * c_batch;
@@ -1172,13 +1172,13 @@ __global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, floa
 	{
 		if((int) target[j*(5+nb_param)] == 0)
 			break;
-		obj_cx = (int)( (target[j*(5+nb_param)+3] + target[j*(5+nb_param)+1])*0.5f / cell_w);
-		obj_cy = (int)( (target[j*(5+nb_param)+4] + target[j*(5+nb_param)+2])*0.5f / cell_h);
+		obj_cx = int( (target[j*(5+nb_param)+3] + target[j*(5+nb_param)+1])*0.5f / cell_w);
+		obj_cy = int( (target[j*(5+nb_param)+4] + target[j*(5+nb_param)+2])*0.5f / cell_h);
 		
 		if(obj_cx == cell_x && obj_cy == cell_y)
 		{
-			targ_int[0] = (int)target[j*(5+nb_param)+1]; targ_int[1] = (int)target[j*(5+nb_param)+2];
-			targ_int[2] = (int)target[j*(5+nb_param)+3]; targ_int[3] = (int)target[j*(5+nb_param)+4];
+			targ_int[0] = target[j*(5+nb_param)+1]; targ_int[1] = target[j*(5+nb_param)+2];
+			targ_int[2] = target[j*(5+nb_param)+3]; targ_int[3] = target[j*(5+nb_param)+4];
 		
 			resp_box = 0;
 			max_IoU = 0.0f;			
@@ -1334,20 +1334,20 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 	int cell_x, cell_y;
 	int obj_cx, obj_cy;
 	int f_offset;
-	int *box_in_pix;
-	int *c_box_in_pix;
+	float *box_in_pix;
+	float *c_box_in_pix;
 	float obj_in_offset[4];
 	
-	int obj_surf;
-	int dist_surf;
+	float obj_surf;
+	float dist_surf;
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0, lambda_size = 2.0, lambda_noobj = 0.5, obj_scale = 2.0;
-	int out_int[4], targ_int[4];
+	float lambda_coord = 2.0f, lambda_size = 2.0f, lambda_noobj = 0.5f, obj_scale = 1.0f, param_scale = 1.0f;
+	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
-	box_in_pix = (int*) malloc(nb_box*4*sizeof(int));
+	box_in_pix = (float*) malloc(nb_box*4*sizeof(float));
 	
 	c_batch = i / flat_output_size;
 	target += flat_target_size * c_batch;
@@ -1386,13 +1386,13 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 	{
 		if((int) target[j*(5+nb_param)] == 0)
 			break;
-		obj_cx = (int)( ((float)target[j*(5+nb_param)+3] + (float)target[j*(5+nb_param)+1])*0.5f / cell_w);
-		obj_cy = (int)( ((float)target[j*(5+nb_param)+4] + (float)target[j*(5+nb_param)+2])*0.5f / cell_h);
+		obj_cx = int( ((float)target[j*(5+nb_param)+3] + (float)target[j*(5+nb_param)+1])*0.5f / cell_w);
+		obj_cy = int( ((float)target[j*(5+nb_param)+4] + (float)target[j*(5+nb_param)+2])*0.5f / cell_h);
 		
 		if(obj_cx == cell_x && obj_cy == cell_y)
 		{
-			targ_int[0] = (int)target[j*(5+nb_param)+1]; targ_int[1] = (int)target[j*(5+nb_param)+2];
-			targ_int[2] = (int)target[j*(5+nb_param)+3]; targ_int[3] = (int)target[j*(5+nb_param)+4];
+			targ_int[0] = target[j*(5+nb_param)+1]; targ_int[1] = target[j*(5+nb_param)+2];
+			targ_int[2] = target[j*(5+nb_param)+3]; targ_int[3] = target[j*(5+nb_param)+4];
 		
 			resp_box = 0;
 			max_IoU = 0.0f;			
@@ -1494,7 +1494,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 				for(k = 0; k < nb_param; k++)
 				{
 					delta_o[(resp_box*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 
-						(half) (TC_scale_factor*2.0f*((float)output[(resp_box*(5+nb_class+nb_param)
+						(half) (TC_scale_factor*param_scale*((float)output[(resp_box*(5+nb_class+nb_param)
 						+5+nb_class+k)*f_offset] - (float)target[j*(5+nb_param)+5+k]));
 				}
 			}
@@ -1561,20 +1561,20 @@ __global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float
 	int cell_x, cell_y;
 	int obj_cx, obj_cy;
 	int f_offset;
-	int *box_in_pix;
-	int *c_box_in_pix;
+	float *box_in_pix;
+	float *c_box_in_pix;
 	float obj_in_offset[4];
 	
-	int obj_surf;
-	int dist_surf;
+	float obj_surf;
+	float dist_surf;
 	
 	int *box_locked;
 	
 	float lambda_coord = 2.0, lambda_size = 2.0, lambda_noobj = 0.5, obj_scale = 2.0;
-	int out_int[4], targ_int[4];
+	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
-	box_in_pix = (int*) malloc(nb_box*4*sizeof(int));
+	box_in_pix = (float*) malloc(nb_box*4*sizeof(float));
 	
 	
 	c_batch = i / flat_output_size;
@@ -1613,8 +1613,8 @@ __global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float
 	{
 		if((int) target[j*(5+nb_param)] == 0)
 			break;
-		obj_cx = (int)( (target[j*(5+nb_param)+3] + target[j*(5+nb_param)+1])*0.5f / cell_w);
-		obj_cy = (int)( (target[j*(5+nb_param)+4] + target[j*(5+nb_param)+2])*0.5f / cell_h);
+		obj_cx = int( (target[j*(5+nb_param)+3] + target[j*(5+nb_param)+1])*0.5f / cell_w);
+		obj_cy = int( (target[j*(5+nb_param)+4] + target[j*(5+nb_param)+2])*0.5f / cell_h);
 		
 		if(obj_cx == cell_x && obj_cy == cell_y)
 		{
@@ -1624,8 +1624,8 @@ __global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float
 			{
 				if(box_locked[k] == 2)
 					continue;
-				targ_int[0] = (int)target[j*(5+nb_param)+1]; targ_int[1] = (int)target[j*(5+nb_param)+2];
-				targ_int[2] = (int)target[j*(5+nb_param)+3]; targ_int[3] = (int)target[j*(5+nb_param)+4];
+				targ_int[0] = target[j*(5+nb_param)+1]; targ_int[1] = target[j*(5+nb_param)+2];
+				targ_int[2] = target[j*(5+nb_param)+3]; targ_int[3] = target[j*(5+nb_param)+4];
 			
 				c_box_in_pix = box_in_pix+k*4;
 				out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[2];
@@ -1772,20 +1772,20 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 	int cell_x, cell_y;
 	int obj_cx, obj_cy;
 	int f_offset;
-	int *box_in_pix;
-	int *c_box_in_pix;
+	float *box_in_pix;
+	float *c_box_in_pix;
 	float obj_in_offset[4];
 	
-	int obj_surf;
-	int dist_surf;
+	float obj_surf;
+	float dist_surf;
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0, lambda_size = 2.0, lambda_noobj = 0.5, obj_scale = 2.0;
-	int out_int[4], targ_int[4];
+	float lambda_coord = 2.0f, lambda_size = 2.0f, lambda_noobj = 0.5f, obj_scale = 1.0f, param_scale = 1.0f;
+	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
-	box_in_pix = (int*) malloc(nb_box*4*sizeof(int));
+	box_in_pix = (float*) malloc(nb_box*4*sizeof(float));
 	
 	
 	c_batch = i / flat_output_size;
@@ -1824,8 +1824,8 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 	{
 		if((int) target[j*(5+nb_param)] == 0)
 			break;
-		obj_cx = (int)( ((float)target[j*(5+nb_param)+3] + (float)target[j*(5+nb_param)+1])*0.5f / cell_w);
-		obj_cy = (int)( ((float)target[j*(5+nb_param)+4] + (float)target[j*(5+nb_param)+2])*0.5f / cell_h);
+		obj_cx = int( ((float)target[j*(5+nb_param)+3] + (float)target[j*(5+nb_param)+1])*0.5f / cell_w);
+		obj_cy = int( ((float)target[j*(5+nb_param)+4] + (float)target[j*(5+nb_param)+2])*0.5f / cell_h);
 		
 		if(obj_cx == cell_x && obj_cy == cell_y)
 		{
@@ -1835,8 +1835,8 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			{
 				if(box_locked[k] == 2)
 					continue;
-				targ_int[0] = (int)target[j*(5+nb_param)+1]; targ_int[1] = (int)target[j*(5+nb_param)+2];
-				targ_int[2] = (int)target[j*(5+nb_param)+3]; targ_int[3] = (int)target[j*(5+nb_param)+4];
+				targ_int[0] = target[j*(5+nb_param)+1]; targ_int[1] = target[j*(5+nb_param)+2];
+				targ_int[2] = target[j*(5+nb_param)+3]; targ_int[3] = target[j*(5+nb_param)+4];
 			
 				c_box_in_pix = box_in_pix+k*4;
 				out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[2];
@@ -1937,7 +1937,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 				for(k = 0; k < nb_param; k++)
 				{
 					output_error[(resp_box*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 
-						(0.5f*2.0f*((float)output[(resp_box*(5+nb_class+nb_param)
+						(0.5f*param_scale*((float)output[(resp_box*(5+nb_class+nb_param)
 						+5+nb_class+k)*f_offset] - (float) target[j*(5+nb_param)+5+k])
 						*((float)output[(resp_box*(5+nb_class+nb_param)
 						+5+nb_class+k)*f_offset] - (float) target[j*(5+nb_param)+5+k]));
