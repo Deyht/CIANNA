@@ -199,7 +199,8 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	c_param->filters = (float*) malloc(nb_filters * c_param->flat_f_size * sizeof(float));
 	//allocate the update for the filters
 	c_param->update = (float*) calloc(nb_filters * c_param->flat_f_size, sizeof(float));
-	c_param->dropout_mask = (int*) calloc(c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h), sizeof(int));
+	if(drop_rate > 0.01)
+		c_param->dropout_mask = (int*) calloc(c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h), sizeof(int));
 	
 	c_param->rotated_filters = (float*) malloc(nb_filters * (c_param->flat_f_size-1) * sizeof(float));
 	
@@ -275,11 +276,11 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	get_string_activ_param(activ, current->activation_type);
 	printf("L:%d - Convolutional layer created:\n \
 Input: %dx%dx%d, Filters: %dx%dx%d, Output: %dx%dx%d \n \
-Activation: %s, Stride: %d, padding: %d\n",
+Activation: %s, Stride: %d, padding: %d, dropout: %0.2f\n",
 		net->nb_layers, c_param->prev_size_w, c_param->prev_size_h, 
 		c_param->prev_depth, c_param->f_size, c_param->f_size, c_param->nb_filters,
 		c_param->nb_area_w, c_param->nb_area_h, c_param->nb_filters,
-		activ, c_param->stride, c_param->padding);
+		activ, c_param->stride, c_param->padding, c_param->dropout_rate);
 	
 	if(net->compute_method == C_CUDA && net->use_cuda_TC)
 	{

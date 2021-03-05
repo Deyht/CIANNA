@@ -49,8 +49,8 @@ __global__ void im2col_kernel_v5_FP16(half* output, half* input, int image_size,
 
 __global__ void init_block_state_conv(unsigned int seed, curandState_t* states);
 __global__ void cuda_dropout_select_conv(int* mask, int size, float drop_rate, curandState_t* states);
-__global__ void cuda_dropout_apply_conv_FP32(float* table, int batch_size, int dim, int* mask);
-__global__ void cuda_dropout_apply_conv_FP16(half* table, int batch_size, int dim, int* mask);
+__global__ void cuda_dropout_apply_conv_FP32(float* table, int batch_size, int dim, int* mask, int size);
+__global__ void cuda_dropout_apply_conv_FP16(half* table, int batch_size, int dim, int* mask, int size);
 
 
 void cuda_conv_define(layer *current)
@@ -103,11 +103,14 @@ void cuda_convert_conv_layer(layer *current)
 		(c_param->prev_size_w*c_param->prev_size_h) 
 		* (c_param->f_size * c_param->f_size * c_param->nb_filters) * current->c_network->batch_size);
 	
-	cuda_convert_table_int(current->c_network, &(c_param->dropout_mask), c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h));
-	cudaMalloc((void**) &c_param->block_state, (c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h)) * sizeof(curandState_t));
-	cu_blocks = (c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h));
-	init_block_state_conv<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)c_param->block_state);
-	
+	if(c_param->dropout_rate > 0.01)
+	{
+		cuda_convert_table_int(current->c_network, &(c_param->dropout_mask), c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h));
+		cudaMalloc((void**) &c_param->block_state, (c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h)) * sizeof(curandState_t));
+		cu_blocks = (c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h));
+		init_block_state_conv<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)c_param->block_state);
+	}
+
 	if(current->previous != NULL)
 	{
 		cuda_convert_table(current->c_network, &(current->input), c_param->prev_depth 
@@ -176,8 +179,8 @@ void cuda_forward_conv_layer(layer *current)
 	dim3 numBlocks2(((c_param->prev_size_w * c_param->prev_size_h) + threadsPerBlock2.x - 1) / threadsPerBlock2.x,
     	(c_param->prev_depth + threadsPerBlock2.y - 1) / threadsPerBlock2.y,
     	(current->c_network->batch_size + threadsPerBlock2.z - 1) / threadsPerBlock2.z);
-    
-    switch(current->c_network->use_cuda_TC)
+	
+	switch(current->c_network->use_cuda_TC)
 	{
 		default:
 		case 0:
@@ -225,11 +228,13 @@ void cuda_forward_conv_layer(layer *current)
 			default:
 			case 0:
 				cuda_dropout_apply_conv_FP32<<<numBlocks, threadsPerBlock>>>((float*)current->output, 
-					current->c_network->batch_size, c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h), c_param->dropout_mask);
+					current->c_network->batch_size, (c_param->nb_area_w * c_param->nb_area_h),
+					c_param->dropout_mask, c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h));
 				break;
 			case 1:
 				cuda_dropout_apply_conv_FP16<<<numBlocks, threadsPerBlock>>>((half*)current->output, 
-					current->c_network->batch_size, c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h), c_param->dropout_mask);
+					current->c_network->batch_size, (c_param->nb_area_w * c_param->nb_area_h), 
+					c_param->dropout_mask, c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h));
 				break;
 		}
 	}
@@ -259,11 +264,13 @@ void cuda_backward_conv_layer(layer *current)
 			default:
 			case 0:
 				cuda_dropout_apply_conv_FP32<<<numBlocks, threadsPerBlock>>>((float*)current->delta_o, 
-					current->c_network->batch_size, c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h), c_param->dropout_mask);
+					current->c_network->batch_size, (c_param->nb_area_w * c_param->nb_area_h), 
+					c_param->dropout_mask, c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h));
 				break;
 			case 1:
 				cuda_dropout_apply_conv_FP16<<<numBlocks, threadsPerBlock>>>((half*)current->delta_o, 
-					current->c_network->batch_size, c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h), c_param->dropout_mask);
+					current->c_network->batch_size, (c_param->nb_area_w * c_param->nb_area_h), 
+					c_param->dropout_mask, c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h));
 				break;
 		}
 	}
@@ -670,26 +677,34 @@ __global__ void cuda_dropout_select_conv(int* mask, int size, float drop_rate, c
 	}
 }
 
-__global__ void cuda_dropout_apply_conv_FP32(float* table, int batch_size, int dim, int* mask)
+__global__ void cuda_dropout_apply_conv_FP32(float* table, int batch_size, int dim, int* mask, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int j = blockIdx.y*blockDim.y + threadIdx.y;
 	
-	if(i < batch_size && j < dim)
+	int c_depth = j / dim;
+	int current_id = j % dim;
+	int offset = dim*batch_size;
+
+	if(i < batch_size && j < size)
 	{
-		table[i*dim + j] *= mask[j];
+		table[i*dim + c_depth*offset + current_id] *= mask[j];
 	}
 }
 
-__global__ void cuda_dropout_apply_conv_FP16(half* table, int batch_size, int dim, int* mask)
+__global__ void cuda_dropout_apply_conv_FP16(half* table, int batch_size, int dim, int* mask, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	int j = blockIdx.y*blockDim.y + threadIdx.y;
-	
-	if(i < batch_size && j < dim)
-	{
-		table[i*dim + j] *= mask[j];
-	}
+
+	int c_depth = j / dim;
+        int current_id = j % dim;
+        int offset = dim*batch_size;
+
+        if(i < batch_size && j < size)
+        {
+                table[i*dim + c_depth*offset + current_id] *= mask[j];
+        }
 }
 
 
