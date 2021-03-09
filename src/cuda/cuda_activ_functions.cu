@@ -1129,7 +1129,7 @@ __global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, floa
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0, lambda_size = 2.0, lambda_noobj = 0.5, obj_scale = 2.0;
+	float lambda_coord = 2.0f, lambda_size = 2.0f, lambda_noobj = 0.25f, obj_scale = 2.0f;
 	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
@@ -1343,7 +1343,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0f, lambda_size = 2.0f, lambda_noobj = 0.5f, obj_scale = 1.0f, param_scale = 1.0f;
+	float lambda_coord = 2.0f, lambda_size = 2.0f, lambda_noobj = 0.25f, obj_scale = 1.0f, param_scale = 1.0f;
 	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
@@ -1570,7 +1570,7 @@ __global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0, lambda_size = 2.0, lambda_noobj = 0.5, obj_scale = 2.0;
+	float lambda_coord = 2.0f, lambda_size = 2.0f, lambda_noobj = 0.25, obj_scale = 2.0f;
 	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
@@ -1781,7 +1781,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0f, lambda_size = 2.0f, lambda_noobj = 0.5f, obj_scale = 1.0f, param_scale = 1.0f;
+	float lambda_coord = 2.0f, lambda_size = 2.0f, lambda_noobj = 0.25f, obj_scale = 1.0f, param_scale = 1.0f;
 	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
