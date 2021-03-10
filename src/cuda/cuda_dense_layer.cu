@@ -390,8 +390,8 @@ __global__ void cuda_reroll_batch_FP16(half* in, half* out, int map_size, int fl
 
 __global__ void init_block_state(unsigned int seed,  curandState_t* states)
 {
-	curand_init(seed, /* the seed can be the same for each core, here we pass the time in from the CPU */
-              blockIdx.x, /* the sequence number should be different for each core (unless you want all
+	curand_init((seed << 20) + blockIdx.x, /* the seed can be the same for each core, here we pass the time in from the CPU */
+              0, /* the sequence number should be different for each core (unless you want all
                              cores to get the same sequence of numbers for some reason - use thread id! */
               0, /* the offset is how much extra we advance in the sequence for each call, can be 0 */
               &states[blockIdx.x]);

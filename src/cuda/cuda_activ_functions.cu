@@ -1204,7 +1204,7 @@ __global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, floa
 					box_locked[k] = 1;
 			}
 				 	
-			if(max_IoU < 0.001)
+			if(max_IoU < 0.1)
 			{
 				obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
 				resp_box = 0;
@@ -1418,7 +1418,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 					box_locked[k] = 1;
 			}
 				 	
-			if(max_IoU < 0.001)
+			if(max_IoU < 0.1)
 			{
 				obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
 				resp_box = 0;
@@ -1645,7 +1645,7 @@ __global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float
 
 			}
 			
-			if(max_IoU < 0.001)
+			if(max_IoU < 0.1)
 			{
 				obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
 				resp_box = 0;
@@ -1856,7 +1856,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 
 			}
 			
-			if(max_IoU < 0.001)
+			if(max_IoU < 0.1)
 			{
 				obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
 				resp_box = 0;

@@ -155,20 +155,20 @@ void cuda_forward_conv_layer(layer *current)
 		cuda_master_weight_FP32_to_FP16((float*)c_param->FP32_filters, (half*)c_param->filters, 
 			c_param->nb_filters * c_param->flat_f_size);
 	
-	if(current->c_network->batch_size < 2)
-			dim_c = 1;
-		else
-			dim_c = 2;
-		
+	if(current->c_network->batch_size <= 2)
+		dim_c = 1;
+	//else if(current->c_network->batch_size <= 6)
+	//	dim_c = 2;
+	else
+		dim_c = 2;
+
 	if(c_param->nb_filters <= 8)
 		dim_b = 4;
 	else
 		dim_b = 8;
 		
-	if(c_param->nb_area_w * c_param->nb_area_h <= 16)
+	if(c_param->nb_area_w * c_param->nb_area_h <= 8)
 		dim_a = 4;
-	else if(dim_b == 2)
-		dim_a = 16;
 	else
 		dim_a = 8;
 	
@@ -316,17 +316,17 @@ void cuda_backward_conv_layer(layer *current)
 		//Note : having higher dimensions on the left dim3 dim(a,b,c) grants better results 
 		// (profiling shows reduction of compute time near to ~ 17% (on Modified LeNet 5 - MNIST))
 		//limit is L2 cache usage, having dim3 a < (16,1,1) allows to maximse it on P2000
-		if(current->c_network->batch_size < 2)
+		if(current->c_network->batch_size <= 2)
 			dim_c = 1;
 		else
 			dim_c = 2;
 		
-		if(c_param->nb_filters <= 8)
+		if(c_param->nb_filters <= 12)
 			dim_b = 4;
 		else
-			dim_b = 8;
+			dim_b = 16;
 			
-		if(c_param->nb_area_w * c_param->nb_area_h <= 16)
+		if(c_param->nb_area_w * c_param->nb_area_h <= 12)
 			dim_a = 4;
 		else
 			dim_a = 8;
@@ -654,9 +654,10 @@ __global__ void cuda_reroll_delta_o_FP16(half* in, half* out, int map_size, int 
 
 __global__ void init_block_state_conv(unsigned int seed,  curandState_t* states)
 {
-	curand_init(seed, /* the seed can be the same for each core, here we pass the time in from the CPU */
-              blockIdx.x, /* the sequence number should be different for each core (unless you want all
-                             cores to get the same sequence of numbers for some reason - use thread id! */
+	curand_init((seed << 20) + blockIdx.x, /* the seed can be the same for each core, here we pass the time in from the CPU */
+              0, /* the sequence number should be different for each core (unless you want all
+                             cores to get the same sequence of numbers for some reason - use thread id! 
+			     Currently use an alternative definition with Id adjunct to seed*/
               0, /* the offset is how much extra we advance in the sequence for each call, can be 0 */
               &states[blockIdx.x]);
 }

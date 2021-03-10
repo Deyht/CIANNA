@@ -23,7 +23,7 @@ if(os.environ.get('USE_CUDA') != None):
 	cuda_obj = ['cuda/cuda_main.o', 'cuda/cuda_conv_layer.o', 'cuda/cuda_dense_layer.o', 'cuda/cuda_pool_layer.o', 'cuda/cuda_activ_functions.o']
 	cuda_include = ['/shared/apps/cuda/11.1/include']
 	cuda_extra = ['-L/shared/apps/cuda/11.1/lib64', '-lcudart', '-lcublas']
-	cuda_macro = [('CUDA','1'), ('CUDA_THREADS_PER_BLOCKS', '128')]
+	cuda_macro = [('CUDA','1'), ('CUDA_THREADS_PER_BLOCKS', '256')]
 if(os.environ.get('USE_BLAS') != None):
 	print("USE_BLAS")
 	blas_obj = ['blas/blas_dense_layer.o', 'blas/blas_conv_layer.o']
