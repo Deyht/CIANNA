@@ -307,6 +307,8 @@ __global__ void ReLU_activation_kernel_FP32(float *tab, int len, int dim, float 
 		i += i/dim;
 		if(tab[i] <= 0.0f)
 			tab[i] *= leaking_factor;
+		else if(tab[i] > 6.0f)
+			tab[i] = 6.0f + (tab[i] - 6.0f)*leaking_factor;
 	}
 }
 
@@ -317,8 +319,10 @@ __global__ void ReLU_activation_kernel_FP16(half *tab, int len, int dim, float l
 	if(i < len)
 	{
 		i += i/dim;
-		if(tab[i] <= (half)0.0f)
+		if(tab[i] <= (half) 0.0f)
 			tab[i] *= leaking_factor;
+		else if(tab[i] > (half) 6.0f)
+			tab[i] = (half) 6.0f + (tab[i] - (half) 6.0f)*((half)leaking_factor);
 	}
 }
 
@@ -353,6 +357,8 @@ __global__ void ReLU_deriv_kernel_FP32(float *deriv, float *value, int len, int 
 	{
 		if(value[i] <= 0.0f)
 			deriv[i] *= leaking_factor;
+		if(value[i] > 6.0f)
+			deriv[i] *= leaking_factor;
 	}
 	else
 		deriv[i] = 0.0f;
@@ -368,7 +374,9 @@ __global__ void ReLU_deriv_kernel_FP16(half *deriv, half *value, int len, int di
 	
 	if(i < len && (i+1)%(dim+1) != 0)
 	{
-		if(value[i] <= (half)0.0f)
+		if(value[i] <= (half) 0.0f)
+			deriv[i] *= leaking_factor;
+		if(value[i] > (half) 6.0f)
 			deriv[i] *= leaking_factor;
 	}
 	else
@@ -1204,20 +1212,21 @@ __global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, floa
 					box_locked[k] = 1;
 			}
 				 	
-			if(max_IoU < 0.1)
-			{
-				obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
-				resp_box = 0;
-				dist_surf = abs(obj_surf-(prior_w[0]*prior_h[0]));
-				for(k = 1; k < nb_box; k++)
-				{
-					if(abs(obj_surf-(prior_w[k]*prior_h[k])) < dist_surf)
-					{
-						dist_surf = abs(obj_surf-(prior_w[k]*prior_h[k]));
-						resp_box = k;
-					}
-				}
-			}
+			if(max_IoU < 0.1f)
+                        {
+                                obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
+                                dist_surf = abs(obj_surf-(prior_w[resp_box]*prior_h[resp_box]));
+                                for(k = 0; k < nb_box; k++)
+                                {
+                                        if(box_locked[k] == 2)
+                                                continue;
+                                        if(abs(obj_surf-(prior_w[k]*prior_h[k])) < dist_surf)
+                                        {
+                                                dist_surf = abs(obj_surf-(prior_w[k]*prior_h[k]));
+                                                resp_box = k;
+                                        }
+                                }
+                        }
 			
 			if(box_locked[resp_box] == 2)
 				continue;
@@ -1228,13 +1237,13 @@ __global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, floa
 			obj_in_offset[0] = ((targ_int[2] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
 			obj_in_offset[1] = ((targ_int[3] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
 			obj_in_offset[2] = (targ_int[2] - targ_int[0])/prior_w[resp_box];
-			if(obj_in_offset[2] < 0.0001f)
-				obj_in_offset[2] = logf(0.0001f);
+			if(obj_in_offset[2] < 0.00001f)
+				obj_in_offset[2] = logf(0.00001f);
 			else
 				obj_in_offset[2] = logf(obj_in_offset[2]);
 			obj_in_offset[3] = (targ_int[3] - targ_int[1])/prior_h[resp_box];
-			if(obj_in_offset[3] < 0.0001f)
-				obj_in_offset[3] = logf(0.0001f);
+			if(obj_in_offset[3] < 0.00001f)
+				obj_in_offset[3] = logf(0.00010f);
 			else
 				obj_in_offset[3] = logf(obj_in_offset[3]);
 
@@ -1418,20 +1427,22 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 					box_locked[k] = 1;
 			}
 				 	
-			if(max_IoU < 0.1)
-			{
-				obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
-				resp_box = 0;
-				dist_surf = abs(obj_surf-(prior_w[0]*prior_h[0]));
-				for(k = 1; k < nb_box; k++)
-				{
-					if(abs(obj_surf-(prior_w[k]*prior_h[k])) < dist_surf)
-					{
-						dist_surf = abs(obj_surf-(prior_w[k]*prior_h[k]));
-						resp_box = k;
-					}
-				}
-			}
+			if(max_IoU < 0.1f)
+                        {
+                                obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
+                                dist_surf = abs(obj_surf-(prior_w[resp_box]*prior_h[resp_box]));
+                                for(k = 0; k < nb_box; k++)
+                                {
+                                        if(box_locked[k] == 2)
+                                                continue;
+                                        if(abs(obj_surf-(prior_w[k]*prior_h[k])) < dist_surf)
+                                        {
+                                                dist_surf = abs(obj_surf-(prior_w[k]*prior_h[k]));
+                                                resp_box = k;
+                                        }
+                                }
+                        }
+
 			
 			if(box_locked[resp_box] == 2)
 				continue;
@@ -1442,13 +1453,13 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			obj_in_offset[0] = ((targ_int[2] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
 			obj_in_offset[1] = ((targ_int[3] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
 			obj_in_offset[2] = (targ_int[2] - targ_int[0])/(float)prior_w[resp_box];
-			if(obj_in_offset[2] < 0.0001f)
-				obj_in_offset[2] = logf(0.0001f);
+			if(obj_in_offset[2] < 0.00001f)
+				obj_in_offset[2] = logf(0.00001f);
 			else
 				obj_in_offset[2] = logf(obj_in_offset[2]);
 			obj_in_offset[3] = (targ_int[3] - targ_int[1])/(float)prior_h[resp_box];
-			if(obj_in_offset[3] < 0.0001f)
-				obj_in_offset[3] = logf(0.0001f);
+			if(obj_in_offset[3] < 0.00001f)
+				obj_in_offset[3] = logf(0.00001f);
 			else
 				obj_in_offset[3] = logf(obj_in_offset[3]);
 
@@ -1645,20 +1656,22 @@ __global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float
 
 			}
 			
-			if(max_IoU < 0.1)
-			{
-				obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
-				resp_box = 0;
-				dist_surf = abs(obj_surf-(prior_w[0]*prior_h[0]));
-				for(k = 1; k < nb_box; k++)
-				{
-					if(abs(obj_surf-(prior_w[k]*prior_h[k])) < dist_surf)
-					{
-						dist_surf = abs(obj_surf-(prior_w[k]*prior_h[k]));
-						resp_box = k;
-					}
-				}
-			}
+			if(max_IoU < 0.1f)
+                        {
+                                obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
+                                dist_surf = abs(obj_surf-(prior_w[resp_box]*prior_h[resp_box]));
+                                for(k = 0; k < nb_box; k++)
+                                {
+                                        if(box_locked[k] == 2)
+                                                continue;
+                                        if(abs(obj_surf-(prior_w[k]*prior_h[k])) < dist_surf)
+                                        {
+                                                dist_surf = abs(obj_surf-(prior_w[k]*prior_h[k]));
+                                                resp_box = k;
+                                        }
+                                }
+                        }
+
 			
 			if(box_locked[resp_box] == 2)
                                 continue;
@@ -1669,13 +1682,13 @@ __global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float
 			obj_in_offset[0] = ((targ_int[2] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
 			obj_in_offset[1] = ((targ_int[3] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
 			obj_in_offset[2] = (targ_int[2] - targ_int[0])/prior_w[resp_box];
-			if(obj_in_offset[2] < 0.0001f)
-				obj_in_offset[2] = logf(0.0001f);
+			if(obj_in_offset[2] < 0.00001f)
+				obj_in_offset[2] = logf(0.00001f);
 			else
 				obj_in_offset[2] = logf(obj_in_offset[2]);
 			obj_in_offset[3] = (targ_int[3] - targ_int[1])/prior_h[resp_box];
-			if(obj_in_offset[3] < 0.0001f)
-				obj_in_offset[3] = logf(0.0001f);
+			if(obj_in_offset[3] < 0.00001f)
+				obj_in_offset[3] = logf(0.00001f);
 			else
 				obj_in_offset[3] = logf(obj_in_offset[3]);
 
@@ -1697,16 +1710,16 @@ __global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float
 			{
 				if(k == (int)target[j*(5+nb_param)]-1)
 				{
-					if(output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] < 0.0001f)
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.0001f);
+					if(output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] < 0.00001f)
+						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.00001f);
 					else
 						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = 
 							-logf(output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]);
 				}
 				else
 				{
-					if(output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] > 0.999f)
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.001f);
+					if(output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] > 0.9999f)
+						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.00001f);
 					else
 						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(1.0f - output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]);
 				}
@@ -1856,13 +1869,14 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 
 			}
 			
-			if(max_IoU < 0.1)
+			if(max_IoU < 0.1f)
 			{
 				obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
-				resp_box = 0;
-				dist_surf = abs(obj_surf-(prior_w[0]*prior_h[0]));
-				for(k = 1; k < nb_box; k++)
+				dist_surf = abs(obj_surf-(prior_w[resp_box]*prior_h[resp_box]));
+				for(k = 0; k < nb_box; k++)
 				{
+					if(box_locked[k] == 2)
+	                                        continue;
 					if(abs(obj_surf-(prior_w[k]*prior_h[k])) < dist_surf)
 					{
 						dist_surf = abs(obj_surf-(prior_w[k]*prior_h[k]));
@@ -1880,13 +1894,13 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			obj_in_offset[0] = ((targ_int[2] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
 			obj_in_offset[1] = ((targ_int[3] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
 			obj_in_offset[2] = (targ_int[2] - targ_int[0])/prior_w[resp_box];
-			if(obj_in_offset[2] < 0.0001f)
-				obj_in_offset[2] = logf(0.0001f);
+			if(obj_in_offset[2] < 0.00001f)
+				obj_in_offset[2] = logf(0.00001f);
 			else
 				obj_in_offset[2] = logf(obj_in_offset[2]);
 			obj_in_offset[3] = (targ_int[3] - targ_int[1])/prior_h[resp_box];
-			if(obj_in_offset[3] < 0.0001f)
-				obj_in_offset[3] = logf(0.0001f);
+			if(obj_in_offset[3] < 0.00001f)
+				obj_in_offset[3] = logf(0.00001f);
 			else
 				obj_in_offset[3] = logf(obj_in_offset[3]);
 
@@ -1916,16 +1930,16 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			{
 				if(k == (int)target[j*(5+nb_param)]-1)
 				{
-					if((float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] < 0.0001f)
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.0001f);
+					if((float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] < 0.00001f)
+						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.00001f);
 					else
 						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] =
 							-logf((float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]);
 				}
 				else
 				{
-					if((float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] > 0.999f)
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.001f);
+					if((float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] > 0.9999f)
+						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.00001f);
 					else
 						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(1.0f - (float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]);
 				}

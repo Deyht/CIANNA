@@ -63,7 +63,7 @@ void conv_define_activation_param(layer *current)
 				c_param->nb_area_h * c_param->nb_filters * current->c_network->batch_size;
 			((ReLU_param*)current->activ_param)->dim = ((ReLU_param*)current->activ_param)->size;
 			((ReLU_param*)current->activ_param)->biased_dim = ((ReLU_param*)current->activ_param)->dim;
-			((ReLU_param*)current->activ_param)->leaking_factor = 0.01;
+			((ReLU_param*)current->activ_param)->leaking_factor = 0.05;
 			c_param->bias_value = 0.1;
 			break;
 			
