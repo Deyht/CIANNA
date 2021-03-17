@@ -776,16 +776,22 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 
 static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	int step = -1, repeat = 1, network_id = nb_networks-1;
-	static char *kwlist[] = {"step", "repeat","network_id", NULL};
+	int step = -1, repeat = 1, network_id = nb_networks-1, C_drop_mode = AVG_MODEL;
+	const char *drop_mode = "AVG_MODEL";
+	static char *kwlist[] = {"step", "repeat", "network_id", "drop_mode", NULL};
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|iii", kwlist, &step, &repeat, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|iiis", kwlist, &step, &repeat, &network_id, &drop_mode))
 	    return Py_None;
 	
 	if(step == -1)
 		step = networks[network_id]->epoch;
 	
-	forward_testset(networks[network_id], step,  repeat);
+	if(strcmp(drop_mode, "AVG_MODEL") == 0)
+                C_drop_mode = AVG_MODEL;
+        else if(strcmp(drop_mode, "MC_MODEL") == 0)
+                C_drop_mode = MC_MODEL;
+
+	forward_testset(networks[network_id], step,  repeat, C_drop_mode);
 	
 	return Py_None;
 }

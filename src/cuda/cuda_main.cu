@@ -78,7 +78,6 @@ void init_cuda(network* net)
 				break;
 			default:
 				break;
-			
 		}
 		
 

@@ -41,8 +41,7 @@ extern int verbose;
 
 
 //######################################
-//       auxil.c prototypes
-//######################################
+//auxil.c
 void init_timing(struct timeval* tstart);
 float ellapsed_time(struct timeval tstart);
 void init_network(int network_number, int u_input_dim[3], int u_output_dim, float in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load, int u_use_cuda_TC);
@@ -58,10 +57,10 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 void save_network(network *net, char *filename);
 void load_network(network *net, char *filename, int epoch);
 void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every);
-void forward_testset(network *net, int train_step, int repeat);
+void forward_testset(network *net, int train_step, int repeat, int drop_mode);
 
 
-//activations function
+//activations.c
 void define_activation(layer *current);
 void output_error(layer* current);
 void output_deriv_error(layer* current);
@@ -84,7 +83,7 @@ void pool_create(network *net, layer* previous, int pool_size);
 void pool_save(FILE *f, layer *current);
 void pool_load(network *net, FILE *f);
 
-//initializers
+//initializers.c
 float random_uniform(void);
 float random_normal(void);
 void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value);

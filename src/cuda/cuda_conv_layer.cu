@@ -125,6 +125,7 @@ void cuda_forward_conv_layer(layer *current)
 	int image_padding;
 	int im2col_prev_bias;
 	int dim_a, dim_b, dim_c;
+	float w_alpha;
 
 	if(current->c_network->length == 0)
 		return;
@@ -203,9 +204,19 @@ void cuda_forward_conv_layer(layer *current)
 	//cuda im2col conversion kernel -> one of the most complex function, go see details above
 	
 
+	if(current->c_network->is_inference && current->c_network->inference_drop_mode == AVG_MODEL)
+	{
+		if(current->previous != NULL)
+			w_alpha = (1.0f - ((conv_param*)current->previous->param)->dropout_rate);
+		else
+			w_alpha = 1.0f;
+	}
+	else
+		w_alpha = 1.0f;
+
 	//Input X filters matrix multiplication for the all batch
 	cublasGemmEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, current->c_network->batch_size 
-		* (c_param->nb_area_w*c_param->nb_area_h), c_param->nb_filters, c_param->flat_f_size, &cu_alpha, 
+		* (c_param->nb_area_w*c_param->nb_area_h), c_param->nb_filters, c_param->flat_f_size, &w_alpha, 
 		c_param->im2col_input, cuda_data_type, c_param->flat_f_size, c_param->filters, cuda_data_type,  
 		c_param->flat_f_size, &cu_beta, current->output, cuda_data_type, current->c_network->batch_size 
 		* (c_param->nb_area_w*c_param->nb_area_h), cuda_compute_type, CUBLAS_GEMM_DEFAULT);
@@ -213,7 +224,7 @@ void cuda_forward_conv_layer(layer *current)
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
 	
-	if(c_param->dropout_rate > 0.01)
+	if(c_param->dropout_rate > 0.01 && (!current->c_network->is_inference || current->c_network->inference_drop_mode == MC_MODEL))
 	{
 		cu_blocks = (c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h));
 		cuda_dropout_select_conv<<<cu_blocks, 1>>>(c_param->dropout_mask, c_param->nb_filters 

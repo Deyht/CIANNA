@@ -1365,7 +1365,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0f, lambda_size = 1.0f, lambda_noobj = 0.25f, obj_scale = 1.0f, param_scale = 1.0f;
+	float lambda_coord = 2.0f, lambda_size = 1.0f, lambda_noobj = 0.5f, obj_scale = 1.0f, param_scale = 1.0f;
 	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
@@ -1484,21 +1484,31 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			for(k = 0; k < 2; k++)
 				delta_o[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] = (half) (TC_scale_factor*lambda_size*
 					((float)output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2]));
-			
-			if(max_IoU > 0.1f)
+			if(0) //IoU Objectness
 			{
-				delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = (half)(
-					TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
-					*(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
-					*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-max_IoU));
+				if(max_IoU > 0.1f)
+				{
+					delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = (half)(
+						TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
+						*(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
+						*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-max_IoU));
+				}
+				else
+				{
+					delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = (half)(
+                        	                TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
+                        	                *(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
+                        	                *((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-0.1f));
+				}
 			}
 			else
 			{
 				delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = (half)(
-                                        TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
-                                        *(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
-                                        *((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-0.1f));
+                                            TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
+                                            *(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
+                                            *((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-1.0f));
 			}
+
 			//cross entropy error on classes
 			for(k = 0; k < nb_class; k++)
 			{
@@ -1805,7 +1815,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0f, lambda_size = 1.0f, lambda_noobj = 0.25f, obj_scale = 1.0f, param_scale = 1.0f;
+	float lambda_coord = 2.0f, lambda_size = 1.0f, lambda_noobj = 0.5f, obj_scale = 1.0f, param_scale = 1.0f;
 	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
@@ -1922,18 +1932,28 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 					0.5f*lambda_size*((float)output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2])
 					*((float)output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2]);
 			
-			if(max_IoU > 0.1f)
+			if(0) //IoU objectness
 			{
-				output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] =
-					0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-max_IoU)
-					*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-max_IoU);
+				if(max_IoU > 0.1f)
+				{
+					output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] =
+						0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-max_IoU)
+						*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-max_IoU);
+				}
+				else
+				{
+					output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] =
+						0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-0.1f)
+						*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-0.1f);
+				}
 			}
 			else
 			{
 				output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] =
-					0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-0.1f)
-					*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-0.1f);
+                                                0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-1.0f)
+                                                *((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-1.0f);
 			}
+
 			//cross entropy error on classes
 			for(k = 0; k < nb_class; k++)
 			{

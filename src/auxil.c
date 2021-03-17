@@ -124,6 +124,8 @@ CIANNA V-0.9.2.2 EXPERIMENTAL BUILD (03/2021), by D.Cornu\n\
 	net->nb_layers = 0;
 	net->epoch = 0;
 	net->norm_factor_defined = 0;
+	net->is_inference = 0;
+        net->inference_drop_mode = AVG_MODEL;
 	
 	//YOLO null setting
 	net->yolo_nb_box = 0;
@@ -1163,6 +1165,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		
 		//Loop on all batch for one epoch
 		printf("\nEpoch: %d\n", net->epoch);
+		net->is_inference = 0;
+        	net->inference_drop_mode = AVG_MODEL;
 		for(j = 0; j < net->train.nb_batch; j++)
 		{
 		
@@ -1261,6 +1265,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			printf("\nControl step epoch: %d\n", net->epoch);
 			printf("Net. training perf.: %0.2f items/s\n", items_per_s);
 			printf("Learning rate : %g\n", net->learning_rate);
+			net->is_inference = 1;
+			net->inference_drop_mode = AVG_MODEL;
 			compute_error(net, net->valid, 0, show_confmat, 1);
 			printf("\n");
 		}
@@ -1299,7 +1305,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 }
 
 
-void forward_testset(network *net, int train_step, int repeat)
+void forward_testset(network *net, int train_step, int repeat, int drop_mode)
 {
 	//update out_size in case of forward with no training
 	switch(net->net_layers[net->nb_layers-1]->type)
@@ -1347,6 +1353,8 @@ void forward_testset(network *net, int train_step, int repeat)
 	else
 	{
 		printf("before compute forward\n");
+		net->is_inference = 1;
+        	net->inference_drop_mode = drop_mode;
 		compute_error(net, net->test, 1, 0, repeat);
 		printf("after compute forward\n");
 	}

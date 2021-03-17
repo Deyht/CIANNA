@@ -36,6 +36,7 @@ enum GPU_type{FP32, FP16, BF16};
 enum layer_type{CONV, POOL, DENSE};
 enum activation_functions{RELU, LOGISTIC, SOFTMAX, YOLO, LINEAR};
 enum initializers{N_XAVIER, U_XAVIER, N_LECUN, U_LECUN, U_RAND, N_RAND};
+enum inference_modes{AVG_MODEL, MC_MODEL};
 enum batch_param{OFF, SGD, FULL};
 enum data_types{c_FP32, c_UINT16, c_UINT8};
 enum compute_method{C_NAIV, C_BLAS, C_CUDA};
@@ -112,6 +113,8 @@ struct network
 	int batch_size;
 	int batch_param;
 	int epoch;
+	int is_inference;
+	int inference_drop_mode;
 	
 	void* input;
 	void* target;
