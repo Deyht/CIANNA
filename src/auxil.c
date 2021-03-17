@@ -183,6 +183,7 @@ void print_epoch_advance(int c_batch, int nb_batch, float loss)
 	int i;
 	int size = 60;
 	
+	//Must check for case where the total number of tick change
 	printf("\e[?25l");
 	printf("\r[");
 	for(i = 0; i < size*((float)c_batch/nb_batch); i++)
