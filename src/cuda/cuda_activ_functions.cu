@@ -1365,7 +1365,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0f, lambda_size = 1.0f, lambda_noobj = 0.5f, obj_scale = 1.0f, param_scale = 1.0f;
+	float lambda_coord = 2.0f, lambda_size = 1.0f, lambda_noobj = 0.25f, obj_scale = 1.0f, param_scale = 1.0f;
 	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
@@ -1484,7 +1484,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			for(k = 0; k < 2; k++)
 				delta_o[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] = (half) (TC_scale_factor*lambda_size*
 					((float)output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2]));
-			if(0) //IoU Objectness
+			if(1) //IoU Objectness
 			{
 				if(max_IoU > 0.1f)
 				{
@@ -1521,7 +1521,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			}
 			
 			//linear activation of additional parameters
-			if(max_IoU > 0.2f)
+			if(max_IoU > 0.3f)
 			{
 				for(k = 0; k < nb_param; k++)
 				{
@@ -1815,7 +1815,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0f, lambda_size = 1.0f, lambda_noobj = 0.5f, obj_scale = 1.0f, param_scale = 1.0f;
+	float lambda_coord = 2.0f, lambda_size = 1.0f, lambda_noobj = 0.25f, obj_scale = 1.0f, param_scale = 1.0f;
 	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
@@ -1932,7 +1932,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 					0.5f*lambda_size*((float)output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2])
 					*((float)output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2]);
 			
-			if(0) //IoU objectness
+			if(1) //IoU objectness
 			{
 				if(max_IoU > 0.1f)
 				{
@@ -1975,7 +1975,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			}
 			
 			//linear error of additional parameters
-			if(max_IoU > 0.2f)
+			if(max_IoU > 0.3f)
 			{
 				for(k = 0; k < nb_param; k++)
 				{
