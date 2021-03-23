@@ -116,7 +116,7 @@ void conv_define_activation_param(layer *current)
 			((yolo_param*)current->activ_param)->cell_h = current->c_network->input_height / c_param->nb_area_h;
 			((yolo_param*)current->activ_param)->beta = 1.0;
 			((yolo_param*)current->activ_param)->saturation = 10.0;
-			c_param->bias_value = 0.1;
+			c_param->bias_value = 0.01;
 			break;
 			
 		case LINEAR:
