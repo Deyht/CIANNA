@@ -28,7 +28,7 @@
 static int cu_blocks;
 int cu_threads = CUDA_THREADS_PER_BLOCKS;
 float cu_alpha = 1.0f, cu_beta = 0.0f;
-float TC_scale_factor = 32.0f;
+float TC_scale_factor = 4.0f;
 cublasHandle_t cu_handle;
 cudaDataType cuda_data_type = CUDA_R_32F;
 cudaDataType cuda_compute_type = CUDA_R_32F;

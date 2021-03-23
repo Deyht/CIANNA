@@ -251,6 +251,7 @@ typedef struct yolo_param
 	int nb_param;
 	float *prior_w;
 	float *prior_h;
+	float *prior_diag;
 	int size;
 	int dim;
 	int biased_dim;

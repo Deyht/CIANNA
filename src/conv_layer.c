@@ -53,6 +53,7 @@ This might produce unstable results !\n\n");
 
 void conv_define_activation_param(layer *current)
 {
+	int i;
 	c_param = (conv_param*) current->param;
 	
 	switch(current->activation_type)
@@ -103,6 +104,10 @@ void conv_define_activation_param(layer *current)
 			//Priors table must be sent to GPU memory if C_CUDA
 			((yolo_param*)current->activ_param)->prior_w = current->c_network->yolo_prior_w;
 			((yolo_param*)current->activ_param)->prior_h = current->c_network->yolo_prior_h;
+			((yolo_param*)current->activ_param)->prior_diag = malloc(current->c_network->yolo_nb_box*sizeof(float));
+			for(i = 0; i < current->c_network->yolo_nb_box; i++)
+				((yolo_param*)current->activ_param)->prior_diag[i] = sqrt(current->c_network->yolo_prior_w[i]*current->c_network->yolo_prior_w[i] 
+											+ current->c_network->yolo_prior_h[i]*current->c_network->yolo_prior_h[i]);
 			((yolo_param*)current->activ_param)->size = c_param->nb_area_w 
 				* c_param->nb_area_h *  c_param->nb_filters * current->c_network->batch_size;
 			((yolo_param*)current->activ_param)->dim = ((yolo_param*)current->activ_param)->size;
