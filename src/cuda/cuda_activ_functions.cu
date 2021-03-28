@@ -1377,7 +1377,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0f, lambda_size = 1.5f, lambda_noobj = 0.25f, obj_scale = 1.0f, param_scale = 1.0f;
+	float lambda_coord = 2.0f, lambda_size = 1.5f, lambda_noobj = 0.5f, obj_scale = 2.0f, param_scale = 1.0f;
 	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
@@ -1442,12 +1442,12 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 					max_IoU = current_IoU;
 					resp_box = k;
 				}
-				if(current_IoU > 0.7f) //Avoid update of non best but still good match boxes
+				if(current_IoU > 0.3f) //Avoid update of non best but still good match boxes
 					box_locked[k] = 1;
 			}
 				 	
 			//Should be replaced by a centered IoU comparison to account for non square boxes
-			if(max_IoU < 0.3f)
+			if(max_IoU < 0.1f)
                         {
                                 obj_diag = sqrt((targ_int[2] - targ_int[0])*(targ_int[2] - targ_int[0]) + (targ_int[3] - targ_int[1])*(targ_int[3] - targ_int[1]));
                                 dist_diag = abs(obj_diag-prior_diag[resp_box]);
@@ -1502,7 +1502,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			switch(0) //IoU Objectness
 			{
 				case 0:
-					if(max_IoU > 0.3f)
+					if(max_IoU > 0.1f)
 					{
 						delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = (half)(
 							TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
@@ -1514,7 +1514,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 						delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = (half)(
                         		                TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
                         		                *(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
-                        		                *((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-0.3f));
+                        		                *((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-0.1f));
 					}
 					break;
 				case 1:
@@ -1548,7 +1548,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			}
 			
 			//linear activation of additional parameters
-			if(max_IoU > 0.3f)
+			if(max_IoU > 0.5f)
 			{
 				for(k = 0; k < nb_param; k++)
 				{
@@ -1845,7 +1845,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 	
 	int *box_locked;
 	
-	float lambda_coord = 2.0f, lambda_size = 1.5f, lambda_noobj = 0.25f, obj_scale = 1.0f, param_scale = 1.0f;
+	float lambda_coord = 2.0f, lambda_size = 1.5f, lambda_noobj = 0.5f, obj_scale = 2.0f, param_scale = 1.0f;
 	float out_int[4], targ_int[4];
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
@@ -1907,12 +1907,12 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 					max_IoU = current_IoU;
 					resp_box = k;
 				}
-				if(current_IoU > 0.7f) //Avoid update of non best but still good match boxes
+				if(current_IoU > 0.3f) //Avoid update of non best but still good match boxes
 					box_locked[k] = 1;
 
 			}
 			
-			if(max_IoU < 0.3f)
+			if(max_IoU < 0.1f)
 			{
 				obj_diag = sqrt((targ_int[2] - targ_int[0])*(targ_int[2] - targ_int[0]) + (targ_int[3] - targ_int[1])*(targ_int[3] - targ_int[1]));
 				dist_diag = abs(obj_diag-prior_diag[resp_box]);
@@ -1964,7 +1964,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			switch(0) //IoU objectness
 			{
 				case 0:
-					if(max_IoU > 0.3f)
+					if(max_IoU > 0.1f)
 					{
 						output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] =
 							0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-max_IoU)
@@ -1973,8 +1973,8 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 					else
 					{
 						output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] =
-							0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-0.3f)
-							*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-0.3f);
+							0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-0.1f)
+							*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-0.1f);
 					}
 					break;
 			
@@ -2016,7 +2016,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			}
 			
 			//linear error of additional parameters
-			if(max_IoU > 0.3f)
+			if(max_IoU > 0.5f)
 			{
 				for(k = 0; k < nb_param; k++)
 				{

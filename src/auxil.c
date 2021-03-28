@@ -1266,7 +1266,6 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			printf("Net. training perf.: %0.2f items/s\n", items_per_s);
 			printf("Learning rate : %g\n", net->learning_rate);
 			net->is_inference = 1;
-			net->inference_drop_mode = AVG_MODEL;
 			compute_error(net, net->valid, 0, show_confmat, 1);
 			printf("\n");
 		}
