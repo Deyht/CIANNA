@@ -31,6 +31,7 @@
 #include <tgmath.h>
 #include <string.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #ifdef comp_CUDA
 #ifdef CUDA

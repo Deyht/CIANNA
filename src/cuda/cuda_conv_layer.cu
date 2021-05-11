@@ -387,25 +387,28 @@ void cuda_backward_conv_layer(layer *current)
 	
 	//########################  WEIGHTS UPDATE   ########################
 	
-	//based on the recovered delta_o provided by the next layer propagation
-	//CUBLAS_OP_N ,in this case, is a transpose of regular input (see forward function)
-	cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, c_param->flat_f_size, c_param->nb_filters, 
-		c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size, 
-		&current->c_network->learning_rate, c_param->im2col_input, cuda_data_type, c_param->flat_f_size, 
-		current->delta_o, cuda_data_type, c_param->nb_area_w * c_param->nb_area_h 
-		* current->c_network->batch_size, &current->c_network->momentum, c_param->update, cuda_data_type, 
-		c_param->flat_f_size, cuda_compute_type, CUBLAS_GEMM_DEFAULT);
-	
-	switch(current->c_network->use_cuda_TC)
+	if(!current->frozen)
 	{
-		case 0:
-			cuda_update_weights(current->c_network, c_param->filters, c_param->update, 
-				c_param->flat_f_size * c_param->nb_filters);
-			break;
-		case 1:
-			cuda_update_weights(current->c_network, c_param->FP32_filters, c_param->update, 
-				c_param->flat_f_size * c_param->nb_filters);
-			break;
+		//based on the recovered delta_o provided by the next layer propagation
+		//CUBLAS_OP_N ,in this case, is a transpose of regular input (see forward function)
+		cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, c_param->flat_f_size, c_param->nb_filters, 
+			c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size, 
+			&current->c_network->learning_rate, c_param->im2col_input, cuda_data_type, c_param->flat_f_size, 
+			current->delta_o, cuda_data_type, c_param->nb_area_w * c_param->nb_area_h 
+			* current->c_network->batch_size, &current->c_network->momentum, c_param->update, cuda_data_type, 
+			c_param->flat_f_size, cuda_compute_type, CUBLAS_GEMM_DEFAULT);
+		
+		switch(current->c_network->use_cuda_TC)
+		{
+			case 0:
+				cuda_update_weights(current->c_network, c_param->filters, c_param->update, 
+					c_param->flat_f_size * c_param->nb_filters);
+				break;
+			case 1:
+				cuda_update_weights(current->c_network, c_param->FP32_filters, c_param->update, 
+					c_param->flat_f_size * c_param->nb_filters);
+				break;
+		}
 	}
 
 }

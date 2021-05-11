@@ -27,11 +27,13 @@
 
 static int cu_blocks;
 int cu_threads = CUDA_THREADS_PER_BLOCKS;
-float cu_alpha = 1.0f, cu_beta = 0.0f;
-float TC_scale_factor = 16.0f;
+float cu_alpha = 1.0f, cu_beta= 0.0f;
+float TC_scale_factor = 32.0f;
 cublasHandle_t cu_handle;
 cudaDataType cuda_data_type = CUDA_R_32F;
 cudaDataType cuda_compute_type = CUDA_R_32F;
+
+cudaEvent_t cu_event_start, cu_event_stop;
 
 //local prototypes
 __global__ void add_confmat(network* net, void *out, void *targ, float *mat, int len, int o_dim);
@@ -543,6 +545,28 @@ void cuda_confmat(network *net, float* mat)
 			break;
 	}
 }
+
+void cuda_perf_eval_init(void)
+{
+	cudaEventCreate(&cu_event_start);
+	cudaEventCreate(&cu_event_stop);
+}
+
+void cuda_perf_eval_in(void)
+{
+	cudaEventRecord(cu_event_start);
+}
+
+float cuda_perf_eval_out()
+{
+	float time = 0.0f; //milliseconds
+	cudaEventRecord(cu_event_stop);
+	cudaEventSynchronize(cu_event_stop);
+	cudaEventElapsedTime(&time, cu_event_start, cu_event_stop);
+	
+	return time;
+}
+
 
 __global__ void shfl_kern_FP32(float **in, float **targ, float** train_dupl, float** targ_dupl,
 									int* index, int in_size, int b_size, int d_in, int d_out)

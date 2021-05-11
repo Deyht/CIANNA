@@ -47,8 +47,8 @@ void softmax_deriv(layer *previous);
 void softmax_deriv_output_error(layer *current);
 void softmax_output_error(layer *current);
 
-void ReLU_activation_fct(void *tab, int len, int dim, float leaking_factor);
-void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, float leaking_factor, int size);
+void ReLU_activation_fct(void *tab, int len, int dim, float saturation, float leaking_factor);
+void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, float saturation, float leaking_factor, int size);
 void quadratic_deriv_output_error(void *delta_o, void *output, void *target, 
 	int dim, int len, int size);
 void quadratic_output_error(void *output_error, void *output, void *target, 
@@ -59,8 +59,6 @@ void softmax_activation_fct(void *tab, int len, int dim, int size);
 void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int size);
 void cross_entropy_output_error(void *output_error, void *output, void *target, int len, int dim, int size);
 
-int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class, int nb_param);
-
 //#####################################################
 
 
@@ -69,6 +67,7 @@ void define_activation(layer *current)
 	switch(current->activation_type)
 	{
 		case RELU:
+		case RELU_6:
 			current->activation = ReLU_activation;
 			current->deriv_activation = ReLU_deriv;
 			break;
@@ -98,6 +97,7 @@ void deriv_output_error(layer *current)
 	switch(current->activation_type)
 	{
 		case RELU:
+		case RELU_6:
 			ReLU_deriv_output_error(current);
 			break;
 		
@@ -123,6 +123,7 @@ void output_error_fct(layer* current)
 	switch(current->activation_type)
 	{
 		case RELU:
+		case RELU_6:
 			ReLU_output_error(current);
 			break;
 		
@@ -205,6 +206,10 @@ void print_activ_param(FILE *f, int type)
 		case YOLO:
 			fprintf(f,"(YOLO)");
 			break;
+			
+		case RELU_6:
+			fprintf(f,"(RELU_6)");
+			break;
 	
 		case RELU:
 		default:
@@ -232,6 +237,10 @@ void get_string_activ_param(char* activ, int type)
 		case YOLO:
 			sprintf(activ,"(YOLO)");
 			break;
+			
+		case RELU_6:
+			sprintf(activ,"(RELU_6)");
+			break;
 	
 		case RELU:
 		default:
@@ -250,6 +259,8 @@ int load_activ_param(char *type)
 		return LOGISTIC;
 	else if(strcmp(type, "(YOLO)") == 0)
 		return YOLO;
+	else if(strcmp(type, "(RELU_6)") == 0)
+		return RELU_6;
 	else if(strcmp(type, "(RELU)") == 0)
 		return RELU;
 	else
@@ -302,11 +313,11 @@ void ReLU_activation(layer *current)
 {
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	ReLU_activation_fct(current->output, param->size, param->dim, 
-		param->leaking_factor);
+		param->saturation, param->leaking_factor);
 }
 
 //Is in fact a leaky ReLU, to obtain true ReLU define leaking_factor to 0
-void ReLU_activation_fct(void *tab, int len, int dim, float leaking_factor)
+void ReLU_activation_fct(void *tab, int len, int dim, float saturation, float leaking_factor)
 {
 	int i;
 	int pos;
@@ -318,6 +329,8 @@ void ReLU_activation_fct(void *tab, int len, int dim, float leaking_factor)
 		pos = i + i/dim;
 		if(f_tab[pos] <= 0.0)
 			f_tab[pos] *= leaking_factor;
+		else if(f_tab[i] > saturation)
+			f_tab[i] = saturation + (f_tab[i] - saturation)*leaking_factor;
 	}
 }
 
@@ -326,12 +339,12 @@ void ReLU_deriv(layer *previous)
 {
 	ReLU_param *param = (ReLU_param*)previous->activ_param;
 	ReLU_deriv_fct(previous->delta_o, previous->output, param->size, param->dim,
-		param->leaking_factor, param->size);
+		param->saturation, param->leaking_factor, param->size);
 }
 
 
 //should be adapted for both conv and dense layer if dim is properly defined
-void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, float leaking_factor, int size)
+void ReLU_deriv_fct(void *deriv, void *value, int len, int dim,  float saturation, float leaking_factor, int size)
 {
 	int i;
 	float *f_deriv = (float*) deriv;
@@ -343,6 +356,8 @@ void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, float leaking_fa
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
 			if(f_value[i] <= 0.0)
+				f_deriv[i] *= leaking_factor;
+			else if(f_deriv[i] > saturation)
 				f_deriv[i] *= leaking_factor;
 		}
 		else
@@ -358,7 +373,7 @@ void ReLU_deriv_output_error(layer* current)
 	quadratic_deriv_output_error(current->delta_o, current->output, current->c_network->target,
 		(param->biased_dim) * current->c_network->length, param->dim, param->size);
 	ReLU_deriv_fct(current->delta_o, current->output, 
-		param->size, param->dim, param->leaking_factor, param->size);
+		param->size, param->dim, param->saturation, param->leaking_factor, param->size);
 }
 
 
@@ -651,25 +666,114 @@ void cross_entropy_output_error(void *output_error, void *output, void *target, 
 
 
 //#####################################################
-//          Soft-Max activation related functions
+//          YOLO activation related functions
 //#####################################################
 
 
-int set_yolo_params(network *net, int nb_box, float *prior_w, float *prior_h, int nb_class, int nb_param)
+int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *yolo_noobj_prob_prior, int nb_class, int nb_param, float *scale_tab, float **slopes_and_maxes_tab, float *IoU_limits, int *fit_parts)
 {
-	if(net->yolo_prior_w != NULL)
-		free(net->yolo_prior_w);
-	if(net->yolo_prior_h != NULL)
-		free(net->yolo_prior_h);
+	int i;
+	float *temp;
+	float **sm;
+	char IoU_type_char[40];
+	
+	net->y_param->IoU_type = IoU_type;
+	
+	switch(net->y_param->IoU_type)
+	{
+		//place holder for CPU IoU_fct assignement
+		//currently assigned in gpu activation function conversion
+		default:
+			net->y_param->c_IoU_fct = NULL;
+	}
+	
+	if(scale_tab == NULL)
+	{
+		scale_tab = (float*) calloc(6, sizeof(float));
+		for(i = 0; i < 6; i++)
+			scale_tab[i] = 1.0f;
+	}
+	
+	if(slopes_and_maxes_tab == NULL)
+	{
+		temp = (float*) calloc(6*3, sizeof(float));
+		slopes_and_maxes_tab = (float**) malloc(6*sizeof(float*));
+		for(i = 0; i < 6; i++)
+			slopes_and_maxes_tab[i] = &temp[i*3];
+	
+		sm = slopes_and_maxes_tab;
+		sm[0][0] = 1.0f; sm[0][1] = 8.0f; sm[0][2] = 0.0f;
+		sm[1][0] = 1.0f; sm[1][1] = 1.8f; sm[1][2] = -1.4f;
+		sm[2][0] = 1.0f; sm[2][1] = 8.0f; sm[2][2] = 0.0f;
+		sm[3][0] = 1.0f; sm[3][1] = 8.0f; sm[3][2] = 0.0f;
+		sm[4][0] = 1.0f; sm[4][1] = 8.0f; sm[4][2] = 0.0f;
+		sm[5][0] = 1.0f; sm[5][1] = 2.0f; sm[5][2] = -0.2f;
+	}
 
-	net->yolo_nb_box = nb_box;
-	net->yolo_prior_w = prior_w;
-	net->yolo_prior_h = prior_h;
-	net->yolo_nb_class = nb_class;
-	net->yolo_nb_param = nb_param;
+	if(IoU_limits == NULL)
+	{
+		IoU_limits = (float*) calloc(5,sizeof(float));
+		IoU_limits[0] = 0.3f;
+		IoU_limits[1] = 0.0f; IoU_limits[2] = 0.3f;
+		IoU_limits[3] = 0.3f; IoU_limits[4] = 0.3f;
+	}
 	
+	if(fit_parts == NULL)
+	{
+		fit_parts = (int*) calloc(5,sizeof(int));
+		for(i = 0; i < 5; i++)
+			fit_parts[i] = 1;
+	}
 	
-	return(nb_box*(5+nb_class+nb_param));
+	net->y_param->nb_box = nb_box;
+	net->y_param->prior_w = prior_w;
+	net->y_param->prior_h = prior_h;
+	net->y_param->noobj_prob_prior = yolo_noobj_prob_prior;
+	net->y_param->nb_class = nb_class;
+	net->y_param->nb_param = nb_param;
+	
+	//Priors table must be sent to GPU memory if C_CUDA
+	net->y_param->scale_tab = scale_tab;
+	net->y_param->slopes_and_maxes_tab = slopes_and_maxes_tab;
+	net->y_param->IoU_limits = IoU_limits;
+	net->y_param->fit_parts = fit_parts;
+	
+	switch(net->y_param->IoU_type)
+	{
+		case IOU:
+			sprintf(IoU_type_char, "Classical IoU");
+			break;
+		case GIOU:
+			sprintf(IoU_type_char, "Generalized GIoU");
+			break;
+		case DIOU:
+			sprintf(IoU_type_char, "Distance DIoU");
+			break;
+		default:
+			break;
+	}
+	
+	printf("\nYOLO layer set with:\n Nboxes = %d\n Ndimensions = %d\n Nclasses = %d\n Nparams = %d\n IoU type = %s\n",
+			net->y_param->nb_box, 2, net->y_param->nb_class, net->y_param->nb_param, IoU_type_char);
+	printf(" W priors = [");
+	for(i = 0; i < net->y_param->nb_box; i++)
+		printf("%7.3f ", net->y_param->prior_w[i]);
+	printf("]\n H priors = [");
+	for(i = 0; i < net->y_param->nb_box; i++)
+		printf("%7.3f ", net->y_param->prior_h[i]);
+	printf("]\n No obj. prob. priors\n          = [");
+	for(i = 0; i < net->y_param->nb_box; i++)
+		printf("%7.3f ", net->y_param->noobj_prob_prior[i]);
+	printf("]\n");
+	printf(" Error scales: Posit.   Size   Proba.  Objct.  Class.  Param.\n            [");
+	for(i = 0; i < 6; i++)
+		printf("  %5.3f ",net->y_param->scale_tab[i]);
+	printf("]\n IoU lim. = [");
+	for(i = 0; i < 5; i++)
+		printf("%7.3f ", net->y_param->IoU_limits[i]);
+	printf("]\n\n");
+	
+	return(nb_box*(6+nb_class+nb_param));
 }
 
 

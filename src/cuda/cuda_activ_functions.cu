@@ -19,10 +19,6 @@
 */
 
 
-
-
-
-
 #include "../prototypes.h"
 
 
@@ -56,10 +52,10 @@ void cuda_YOLO_deriv_output_error(layer *current);
 void cuda_YOLO_output_error(layer *current);
 
 
-__global__ void ReLU_activation_kernel_FP32(float *tab, int len, int dim, float leaking_factor);
-__global__ void ReLU_activation_kernel_FP16(half *tab, int len, int dim, float leaking_factor);
-__global__ void ReLU_deriv_kernel_FP32(float *deriv, float *value, int len, int dim, float leaking_factor, int size);
-__global__ void ReLU_deriv_kernel_FP16(half *deriv, half *value, int len, int dim, float leaking_factor, int size);
+__global__ void ReLU_activation_kernel_FP32(float *tab, int len, int dim, float saturation, float leaking_factor);
+__global__ void ReLU_activation_kernel_FP16(half *tab, int len, int dim, float saturation, float leaking_factor);
+__global__ void ReLU_deriv_kernel_FP32(float *deriv, float *value, int len, int dim, float saturation, float leaking_factor, int size);
+__global__ void ReLU_deriv_kernel_FP16(half *deriv, half *value, int len, int dim, float saturation, float leaking_factor, int size);
 
 __global__ void quadratic_deriv_output_error_kernel_FP32(float *delta_o, float *output, float *target, 
 	int dim, int len, int size);
@@ -86,23 +82,36 @@ __global__ void cross_entropy_output_error_kernel_FP32(float *output_error, floa
 	int len, int dim, int size);
 __global__ void cross_entropy_output_error_kernel_FP16(float *output_error, half *output, half *target, 
 	int len, int dim, int size);
-	
-__global__ void YOLO_activation_kernel_FP32(float *tab, float beta, float saturation, int flat_offset, int len, int nb_class, int nb_param, int size);
-__global__ void YOLO_activation_kernel_FP16(half *tab, float beta, float saturation, int flat_offset, int len, int nb_class, int nb_param, int size);
-__global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, float *target, int beta, int flat_target_size, int flat_output_size, int cell_w, int cell_h, int nb_area_w, int nb_area_h, const int nb_box, int nb_class, int nb_param, float *prior_w, float *prior_h, int size);
-__global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *target, int beta, int flat_target_size, int flat_output_size, int cell_w, int cell_h, int nb_area_w, int nb_area_h, const int nb_box, int nb_class, int nb_param, float *prior_w, float *prior_h, float *prior_diag, int size, float TC_scale_factor);
-__global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float *target, int flat_target_size, int flat_output_size, int cell_w, int cell_h, int nb_area_w, int nb_area_h, const int nb_box, int nb_class, int nb_param, float *prior_w, float *prior_h, int size);
-__global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *target, int flat_target_size, int flat_output_size, int cell_w, int cell_h, int nb_area_w, int nb_area_h, const int nb_box, int nb_class, int nb_param, float *prior_w, float *prior_h, float *prior_diag, int size);
+
+__device__ float gpu_IoU_fct(float* output, float* target);
+__device__ float gpu_GIoU_fct(float* output, float* target);
+__device__ float gpu_DIoU_fct(float* output, float* target);
+typedef float(*pointFunction_gpu_IoU)(float*, float*); 
+__device__ pointFunction_gpu_IoU device_gpu_IoU_fct  = gpu_IoU_fct;
+__device__ pointFunction_gpu_IoU device_gpu_GIoU_fct = gpu_GIoU_fct;
+__device__ pointFunction_gpu_IoU device_gpu_DIoU_fct = gpu_DIoU_fct;
+
+__global__ void YOLO_activation_kernel_FP32(float *tab, int flat_offset, int len, yolo_param y_param, int size);
+__global__ void YOLO_activation_kernel_FP16(half *tab, int flat_offset, int len, yolo_param y_param, int size);
+__global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, float *target, int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, yolo_param y_param, int size);
+__global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *target, int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, yolo_param y_param, int size, float TC_scale_factor);
+__global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float *target, int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, yolo_param y_param, int size);
+__global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *target, int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, yolo_param y_param, int size);
+
+
 
 
 void cuda_define_activation(layer *current)
 {
 	void *a_param;
-	float *temp_tab;
+	float *temp_tab, *temp_tab2, **temp_tab3;
+	int *temp_int;
+	
 	
 	switch(current->activation_type)
 	{
 		case RELU:
+		case RELU_6:
 			current->activation = cuda_ReLU_activation;
 			current->deriv_activation = cuda_ReLU_deriv;
 			break;
@@ -121,8 +130,25 @@ void cuda_define_activation(layer *current)
 			a_param = (yolo_param*)current->activ_param;
 			current->activation = cuda_YOLO_activation;
 			current->deriv_activation = cuda_softmax_deriv;
-			float *device_prior_w, *device_prior_h;
-			float *device_prior_diag;
+			float *device_prior_w, *device_prior_h, *device_noobj_prob_prior;
+			float *device_scale_tab, **device_slopes_and_maxes_tab, *device_IoU_limits; 
+			int *device_fit_parts;
+			
+			switch(((yolo_param*)a_param)->IoU_type)
+			{
+				case IOU:
+					cudaMemcpyFromSymbol(&((yolo_param*)a_param)->c_IoU_fct, device_gpu_IoU_fct, sizeof(pointFunction_gpu_IoU));
+					break;
+					
+				case GIOU:
+					cudaMemcpyFromSymbol(&((yolo_param*)a_param)->c_IoU_fct, device_gpu_GIoU_fct, sizeof(pointFunction_gpu_IoU));
+					break;
+					
+				default:
+				case DIOU:
+					cudaMemcpyFromSymbol(&((yolo_param*)a_param)->c_IoU_fct, device_gpu_DIoU_fct, sizeof(pointFunction_gpu_IoU));
+					break;
+			}
 			
 			temp_tab = ((yolo_param*)a_param)->prior_w;
 			cudaMalloc(&device_prior_w, 
@@ -137,18 +163,51 @@ void cuda_define_activation(layer *current)
 			cudaMemcpy(device_prior_h, temp_tab,
 					((yolo_param*)a_param)->nb_box
 					*sizeof(float),cudaMemcpyHostToDevice);
-
-			temp_tab = ((yolo_param*)a_param)->prior_diag;
-                        cudaMalloc(&device_prior_diag, 
-                                        ((yolo_param*)a_param)->nb_box*sizeof(float));
-                        cudaMemcpy(device_prior_diag, temp_tab,
-                                        ((yolo_param*)a_param)->nb_box
-                                        *sizeof(float),cudaMemcpyHostToDevice);
+			
+			temp_tab = ((yolo_param*)a_param)->noobj_prob_prior;
+			cudaMalloc(&device_noobj_prob_prior, 
+					((yolo_param*)a_param)->nb_box*sizeof(float));
+			cudaMemcpy(device_noobj_prob_prior, temp_tab,
+					((yolo_param*)a_param)->nb_box
+					*sizeof(float),cudaMemcpyHostToDevice);
 					
+			temp_tab = ((yolo_param*)a_param)->scale_tab;
+			cudaMalloc(&device_scale_tab, 6*sizeof(float));
+			cudaMemcpy(device_scale_tab, temp_tab,
+					6*sizeof(float),cudaMemcpyHostToDevice);
+					
+			temp_tab = ((yolo_param*)a_param)->slopes_and_maxes_tab[0];
+			cudaMalloc(&temp_tab2, 6*3*sizeof(float));
+			cudaMemcpy(temp_tab2, temp_tab, 6*3*sizeof(float),cudaMemcpyHostToDevice);
+			for(int i = 0; i < 6; i++)
+				((yolo_param*)a_param)->slopes_and_maxes_tab[i] = &temp_tab2[i*3];
+			temp_tab3 = ((yolo_param*)a_param)->slopes_and_maxes_tab;
+			cudaMalloc(&device_slopes_and_maxes_tab, 6*sizeof(float*));
+			cudaMemcpy(device_slopes_and_maxes_tab, temp_tab3,
+					6*sizeof(float*),cudaMemcpyHostToDevice);
+					
+			temp_tab = ((yolo_param*)a_param)->scale_tab;
+			cudaMalloc(&device_scale_tab, 6*sizeof(float));
+			cudaMemcpy(device_scale_tab, temp_tab,
+					6*sizeof(float),cudaMemcpyHostToDevice);
+			
+			temp_tab = ((yolo_param*)a_param)->IoU_limits;
+			cudaMalloc(&device_IoU_limits, 5*sizeof(float));
+			cudaMemcpy(device_IoU_limits, temp_tab,
+					5*sizeof(float),cudaMemcpyHostToDevice);
+					
+			temp_int = ((yolo_param*)a_param)->fit_parts;
+			cudaMalloc(&device_fit_parts, 5*sizeof(int));
+			cudaMemcpy(device_fit_parts, temp_int,
+					5*sizeof(int),cudaMemcpyHostToDevice);
+			
 			((yolo_param*)a_param)->prior_w = device_prior_w;
 			((yolo_param*)a_param)->prior_h = device_prior_h;
-			((yolo_param*)a_param)->prior_diag = device_prior_diag;
-			
+			((yolo_param*)a_param)->noobj_prob_prior = device_noobj_prob_prior;
+			((yolo_param*)a_param)->scale_tab = device_scale_tab;
+			((yolo_param*)a_param)->slopes_and_maxes_tab = device_slopes_and_maxes_tab;
+			((yolo_param*)a_param)->IoU_limits = device_IoU_limits;
+			((yolo_param*)a_param)->fit_parts = device_fit_parts;
 			break;
 			
 		case LINEAR:
@@ -165,6 +224,7 @@ void cuda_deriv_output_error(layer *current)
 	switch(current->activation_type)
 	{
 		case RELU:
+		case RELU_6:
 			cuda_ReLU_deriv_output_error(current);
 			break;
 		
@@ -193,6 +253,7 @@ void cuda_output_error_fct(layer* current)
 	switch(current->activation_type)
 	{
 		case RELU:
+		case RELU_6:
 			cuda_ReLU_output_error(current);
 			break;
 		
@@ -297,17 +358,17 @@ void cuda_ReLU_activation(layer *current)
 		default:
 		case 0:
 			ReLU_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output, 
-				param->size, param->dim, param->leaking_factor);
+				param->size, param->dim, param->saturation, param->leaking_factor);
 			break;
 		case 1:
 			ReLU_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output, 
-				param->size, param->dim, param->leaking_factor);
+				param->size, param->dim, param->saturation, param->leaking_factor);
 			break;
 	}
 }
 
 //Is in fact a leaky ReLU, to obtain true ReLU set leaking_factor to 0
-__global__ void ReLU_activation_kernel_FP32(float *tab, int len, int dim, float leaking_factor)
+__global__ void ReLU_activation_kernel_FP32(float *tab, int len, int dim, float saturation, float leaking_factor)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 
@@ -316,12 +377,12 @@ __global__ void ReLU_activation_kernel_FP32(float *tab, int len, int dim, float 
 		i += i/dim;
 		if(tab[i] <= 0.0f)
 			tab[i] *= leaking_factor;
-		else if(tab[i] > 6.0f)
-			tab[i] = 6.0f + (tab[i] - 6.0f)*leaking_factor;
+		else if(tab[i] > saturation)
+			tab[i] = saturation + (tab[i] - saturation)*leaking_factor;
 	}
 }
 
-__global__ void ReLU_activation_kernel_FP16(half *tab, int len, int dim, float leaking_factor)
+__global__ void ReLU_activation_kernel_FP16(half *tab, int len, int dim, float saturation, float leaking_factor)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 
@@ -330,8 +391,8 @@ __global__ void ReLU_activation_kernel_FP16(half *tab, int len, int dim, float l
 		i += i/dim;
 		if(tab[i] <= (half) 0.0f)
 			tab[i] *= leaking_factor;
-		else if(tab[i] > (half) 18.0f)
-			tab[i] = (half) 18.0f + (tab[i] - (half) 18.0f)*((half)leaking_factor);
+		else if(tab[i] > (half) saturation)
+			tab[i] = (half) saturation + (tab[i] - (half)saturation)*((half)leaking_factor);
 	}
 }
 
@@ -346,16 +407,16 @@ void cuda_ReLU_deriv(layer *previous)
 		default:
 		case 0:
 			ReLU_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)previous->delta_o, 
-				(float*)previous->output, param->size, param->dim, param->leaking_factor, param->size);
+				(float*)previous->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
 			break;
 		case 1:
 			ReLU_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)previous->delta_o, 
-				(half*)previous->output, param->size, param->dim, param->leaking_factor, param->size);
+				(half*)previous->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
 			break;
 	}
 }
 
-__global__ void ReLU_deriv_kernel_FP32(float *deriv, float *value, int len, int dim, float leaking_factor, int size)
+__global__ void ReLU_deriv_kernel_FP32(float *deriv, float *value, int len, int dim, float saturation, float leaking_factor, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
@@ -366,7 +427,7 @@ __global__ void ReLU_deriv_kernel_FP32(float *deriv, float *value, int len, int 
 	{
 		if(value[i] <= 0.0f)
 			deriv[i] *= leaking_factor;
-		if(value[i] > 6.0f)
+		if(value[i] > saturation)
 			deriv[i] *= leaking_factor;
 	}
 	else
@@ -374,7 +435,7 @@ __global__ void ReLU_deriv_kernel_FP32(float *deriv, float *value, int len, int 
 }
 
 
-__global__ void ReLU_deriv_kernel_FP16(half *deriv, half *value, int len, int dim, float leaking_factor, int size)
+__global__ void ReLU_deriv_kernel_FP16(half *deriv, half *value, int len, int dim, float saturation, float leaking_factor, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
@@ -385,7 +446,7 @@ __global__ void ReLU_deriv_kernel_FP16(half *deriv, half *value, int len, int di
 	{
 		if(value[i] <= (half) 0.0f)
 			deriv[i] *= leaking_factor;
-		if(value[i] > (half) 18.0f)
+		if(value[i] > (half) saturation)
 			deriv[i] *= leaking_factor;
 	}
 	else
@@ -406,14 +467,14 @@ void cuda_ReLU_deriv_output_error(layer* current)
 				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
 				(param->biased_dim) * current->c_network->length, param->dim, param->size);
 			ReLU_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->delta_o, 
-				(float*)current->output, param->size, param->dim, param->leaking_factor, param->size);
+				(float*)current->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
 			break;
 		case 1:
 			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
 				(param->biased_dim) * current->c_network->length, param->dim, param->size, TC_scale_factor);
 			ReLU_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o,
-				(half*)current->output,	param->size, param->dim, param->leaking_factor, param->size);
+				(half*)current->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
 			break;
 	}
 }
@@ -954,7 +1015,7 @@ __global__ void cross_entropy_output_error_kernel_FP16(float *output_error, half
 void cuda_YOLO_activation(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
-        conv_param *c_param = (conv_param*)current->param;
+    conv_param *c_param = (conv_param*)current->param;
 	cu_blocks = (current->c_network->out_size *
 			current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
@@ -963,106 +1024,104 @@ void cuda_YOLO_activation(layer *current)
 		default:
 		case 0:
 			YOLO_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output,
-				2.0f/*a_param->beta*/, a_param->saturation, 
-				c_param->nb_area_w*c_param->nb_area_h*current->c_network->batch_size, 
-				a_param->biased_dim*current->c_network->length,
-				a_param->nb_class, a_param->nb_param, a_param->size);
-			break;
-		case 1:
-			YOLO_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output,
-				2.0f/*a_param->beta*/, a_param->saturation, 
 				c_param->nb_area_w*c_param->nb_area_h*current->c_network->batch_size,
 				a_param->biased_dim*current->c_network->length,
-				a_param->nb_class, a_param->nb_param, a_param->size);
+				*a_param, a_param->size);
+			break;
+		case 1:
+			YOLO_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output, 
+				c_param->nb_area_w*c_param->nb_area_h*current->c_network->batch_size,
+				a_param->biased_dim*current->c_network->length,
+				*a_param, a_param->size);
 			break;
 	}
 }
 
 
-__global__ void YOLO_activation_kernel_FP32(float *tab, float beta, float saturation, int flat_offset, int len, int nb_class, int nb_param, int size)
+__global__ void YOLO_activation_kernel_FP32(float *tab, int flat_offset, int len, yolo_param y_param, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
 	if(i >= size)
 		return;
 
-	int col,  in_col;
-
-	col = i / flat_offset;
-	in_col = col%(5+nb_class+nb_param);
-
-	if(in_col == 2 || in_col == 3 || in_col >= 5+nb_class)
-	{
-		if(tab[i] > 10.0f)
-			tab[i] = 10.0f;
-		else if(tab[i] < -6.0f)
-			tab[i] = -6.0f;
-		return;
-	}
-	
-	tab[i] = -beta*tab[i];
-	if(tab[i] > 10.0f)
-		tab[i] = 10.0f;
-	tab[i] = 1.0f/(1.0f + expf(tab[i]));
-	
-	
+	//int col,  in_col;
 }
 
 
-__global__ void YOLO_activation_kernel_FP16(half *tab, float beta, float saturation, int flat_offset, int len, int nb_class, int nb_param, int size)
+__global__ void YOLO_activation_kernel_FP16(half *tab, int flat_offset, int len, yolo_param y_param, int size)
 {
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	
+	int i = blockIdx.x*blockDim.x + threadIdx.x;	
 	if(i >= size)
 		return;
 
-	int col,  in_col;
+	int nb_class = y_param.nb_class, nb_param = y_param.nb_param;
+	//Default values are in activ_function.c (set_yolo_params)
+	float **sm_tab = y_param.slopes_and_maxes_tab;
+	
+	int col, in_col;
 
 	col = i / flat_offset;
-	in_col = col%(5+nb_class+nb_param);
+	in_col = col%(6+nb_class+nb_param);
 
-	if(in_col >= 5+nb_class)
-	{
-		if(tab[i] > (half)6.0f)
-			tab[i] = (half)6.0f;
-		else if(tab[i] < (half)(-4.0f))
-			tab[i] = (half)(-4.0f);
-		return;
-	}
-	
-	if(in_col == 2 || in_col == 3)
-        {
-                if(tab[i] > (half)3.0f)
-                        tab[i] = (half)3.0f;
-                else if(tab[i] < (half)(-4.0f))
-                        tab[i] = (half)(-4.0f);
-                return;
-        }
-
+	//Position
 	if(in_col == 0 || in_col == 1)
-	{	
-		tab[i] = -(half)1.0f*tab[i];
-        	if(tab[i] > (half)8.0f)
-        	        tab[i] = (half)8.0f;
-	        tab[i] = (half)1.0f/((half)1.0f + hexp(tab[i]));
-		
-		/*
-		tab[i] = tab[i]*((half)2.0f);
-
-		if(tab[i] > (half)1.0f)
-                        tab[i] = (half)1.0f + (tab[i] - (half)1.0f)*((half)0.02f);
-                else if(tab[i] < (half)(0.0f))
-                        tab[i] = tab[i]*((half)0.02f);
-		*/
+	{
+		tab[i] = -(half)sm_tab[0][0]*tab[i];
+		if(tab[i] > (half)sm_tab[0][1])
+			tab[i] = (half)sm_tab[0][1];
+		tab[i] = (half)1.0f/((half)1.0f + hexp(tab[i]));
 		return;
 	}
+	
+	//Box size
+	if(in_col == 2 || in_col == 3)
+	{
+		tab[i] = (half)sm_tab[1][0]*tab[i];
+		if(tab[i] > (half)sm_tab[1][1])
+			tab[i] = (half)sm_tab[1][1];
+		else if(tab[i] < (half)(sm_tab[1][2]))
+			tab[i] = (half)(sm_tab[1][2]);
+		return;
+	}
+	
+	//Object probability
+	if(in_col == 4)
+	{
+		tab[i] = -(half)sm_tab[2][0]*tab[i];
+		if(tab[i] > (half)sm_tab[2][1])
+			tab[i] = (half)sm_tab[2][1];
+		tab[i] = (half)1.0f/((half)1.0f + hexp(tab[i]));
+	}
+	
+	//Objectness (Obj. quality => based on IoU)
+	if(in_col == 5)
+	{
+		tab[i] = -(half)sm_tab[3][0]*tab[i];
+		if(tab[i] > (half)sm_tab[3][1])
+			tab[i] = (half)sm_tab[3][1];
+		tab[i] = (half)1.0f/((half)1.0f + hexp(tab[i]));
+	}
 
-	tab[i] = -(half)beta*tab[i];
-	if(tab[i] > (half)8.0f)
-		tab[i] = (half)8.0f;
-	tab[i] = (half)1.0f/((half)1.0f + hexp(tab[i]));
-	
-	
+	//Classes
+	if(in_col >= 6 && in_col < 6+nb_class)
+	{
+		tab[i] = -(half)sm_tab[4][0]*tab[i];
+		if(tab[i] > (half)sm_tab[4][1])
+			tab[i] = (half)sm_tab[4][1];
+		tab[i] = (half)1.0f/((half)1.0f + hexp(tab[i]));
+	}
+
+	//Additional parameters (regression)
+	if(in_col >= 6+nb_class)
+	{
+		tab[i] = (half)sm_tab[5][0]*tab[i];
+		if(tab[i] > (half)sm_tab[5][1])
+			tab[i] = (half)sm_tab[5][1];
+		else if(tab[i] < (half)(sm_tab[5][2]))
+			tab[i] = (half)(sm_tab[5][2]);
+		return;
+	}	
 }
 
 
@@ -1079,23 +1138,17 @@ void cuda_YOLO_deriv_output_error(layer *current)
 		case 0:
 			YOLO_deriv_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, 
-				(float*)current->c_network->target, 2.0f/*a_param->beta*/, current->c_network->output_dim, 
-				c_param->nb_area_w*c_param->nb_area_h, a_param->cell_w, a_param->cell_h, 
-				c_param->nb_area_w, c_param->nb_area_h, a_param->nb_box, a_param->nb_class,
-				a_param->nb_param, a_param->prior_w, a_param->prior_h,
+				(float*)current->c_network->target, current->c_network->output_dim, 
+				c_param->nb_area_w*c_param->nb_area_h, c_param->nb_area_w, c_param->nb_area_h, *a_param,
 				c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size);
-			
 			break;
 		case 1:
 			YOLO_deriv_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, 
-				(half*)current->c_network->target, 2.0f/*a_param->beta*/, current->c_network->output_dim, 
-				c_param->nb_area_w*c_param->nb_area_h, a_param->cell_w, a_param->cell_h, 
-				c_param->nb_area_w, c_param->nb_area_h, a_param->nb_box, a_param->nb_class,
-				a_param->nb_param, a_param->prior_w, a_param->prior_h, a_param->prior_diag,
+				(half*)current->c_network->target, current->c_network->output_dim, 
+				c_param->nb_area_w*c_param->nb_area_h, c_param->nb_area_w, c_param->nb_area_h, *a_param,
 				c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size, TC_scale_factor);
 			break;
-		
 	}
 }
 
@@ -1114,27 +1167,20 @@ void cuda_YOLO_output_error(layer *current)
 			YOLO_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output, 
 				(float*)current->c_network->target, current->c_network->output_dim, 
-				c_param->nb_area_w*c_param->nb_area_h, a_param->cell_w, a_param->cell_h, 
-				c_param->nb_area_w, c_param->nb_area_h, a_param->nb_box, a_param->nb_class,
-				a_param->nb_param, a_param->prior_w, a_param->prior_h,
+				c_param->nb_area_w*c_param->nb_area_h, c_param->nb_area_w, c_param->nb_area_h, *a_param,
 				c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size);
-			
 			break;
 		case 1:
 			YOLO_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output, 
 				(half*)current->c_network->target, current->c_network->output_dim, 
-				c_param->nb_area_w*c_param->nb_area_h, a_param->cell_w, a_param->cell_h, 
-				c_param->nb_area_w, c_param->nb_area_h, a_param->nb_box, a_param->nb_class,
-				a_param->nb_param, a_param->prior_w, a_param->prior_h, a_param->prior_diag,
+				c_param->nb_area_w*c_param->nb_area_h, c_param->nb_area_w, c_param->nb_area_h, *a_param,
 				c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size);
 			break;
-		
 	}
 }
 
-
-__device__ float gpu_IoU(float* output, float* target)
+__device__ float gpu_IoU_fct(float* output, float* target)
 {
 	float inter_w, inter_h, inter_2d, uni_2d;
 	
@@ -1144,266 +1190,104 @@ __device__ float gpu_IoU(float* output, float* target)
 	uni_2d =  abs(output[2]-output[0])*abs(output[3]-output[1])
 			+ abs(target[2]-target[0])*abs(target[3]-target[1])
 			- inter_2d;
+	
 	return ((float)inter_2d)/(float)uni_2d;
 }
 
 
-// Very Naiv kernel, should be check for preformance
-__global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, float *target, int beta, int flat_target_size, int flat_output_size, int cell_w, int cell_h, int nb_area_w, int nb_area_h, int nb_box, int nb_class, int nb_param, float *prior_w, float *prior_h, int size)
+__device__ float gpu_GIoU_fct(float* output, float* target)
+{
+	float inter_w, inter_h, inter_2d, uni_2d, enclose_w, enclose_h, enclose_2d;
+	
+	inter_w = max(0.0f, min(output[2], target[2]) - max(output[0], target[0]));
+	inter_h = max(0.0f, min(output[3], target[3]) - max(output[1], target[1]));
+	inter_2d = inter_w * inter_h;
+	uni_2d =  abs(output[2]-output[0])*abs(output[3]-output[1])
+			+ abs(target[2]-target[0])*abs(target[3]-target[1])
+			- inter_2d;
+	enclose_w = (max(output[2], target[2]) - min(output[0], target[0]));
+	enclose_h = (max(output[3], target[3]) - min(output[1], target[1]));
+	enclose_2d = enclose_w * enclose_h;
+	
+	return (((float)inter_2d)/(float)uni_2d - (float)(enclose_2d - uni_2d)/(float)enclose_2d);
+}
+
+__device__ float gpu_DIoU_fct(float* output, float* target)
+{
+	float inter_w, inter_h, inter_2d, uni_2d, enclose_w, enclose_h;
+	float cx_a, cx_b, cy_a, cy_b, dist_cent, diag_enclose;
+	
+	inter_w = max(0.0f, min(output[2], target[2]) - max(output[0], target[0]));
+	inter_h = max(0.0f, min(output[3], target[3]) - max(output[1], target[1]));
+	inter_2d = inter_w * inter_h;
+	uni_2d =  abs(output[2]-output[0])*abs(output[3]-output[1])
+			+ abs(target[2]-target[0])*abs(target[3]-target[1])
+			- inter_2d;
+	enclose_w = (max(output[2], target[2]) - min(output[0], target[0]));
+	enclose_h = (max(output[3], target[3]) - min(output[1], target[1]));
+	
+	cx_a = (output[2] + output[0])*0.5; cx_b = (target[2] + target[0])*0.5; 
+	cy_a = (output[3] + output[1])*0.5; cy_b = (target[3] + target[1])*0.5;
+	dist_cent = sqrt((cx_a - cx_b)*(cx_a - cx_b) + (cy_a - cy_b)*(cy_a - cy_b));
+	diag_enclose = sqrt(enclose_w*enclose_w + enclose_h*enclose_h);
+	
+	return ((float)inter_2d)/(float)uni_2d - (float)(dist_cent/diag_enclose);
+}
+
+// Only minimal optimisation has been performed for now => might be responsible for a significant portion of the total network time
+__global__ void YOLO_deriv_error_kernel_FP32(float *delta_o, float *output, float *target, int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, yolo_param y_param, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 
 	if(i >= size)
-                return;
-
-	int j, k;
-	int c_batch;
-	int nb_obj_target;
-	int resp_box = -1;
-	float max_IoU, current_IoU;
-	int cell_x, cell_y;
-	int obj_cx, obj_cy;
-	int f_offset;
-	float *box_in_pix;
-	float *c_box_in_pix;
-	float obj_in_offset[4];
-	
-	float obj_surf;
-	float dist_surf;
-	
-	int *box_locked;
-	
-	float lambda_coord = 2.0f, lambda_size = 1.0f, lambda_noobj = 0.25f, obj_scale = 1.0f;
-	float out_int[4], targ_int[4];
-	
-	box_locked = (int*) malloc(nb_box*sizeof(int));
-	box_in_pix = (float*) malloc(nb_box*4*sizeof(float));
-	
-	c_batch = i / flat_output_size;
-	target += flat_target_size * c_batch;
-	
-	f_offset = size;
-
-	i = i % flat_output_size;
-	cell_x = i % nb_area_w;
-	cell_y = i / nb_area_w;
-	
-	delta_o += (nb_area_w*nb_area_h) * c_batch + cell_y*nb_area_w + cell_x;
-	output  += (nb_area_w*nb_area_h) * c_batch + cell_y*nb_area_w + cell_x;
-
-	
-	nb_obj_target = target[0];
-	target++;
-	
-	
-	for(k = 0; k < nb_box; k++)
-	{
-		box_locked[k] = 0;
-		c_box_in_pix = box_in_pix+k*4;
-		c_box_in_pix[0] = (output[(k*(5+nb_class+nb_param)+0)*f_offset] + cell_x)*cell_w;
-		c_box_in_pix[1] = (output[(k*(5+nb_class+nb_param)+1)*f_offset] + cell_y)*cell_h;
-		if(output[(k*(5+nb_class+nb_param)+2)*f_offset] > 4.0f)
-			c_box_in_pix[2] = prior_w[k]*expf(4.0f);
-		else
-			c_box_in_pix[2] = prior_w[k]*expf(output[(k*(5+nb_class+nb_param)+2)*f_offset]);
-		if(output[(k*(5+nb_class+nb_param)+3)*f_offset] > 4.0f)
-			c_box_in_pix[3] = prior_h[k]*expf(4.0f);
-		else
-			c_box_in_pix[3] = prior_h[k]*expf(output[(k*(5+nb_class+nb_param)+3)*f_offset]);
-	}
-	
-	for(j = 0; j < nb_obj_target; j++)
-	{
-		if((int) target[j*(5+nb_param)] == 0)
-			break;
-		obj_cx = int( (target[j*(5+nb_param)+3] + target[j*(5+nb_param)+1])*0.5f / cell_w);
-		obj_cy = int( (target[j*(5+nb_param)+4] + target[j*(5+nb_param)+2])*0.5f / cell_h);
-		
-		if(obj_cx == cell_x && obj_cy == cell_y)
-		{
-			targ_int[0] = target[j*(5+nb_param)+1]; targ_int[1] = target[j*(5+nb_param)+2];
-			targ_int[2] = target[j*(5+nb_param)+3]; targ_int[3] = target[j*(5+nb_param)+4];
-		
-			resp_box = 0;
-			max_IoU = 0.0f;			
-			for(k = 0; k < nb_box; k++)
-			{
-				if(box_locked[k] == 2)
-					continue;
-			
-				c_box_in_pix = box_in_pix+k*4;
-				out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[2];
-				out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[3];
-				out_int[2] = c_box_in_pix[0] + 0.5f*c_box_in_pix[2];
-				out_int[3] = c_box_in_pix[1] + 0.5f*c_box_in_pix[3];
-
-				current_IoU = gpu_IoU(out_int, targ_int);
-				
-				if(current_IoU > max_IoU)
-				{
-					max_IoU = current_IoU;
-					resp_box = k;
-				}
-				if(current_IoU > 0.5f) //Avoid update of non best but still good match boxes
-					box_locked[k] = 1;
-			}
-				 	
-			if(max_IoU < 0.1f)
-                        {
-                                obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
-                                dist_surf = abs(obj_surf-(prior_w[resp_box]*prior_h[resp_box]));
-                                for(k = 0; k < nb_box; k++)
-                                {
-                                        if(box_locked[k] == 2)
-                                                continue;
-                                        if(abs(obj_surf-(prior_w[k]*prior_h[k])) < dist_surf)
-                                        {
-                                                dist_surf = abs(obj_surf-(prior_w[k]*prior_h[k]));
-                                                resp_box = k;
-                                        }
-                                }
-                        }
-			
-			if(box_locked[resp_box] == 2)
-				continue;
-			box_locked[resp_box] = 2;
-			
-			//Already compute error for the responsible box
-			
-			obj_in_offset[0] = ((targ_int[2] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
-			obj_in_offset[1] = ((targ_int[3] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
-			obj_in_offset[2] = (targ_int[2] - targ_int[0])/prior_w[resp_box];
-			if(obj_in_offset[2] < 0.001f)
-				obj_in_offset[2] = logf(0.001f);
-			else if (obj_in_offset[2] > 4.0f)
-				obj_in_offset[2] = 4.0f;
-			else
-				obj_in_offset[2] = logf(obj_in_offset[2]);
-			obj_in_offset[3] = (targ_int[3] - targ_int[1])/prior_h[resp_box];
-			if(obj_in_offset[3] < 0.001f)
-				obj_in_offset[3] = logf(0.001f);
-			else if (obj_in_offset[3] > 4.0f)
-				obj_in_offset[3] = 4.0f;
-			else
-				obj_in_offset[3] = logf(obj_in_offset[3]);
-
-			
-			//add an eventual lambda_coord ? unclear if still usefull in YOLO-V2 & V3
-			for(k = 0; k < 2; k++)
-				delta_o[(resp_box*(5+nb_class+nb_param)+k)*f_offset] = 
-					beta*lambda_coord*output[(resp_box*(5+nb_class+nb_param)+k)*f_offset]
-					*(1.0f-output[(resp_box*(5+nb_class+nb_param)+k)*f_offset])
-					*(output[(resp_box*(5+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]);
-			for(k = 0; k < 2; k++)
-				delta_o[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] = lambda_size*
-					(output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2]);
-			
-			
-			delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = 
-					beta*obj_scale*output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
-					*(1.0f-output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
-					*(output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-1.0);
-
-			//cross entropy error on classes
-			for(k = 0; k < nb_class; k++)
-			{
-				if(k == (int) target[j*(5+nb_param)]-1)
-					delta_o[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = 
-						(output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]-1.0f);
-				else
-					delta_o[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = 
-						output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset];
-			}
-			
-			if(max_IoU > 0.5f)
-			{
-				//linear activation of additional parameters
-				for(k = 0; k < nb_param; k++)
-				{
-					delta_o[(resp_box*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 
-						(output[(resp_box*(5+nb_class+nb_param)
-						+5+nb_class+k)*f_offset] - target[j*(5+nb_param)+5+k]);
-				}
-			}
-			else
-			{
-				for(k = 0; k < nb_param; k++)
-				{
-					delta_o[(resp_box*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 0.0f;
-				}
-			}
-			
-		}
-	}
-	
-	
-	for(j = 0; j < nb_box; j++)
-	{
-		//If no match (means no IoU > 0.5) only update Objectness toward 0 (here it means error compute)! (no coordinate nor class update)
-		if(box_locked[j] != 2)
-		{
-			for(k = 0; k < 4; k++)
-				delta_o[(j*(5+nb_class+nb_param)+k)*f_offset] = 0.0f;
-				
-			if(box_locked[j] == 1)
-				delta_o[(j*(5+nb_class+nb_param)+4)*f_offset] = 0.0f;
-			else
-				delta_o[(j*(5+nb_class+nb_param)+4)*f_offset] = 
-					beta*lambda_noobj*output[(j*(5+nb_class+nb_param)+4)*f_offset]
-					*(1.0f-output[(j*(5+nb_class+nb_param)+4)*f_offset])
-					*(output[(j*(5+nb_class+nb_param)+4)*f_offset]-0.0f);
-						
-			for(k = 0; k < nb_class; k++)
-				delta_o[(j*(5+nb_class+nb_param)+5+k)*f_offset] = 0.0f;
-				
-			for(k = 0; k < nb_param; k++)
-				delta_o[(j*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 0.0f;
-		}
-	}
-	
-	free(box_in_pix);
-	free(box_locked);
+                return;	
 }
 
 
-
-// Very Naiv kernel, should be check for preformance
-__global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *target, int beta, int flat_target_size, int flat_output_size, int cell_w, int cell_h, int nb_area_w, int nb_area_h, int nb_box, int nb_class, int nb_param, float *prior_w, float *prior_h, float *prior_diag, int size, float TC_scale_factor)
+// Only minimal optimisation has been performed for now => might be responsible for a significant portion of the total network time
+__global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *target, int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, yolo_param y_param, int size, float TC_scale_factor)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
-
 	if(i >= size)
                 return;
-
-	int j, k;
-	int c_batch;
+                
+	int nb_box = y_param.nb_box, nb_class = y_param.nb_class, nb_param = y_param.nb_param; 
+	float *prior_w = y_param.prior_w, *prior_h = y_param.prior_h;
+	int cell_w = y_param.cell_w, cell_h = y_param.cell_h;
+	
+	float coord_scale = y_param.scale_tab[0], size_scale  = y_param.scale_tab[1];
+	float prob_scale  = y_param.scale_tab[2], obj_scale   = y_param.scale_tab[3];
+	float class_scale = y_param.scale_tab[4], param_scale = y_param.scale_tab[5];
+	float *lambda_noobj_prior = y_param.noobj_prob_prior;
+	float **sm_tab = y_param.slopes_and_maxes_tab;
+	
+	float size_max_sat = expf(sm_tab[1][1]), size_min_sat = expf(sm_tab[1][2]);
+	float good_IoU_lim = y_param.IoU_limits[0];
+	float min_prob_IoU_lim = y_param.IoU_limits[1], min_obj_IoU_lim = y_param.IoU_limits[2];
+	float min_class_IoU_lim = y_param.IoU_limits[3], min_param_IoU_lim = y_param.IoU_limits[4];
+	int fit_size = y_param.fit_parts[0], fit_prob = y_param.fit_parts[1], fit_obj = y_param.fit_parts[2];
+	int fit_class = y_param.fit_parts[3], fit_param = y_param.fit_parts[4];
+	
+	int j, k, l;
+	int c_batch, f_offset;
 	int nb_obj_target;
 	int resp_box = -1;
 	float max_IoU, current_IoU;
 	int cell_x, cell_y;
 	int obj_cx, obj_cy;
-	int f_offset;
-	float *box_in_pix;
-	float *c_box_in_pix;
+	float *box_in_pix, *c_box_in_pix;
 	float obj_in_offset[4];
-	
-	float dist_x_obj, dist_y_obj, dist_objectness;
-	
-	float obj_diag;
-	float dist_diag;
-	float c_dist;
-
 	int *box_locked;
-	
-	float lambda_coord = 2.0f, lambda_size = 1.5f, lambda_noobj = 0.5f, obj_scale = 2.0f, param_scale = 1.0f;
 	float out_int[4], targ_int[4];
+	
+	float targ_w, targ_h;
+	int larger_box, smaller_box;
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
 	box_in_pix = (float*) malloc(nb_box*4*sizeof(float));
 	
 	c_batch = i / flat_output_size;
 	target += flat_target_size * c_batch;
-	
 	f_offset = size;
 
 	i = i % flat_output_size;
@@ -1413,25 +1297,32 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 	delta_o += (nb_area_w*nb_area_h) * c_batch + cell_y*nb_area_w + cell_x;
 	output  += (nb_area_w*nb_area_h) * c_batch + cell_y*nb_area_w + cell_x;
 
-	
 	nb_obj_target = target[0];
 	target++;
-	
 	
 	for(k = 0; k < nb_box; k++)
 	{
 		box_locked[k] = 0;
 		c_box_in_pix = box_in_pix+k*4;
-		c_box_in_pix[0] = ((float)output[(k*(5+nb_class+nb_param)+0)*f_offset] + cell_x)*cell_w;
-		c_box_in_pix[1] = ((float)output[(k*(5+nb_class+nb_param)+1)*f_offset] + cell_y)*cell_h;
-		c_box_in_pix[2] = prior_w[k]*expf((float)output[(k*(5+nb_class+nb_param)+2)*f_offset]);
-		c_box_in_pix[3] = prior_h[k]*expf((float)output[(k*(5+nb_class+nb_param)+3)*f_offset]);
+		c_box_in_pix[0] = ((float)output[(k*(6+nb_class+nb_param)+0)*f_offset] + cell_x)*cell_w;
+		c_box_in_pix[1] = ((float)output[(k*(6+nb_class+nb_param)+1)*f_offset] + cell_y)*cell_h;
+		if(fit_size)
+		{
+			c_box_in_pix[2] = prior_w[k]*expf((float)output[(k*(6+nb_class+nb_param)+2)*f_offset]);
+			c_box_in_pix[3] = prior_h[k]*expf((float)output[(k*(6+nb_class+nb_param)+3)*f_offset]);
+		}
+		else
+		{
+			c_box_in_pix[2] = prior_w[k];
+			c_box_in_pix[3] = prior_h[k];
+		}
 	}
 	
 	for(j = 0; j < nb_obj_target; j++)
 	{
 		if((int) target[j*(5+nb_param)] == 0)
 			break;
+			
 		obj_cx = int( ((float)target[j*(5+nb_param)+3] + (float)target[j*(5+nb_param)+1])*0.5f / cell_w);
 		obj_cy = int( ((float)target[j*(5+nb_param)+4] + (float)target[j*(5+nb_param)+2])*0.5f / cell_h);
 		
@@ -1439,163 +1330,150 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 		{
 			targ_int[0] = target[j*(5+nb_param)+1]; targ_int[1] = target[j*(5+nb_param)+2];
 			targ_int[2] = target[j*(5+nb_param)+3]; targ_int[3] = target[j*(5+nb_param)+4];
+			
+			targ_w = targ_int[2] - targ_int[0];
+			targ_h = targ_int[3] - targ_int[1];
 		
-			resp_box = 0;
-			max_IoU = 0.0f;			
+			resp_box = -1;
+			max_IoU = -1.0f;			
 			for(k = 0; k < nb_box; k++)
 			{
-				if(box_locked[k] == 2)
-					continue;
+				larger_box = 0;
+				smaller_box = 0;
+				for(l = k; l < nb_box - 1; l++)
+				{
+					if(prior_w[l+1] > prior_w[k] && prior_h[l+1] > prior_h[k])
+						if(targ_w > prior_w[l+1] && targ_h > prior_h[l+1])
+							larger_box = 1;
+				}
+				for(l = k; l > 0; l--)
+				{
+					if(prior_w[l-1] < prior_w[k] && prior_h[l-1] < prior_h[k])
+						if(targ_w < prior_w[l-1] && targ_h < prior_h[l-1])
+							smaller_box = 1;
+				}
 			
+				if(box_locked[k] == 2 || larger_box || smaller_box)
+					continue;
+				
 				c_box_in_pix = box_in_pix+k*4;
 				out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[2];
 				out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[3];
 				out_int[2] = c_box_in_pix[0] + 0.5f*c_box_in_pix[2];
 				out_int[3] = c_box_in_pix[1] + 0.5f*c_box_in_pix[3];
 
-				current_IoU = gpu_IoU(out_int, targ_int);
+				current_IoU = y_param.c_IoU_fct(out_int, targ_int);
 				
 				if(current_IoU > max_IoU)
 				{
 					max_IoU = current_IoU;
 					resp_box = k;
 				}
- 				if(current_IoU > 0.5f) //Avoid update of non best but still good match boxes
+ 				if(current_IoU > good_IoU_lim) //Avoid update of non best but still good match boxes
 					box_locked[k] = 1;
 			}
-				 	
-			//Should be replaced by a centered IoU comparison to account for non square boxes
-			if(max_IoU < 0.1f)
-                        {
-                                obj_diag = sqrt((targ_int[2] - targ_int[0])*(targ_int[2] - targ_int[0]) + (targ_int[3] - targ_int[1])*(targ_int[3] - targ_int[1]));
-                                dist_diag = abs(obj_diag-prior_diag[resp_box]);
-                                for(k = 0; k < nb_box; k++)
-                                {
-                                        if(box_locked[k] == 2)
-                                                continue;
-                                        c_dist = abs(obj_diag-prior_diag[k]);
-                                        if(c_dist < dist_diag)
-                                        {
-                                                dist_diag = c_dist;
-                                                resp_box = k;
-                                        }
-                                }
-                        }
-
 			
-			if(box_locked[resp_box] == 2)
+			if(resp_box == -1 || box_locked[resp_box] == 2)
 				continue;
 			box_locked[resp_box] = 2;
 			
 			//Already compute error for the responsible box
-			
 			obj_in_offset[0] = ((targ_int[2] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
 			obj_in_offset[1] = ((targ_int[3] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
-			obj_in_offset[2] = (targ_int[2] - targ_int[0])/(float)prior_w[resp_box];
-			if(obj_in_offset[2] < 0.05f)
-				obj_in_offset[2] = logf(0.05f);
-			else if(obj_in_offset[2] > 7.0f)
-				obj_in_offset[2] = logf(7.0f);
+			obj_in_offset[2] = (targ_w)/(float)prior_w[resp_box];
+			if(obj_in_offset[2] < size_min_sat) //0.05
+				obj_in_offset[2] = logf(size_min_sat);
+			else if(obj_in_offset[2] > size_max_sat) //7.0
+				obj_in_offset[2] = logf(size_max_sat);
 			else
 				obj_in_offset[2] = logf(obj_in_offset[2]);
-			obj_in_offset[3] = (targ_int[3] - targ_int[1])/(float)prior_h[resp_box];
-			if(obj_in_offset[3] < 0.05f)
-				obj_in_offset[3] = logf(0.05f);
- 			else if(obj_in_offset[3] > 7.0f)
-				obj_in_offset[3] = logf(7.0f);
+			obj_in_offset[3] = (targ_h)/(float)prior_h[resp_box];
+			if(obj_in_offset[3] < size_min_sat)
+				obj_in_offset[3] = logf(size_min_sat);
+ 			else if(obj_in_offset[3] > size_max_sat)
+				obj_in_offset[3] = logf(size_max_sat);
 			else
 				obj_in_offset[3] = logf(obj_in_offset[3]);
-
 			
-			//add an eventual lambda_coord ? unclear if still usefull in YOLO-V2 & V3
 			for(k = 0; k < 2; k++)
 			{
-				delta_o[(resp_box*(5+nb_class+nb_param)+k)*f_offset] = (half)(
-					TC_scale_factor*1.0f*lambda_coord*(float)output[(resp_box*(5+nb_class+nb_param)+k)*f_offset]
-					*(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+k)*f_offset])
-					*((float)output[(resp_box*(5+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]));
 				
-				/*if((float)output[(resp_box*(5+nb_class+nb_param)+k)*f_offset] > 1.0f || (float)output[(resp_box*(5+nb_class+nb_param)+k)*f_offset] < 0.0f)
-					delta_o[(resp_box*(5+nb_class+nb_param)+k)*f_offset] = (half)(
-        	                                0.02f*TC_scale_factor*lambda_coord*((float)output[(resp_box*(5+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]));
-				else
-					delta_o[(resp_box*(5+nb_class+nb_param)+k)*f_offset] = (half)(
-	                                        2.0f*TC_scale_factor*lambda_coord*((float)output[(resp_box*(5+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]));
-				*/
+				delta_o[(resp_box*(6+nb_class+nb_param)+k)*f_offset] = (half)(
+					TC_scale_factor*sm_tab[0][0]*coord_scale*(float)output[(resp_box*(6+nb_class+nb_param)+k)*f_offset]
+					*(1.0f-(float)output[(resp_box*(6+nb_class+nb_param)+k)*f_offset])
+					*((float)output[(resp_box*(6+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]));
 			}
-
-			for(k = 0; k < 2; k++)
-				delta_o[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] = (half) (TC_scale_factor*lambda_size*
-					((float)output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2]));
 			
-			switch(0) //IoU Objectness
+			if(fit_size)
 			{
-				case 0:
-					if(max_IoU > 0.5f)
-					{
-						delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = (half)(
-							TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
-							*(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
-							*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-max_IoU));
-					}
-					else
-					{
-						delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = (half)(
-                        		                TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
-                        		                *(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
-                        		                *((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-0.5f));
-					}
-					break;
-				case 1:
-					dist_x_obj = ((float)output[(resp_box*(5+nb_class+nb_param)+0)*f_offset] - obj_in_offset[0])*cell_w;
-        	                        dist_y_obj = ((float)output[(resp_box*(5+nb_class+nb_param)+1)*f_offset] - obj_in_offset[1])*cell_h;
-                	                dist_objectness = exp(-0.5*sqrt(dist_x_obj*dist_x_obj + dist_y_obj*dist_y_obj));
-					delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = (half)(
-                                	            TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
-                                	            *(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
-                                	            *((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-dist_objectness));
-					break;
-
-				case 2:
-				default:
-					delta_o[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = (half)(
-                                            	TC_scale_factor*beta*obj_scale*(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]
-                                            	*(1.0f-(float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset])
-                                            	*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-1.0f));
-				break;
+				for(k = 0; k < 2; k++)
+					delta_o[(resp_box*(6+nb_class+nb_param)+k+2)*f_offset] = (half) (TC_scale_factor*sm_tab[1][0]*size_scale*
+						((float)output[(resp_box*(6+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2]));
 			}
-
-			//cross entropy error on classes
-			for(k = 0; k < nb_class; k++)
+			else
 			{
-				if(k == (int) target[j*(5+nb_param)]-1)
-					delta_o[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = 
-						(half) ((float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]-1.0f);
-				else
-					delta_o[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = 
-						(half) ((float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]);
+				for(k = 0; k < 2; k++)
+					delta_o[(resp_box*(6+nb_class+nb_param)+k+2)*f_offset] = (half) (0.0f);
+			}
+			
+			if(fit_prob && max_IoU > min_prob_IoU_lim)
+				delta_o[(resp_box*(6+nb_class+nb_param)+4)*f_offset] = (half)(
+		                    	TC_scale_factor*sm_tab[2][0]*prob_scale*(float)output[(resp_box*(6+nb_class+nb_param)+4)*f_offset]
+		                    	*(1.0f-(float)output[(resp_box*(6+nb_class+nb_param)+4)*f_offset])
+		                    	*((float)output[(resp_box*(6+nb_class+nb_param)+4)*f_offset]-0.99f));
+	        else
+	        	delta_o[(resp_box*(6+nb_class+nb_param)+4)*f_offset] = (half)(0.0f);
+		        
+	        if(fit_obj && max_IoU > min_obj_IoU_lim)
+	        {
+	        	if(max_IoU > 0.99f)
+	        		max_IoU = 0.99f;
+	        	delta_o[(resp_box*(6+nb_class+nb_param)+5)*f_offset] = (half)(
+		            	TC_scale_factor*sm_tab[3][0]*obj_scale*(float)output[(resp_box*(6+nb_class+nb_param)+5)*f_offset]
+		            	*(1.0f-(float)output[(resp_box*(6+nb_class+nb_param)+5)*f_offset])
+		            	*((float)output[(resp_box*(6+nb_class+nb_param)+5)*f_offset]-(1.0+max_IoU)*0.5));
+			}
+			else
+				delta_o[(resp_box*(6+nb_class+nb_param)+5)*f_offset] = (half)(0.0f);			
+			
+			//mean square error on classes => could be changed to soft max (change in activation needed as well)
+			if(fit_class && max_IoU > min_class_IoU_lim)
+			{
+				for(k = 0; k < nb_class; k++)
+				{
+					if(k == (int) target[j*(5+nb_param)]-1)
+						delta_o[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset] = 
+							(half) (TC_scale_factor*sm_tab[4][0]*class_scale*(float)output[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset]
+			                	*(1.0f-(float)output[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset])
+			                	*((float)output[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset]-0.99f));
+					else
+						delta_o[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset] = 
+							(half) (TC_scale_factor*sm_tab[4][0]*class_scale*(float)output[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset]
+			                	*(1.0f-(float)output[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset])
+			                	*((float)output[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset]-0.01f));
+				}
+			}
+			else
+			{
+				for(k = 0; k < nb_class; k++)
+					delta_o[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset] = 0.0f;
 			}
 			
 			//linear activation of additional parameters
-			if(max_IoU > 0.5f)
+			if(fit_param && max_IoU > min_param_IoU_lim)
 			{
 				for(k = 0; k < nb_param; k++)
-				{
-					delta_o[(resp_box*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 
-						(half) (TC_scale_factor*param_scale*((float)output[(resp_box*(5+nb_class+nb_param)
-						+5+nb_class+k)*f_offset] - (float)target[j*(5+nb_param)+5+k]));
-				}
+					delta_o[(resp_box*(6+nb_class+nb_param)+6+nb_class+k)*f_offset] = 
+						(half) (TC_scale_factor*sm_tab[5][0]*param_scale*((float)output[(resp_box*(6+nb_class+nb_param)
+						+6+nb_class+k)*f_offset] - (float)target[j*(5+nb_param)+5+k]));
 			}
 			else
 			{
 				for(k = 0; k < nb_param; k++)
-				{
-					delta_o[(resp_box*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = (half) 0.0f;
-				}
+					delta_o[(resp_box*(6+nb_class+nb_param)+6+nb_class+k)*f_offset] = (half) 0.0f;
 			}
 		}
 	}
-	
 	
 	for(j = 0; j < nb_box; j++)
 	{
@@ -1603,286 +1481,92 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 		if(box_locked[j] != 2)
 		{
 			for(k = 0; k < 4; k++)
-				delta_o[(j*(5+nb_class+nb_param)+k)*f_offset] = (half) 0.0f;
+				delta_o[(j*(6+nb_class+nb_param)+k)*f_offset] = (half) 0.0f;
 				
 			if(box_locked[j] == 1)
 			{
-				delta_o[(j*(5+nb_class+nb_param)+4)*f_offset] = (half) 0.0f;
-				
-				for(k = 0; k < nb_param; k++)
-                                	delta_o[(j*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = (half) 0.0f;
+				delta_o[(j*(6+nb_class+nb_param)+4)*f_offset] = (half) 0.0f;
 			}
 			else
 			{
-				delta_o[(j*(5+nb_class+nb_param)+4)*f_offset] = (half)(
-					TC_scale_factor*beta*lambda_noobj*(float)output[(j*(5+nb_class+nb_param)+4)*f_offset]
-					*(1.0f-(float)output[(j*(5+nb_class+nb_param)+4)*f_offset])
-					*((float)output[(j*(5+nb_class+nb_param)+4)*f_offset]-0.0f));
-
-				for(k = 0; k < nb_param; k++)
-	                                delta_o[(j*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = (half) 0.0f;
-			}
-			for(k = 0; k < nb_class; k++)
-				delta_o[(j*(5+nb_class+nb_param)+5+k)*f_offset] = (half) 0.0f;
-		}
-	}
-	
-	free(box_in_pix);
-	free(box_locked);
-}
-
-
-
-// Very Naiv kernel, should be check for preformance
-__global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float *target, int flat_target_size, int flat_output_size, int cell_w, int cell_h, int nb_area_w, int nb_area_h, const int nb_box, int nb_class, int nb_param, float *prior_w, float *prior_h, int size)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	
-	if(i >= size)
-		return;
-	
-	int j, k;
-	int c_batch;
-	int nb_obj_target;
-	int resp_box = -1;
-	float max_IoU, current_IoU;
-	int cell_x, cell_y;
-	int obj_cx, obj_cy;
-	int f_offset;
-	float *box_in_pix;
-	float *c_box_in_pix;
-	float obj_in_offset[4];
-	
-	float obj_surf;
-	float dist_surf;
-	
-	int *box_locked;
-	
-	float lambda_coord = 2.0f, lambda_size = 1.0f, lambda_noobj = 0.25, obj_scale = 1.0f;
-	float out_int[4], targ_int[4];
-	
-	box_locked = (int*) malloc(nb_box*sizeof(int));
-	box_in_pix = (float*) malloc(nb_box*4*sizeof(float));
-	
-	
-	c_batch = i / flat_output_size;
-	target += flat_target_size * c_batch;
-	
-	f_offset = size;
-
-	i = i % flat_output_size;
-	cell_x = i % nb_area_w;
-	cell_y = i / nb_area_w;
-	
-	output_error += (nb_area_w*nb_area_h) * c_batch + cell_y*nb_area_w + cell_x;
-	output += (nb_area_w*nb_area_h) * c_batch + cell_y*nb_area_w + cell_x;
-	
-	nb_obj_target = target[0];
-	target++;
-	
-	
-	for(k = 0; k < nb_box; k++)
-	{
-		box_locked[k] = 0;
-		c_box_in_pix = box_in_pix+k*4;
-		c_box_in_pix[0] = (output[(k*(5+nb_class+nb_param)+0)*f_offset] + cell_x)*cell_w;
-		c_box_in_pix[1] = (output[(k*(5+nb_class+nb_param)+1)*f_offset] + cell_y)*cell_h;
-		if(output[(k*(5+nb_class+nb_param)+2)*f_offset] > 6.0f)
-			c_box_in_pix[2]  = prior_w[k]*expf(6.0f);
-		else
-			c_box_in_pix[2] = prior_w[k]*expf(output[(k*(5+nb_class+nb_param)+2)*f_offset]);
-		if(output[(k*(5+nb_class+nb_param)+3)*f_offset] > 6.0f)
-			c_box_in_pix[3] = prior_h[k]*expf(6.0f);
-		else
-			c_box_in_pix[3] = prior_h[k]*expf(output[(k*(5+nb_class+nb_param)+3)*f_offset]);
-	}
-	
-	for(j = 0; j < nb_obj_target; j++)
-	{
-		if((int) target[j*(5+nb_param)] == 0)
-			break;
-		obj_cx = int( (target[j*(5+nb_param)+3] + target[j*(5+nb_param)+1])*0.5f / cell_w);
-		obj_cy = int( (target[j*(5+nb_param)+4] + target[j*(5+nb_param)+2])*0.5f / cell_h);
-		
-		if(obj_cx == cell_x && obj_cy == cell_y)
-		{
-			resp_box = 0;
-			max_IoU = 0.0f;			
-			for(k = 0; k < nb_box; k++)
-			{
-				if(box_locked[k] == 2)
-					continue;
-				targ_int[0] = target[j*(5+nb_param)+1]; targ_int[1] = target[j*(5+nb_param)+2];
-				targ_int[2] = target[j*(5+nb_param)+3]; targ_int[3] = target[j*(5+nb_param)+4];
-			
-				c_box_in_pix = box_in_pix+k*4;
-				out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[2];
-				out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[3];
-				out_int[2] = c_box_in_pix[0] + 0.5f*c_box_in_pix[2];
-				out_int[3] = c_box_in_pix[1] + 0.5f*c_box_in_pix[3];
-
-				current_IoU = gpu_IoU(out_int, targ_int);
-				
-				if(current_IoU > max_IoU)
-				{
-					max_IoU = current_IoU;
-					resp_box = k;
-				}
-				if(current_IoU > 0.5f) //Avoid update of non best but still good match boxes
-					box_locked[k] = 1;
-
-			}
-			
-			if(max_IoU < 0.1f)
-                        {
-                                obj_surf = abs(targ_int[2] - targ_int[0]) * abs(targ_int[3] - targ_int[1]);
-                                dist_surf = abs(obj_surf-(prior_w[resp_box]*prior_h[resp_box]));
-                                for(k = 0; k < nb_box; k++)
-                                {
-                                        if(box_locked[k] == 2)
-                                                continue;
-                                        if(abs(obj_surf-(prior_w[k]*prior_h[k])) < dist_surf)
-                                        {
-                                                dist_surf = abs(obj_surf-(prior_w[k]*prior_h[k]));
-                                                resp_box = k;
-                                        }
-                                }
-                        }
-
-			
-			if(box_locked[resp_box] == 2)
-                                continue;
-			box_locked[resp_box] = 2;
-		
-			//Already compute error for the responsible box
-			
-			obj_in_offset[0] = ((targ_int[2] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
-			obj_in_offset[1] = ((targ_int[3] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
-			obj_in_offset[2] = (targ_int[2] - targ_int[0])/prior_w[resp_box];
-			if(obj_in_offset[2] < 0.001f)
-				obj_in_offset[2] = logf(0.001f);
-			else
-				obj_in_offset[2] = logf(obj_in_offset[2]);
-			obj_in_offset[3] = (targ_int[3] - targ_int[1])/prior_h[resp_box];
-			if(obj_in_offset[3] < 0.001f)
-				obj_in_offset[3] = logf(0.001f);
-			else
-				obj_in_offset[3] = logf(obj_in_offset[3]);
-
-			for(k = 0; k < 2; k++)
-				output_error[(resp_box*(5+nb_class+nb_param)+k)*f_offset] = 
-					0.5f*lambda_coord*(output[(resp_box*(5+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k])
-					*(output[(resp_box*(5+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]);
-			for(k = 0; k < 2; k++)
-				output_error[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] = 
-					0.5f*lambda_size*(output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2])
-					*(output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2]);
-			
-			output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] = 
-					0.5f*obj_scale*(output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-1.0)
-					*(output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-1.0);
-			
-			//cross entropy error on classes
-			for(k = 0; k < nb_class; k++)
-			{
-				if(k == (int)target[j*(5+nb_param)]-1)
-				{
-					if(output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] < 0.00001f)
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.00001f);
-					else
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = 
-							-logf(output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]);
-				}
+				if(fit_prob)
+					delta_o[(j*(6+nb_class+nb_param)+4)*f_offset] = (half)(
+						TC_scale_factor*sm_tab[3][0]*(lambda_noobj_prior[j])*prob_scale
+						*(float)output[(j*(6+nb_class+nb_param)+4)*f_offset]
+						*(1.0f-(float)output[(j*(6+nb_class+nb_param)+4)*f_offset])
+						*((float)output[(j*(6+nb_class+nb_param)+4)*f_offset]-0.01f));
 				else
-				{
-					if(output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] > 0.9999f)
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.00001f);
-					else
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(1.0f - output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]);
-				}
+					delta_o[(j*(6+nb_class+nb_param)+4)*f_offset] = (half)(0.0f);
 			}
 			
-			//linear error of additional parameters
+			delta_o[(j*(6+nb_class+nb_param)+5)*f_offset] = (half) 0.0f;
+			
 			for(k = 0; k < nb_param; k++)
-			{
-				output_error[(resp_box*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 
-					(0.5f*(output[(resp_box*(5+nb_class+nb_param)
-					+5+nb_class+k)*f_offset] - target[j*(5+nb_param)+5+k])
-					*(output[(resp_box*(5+nb_class+nb_param)
-					+5+nb_class+k)*f_offset] - target[j*(5+nb_param)+5+k]));
-			}
+                	delta_o[(j*(6+nb_class+nb_param)+6+nb_class+k)*f_offset] = (half) 0.0f;
 			
-		}
-	}
-	
-	
-	for(j = 0; j < nb_box; j++)
-	{
-		//If no match (means no IoU > 0.5) only update Objectness toward 0 (here it means error compute)! (no coordinate nor class update)
-		if(box_locked[j] != 2)
-		{
-			for(k = 0; k < 4; k++)
-				output_error[(j*(5+nb_class+nb_param)+k)*f_offset] = 0.0f;
-				
-			if(box_locked[j] == 1)
-				output_error[(j*(5+nb_class+nb_param)+4)*f_offset] = 0.0f;
-			else
-				output_error[(j*(5+nb_class+nb_param)+4)*f_offset] = 
-					0.5f*lambda_noobj*(output[(j*(5+nb_class+nb_param)+4)*f_offset]-0.0f)
-					*(output[(j*(5+nb_class+nb_param)+4)*f_offset]-0.0f);
-						
 			for(k = 0; k < nb_class; k++)
-				output_error[(j*(5+nb_class+nb_param)+5+k)*f_offset] =  0.0f;
-				
-			for(k = 0; k < nb_param; k++)
-				output_error[(j*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] =  0.0f;
+				delta_o[(j*(6+nb_class+nb_param)+6+k)*f_offset] = (half) 0.0f;
 		}
 	}
-	
 	free(box_in_pix);
 	free(box_locked);
-
 }
 
 
 
-// Very Naiv kernel, should be check for preformance
-__global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *target, int flat_target_size, int flat_output_size, int cell_w, int cell_h, int nb_area_w, int nb_area_h, const int nb_box, int nb_class, int nb_param, float *prior_w, float *prior_h, float *prior_diag, int size)
+// Only minimal optimisation has been performed for now => might be responsible for a significant portion of the total network time
+__global__ void YOLO_error_kernel_FP32(float *output_error, float *output, float *target, int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, yolo_param y_param, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
 	if(i >= size)
 		return;
 	
-	int j, k;
-	int c_batch;
+}
+
+
+// Only minimal optimisation has been performed for now => might be responsible for a significant portion of the total network time
+__global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *target, int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, yolo_param y_param, int size)
+{
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	if(i >= size)
+    	return;
+                
+	int nb_box = y_param.nb_box, nb_class = y_param.nb_class, nb_param = y_param.nb_param; 
+	float *prior_w = y_param.prior_w, *prior_h = y_param.prior_h;
+	int cell_w = y_param.cell_w, cell_h = y_param.cell_h;
+	
+	float coord_scale = y_param.scale_tab[0], size_scale  = y_param.scale_tab[1];
+	float prob_scale  = y_param.scale_tab[2], obj_scale   = y_param.scale_tab[3];
+	float class_scale = y_param.scale_tab[4], param_scale = y_param.scale_tab[5];
+	float *lambda_noobj_prior = y_param.noobj_prob_prior;
+	float **sm_tab = y_param.slopes_and_maxes_tab;
+	
+	float size_max_sat = expf(sm_tab[1][1]), size_min_sat = expf(sm_tab[1][2]);
+	float good_IoU_lim = y_param.IoU_limits[0];
+	float min_prob_IoU_lim = y_param.IoU_limits[1], min_obj_IoU_lim = y_param.IoU_limits[2];
+	float min_class_IoU_lim = y_param.IoU_limits[3], min_param_IoU_lim = y_param.IoU_limits[4];
+	
+	int j, k, l;
+	int c_batch, f_offset;
 	int nb_obj_target;
 	int resp_box = -1;
 	float max_IoU, current_IoU;
 	int cell_x, cell_y;
 	int obj_cx, obj_cy;
-	int f_offset;
-	float *box_in_pix;
-	float *c_box_in_pix;
+	float *box_in_pix, *c_box_in_pix;
 	float obj_in_offset[4];
-
-	float dist_x_obj, dist_y_obj, dist_objectness;
-	
-	float obj_diag;
-	float dist_diag;
-	float c_dist;
-	
 	int *box_locked;
-	
-	float lambda_coord = 2.0f, lambda_size = 1.5f, lambda_noobj = 0.5f, obj_scale = 2.0f, param_scale = 1.0f;
 	float out_int[4], targ_int[4];
+	
+	float targ_w, targ_h;
+	int larger_box, smaller_box;
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
 	box_in_pix = (float*) malloc(nb_box*4*sizeof(float));
 	
 	c_batch = i / flat_output_size;
 	target += flat_target_size * c_batch;
-	
 	f_offset = size;
 
 	i = i % flat_output_size;
@@ -1899,10 +1583,10 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 	{
 		box_locked[k] = 0;
 		c_box_in_pix = box_in_pix+k*4;
-		c_box_in_pix[0] = ((float)output[(k*(5+nb_class+nb_param)+0)*f_offset] + cell_x)*cell_w;
-		c_box_in_pix[1] = ((float)output[(k*(5+nb_class+nb_param)+1)*f_offset] + cell_y)*cell_h;
-                c_box_in_pix[2] = prior_w[k]*expf((float)output[(k*(5+nb_class+nb_param)+2)*f_offset]);
-                c_box_in_pix[3] = prior_h[k]*expf((float)output[(k*(5+nb_class+nb_param)+3)*f_offset]);
+		c_box_in_pix[0] = ((float)output[(k*(6+nb_class+nb_param)+0)*f_offset] + cell_x)*cell_w;
+		c_box_in_pix[1] = ((float)output[(k*(6+nb_class+nb_param)+1)*f_offset] + cell_y)*cell_h;
+		c_box_in_pix[2] = prior_w[k]*expf((float)output[(k*(6+nb_class+nb_param)+2)*f_offset]);
+		c_box_in_pix[3] = prior_h[k]*expf((float)output[(k*(6+nb_class+nb_param)+3)*f_offset]);
 	}
 	
 	for(j = 0; j < nb_obj_target; j++)
@@ -1914,14 +1598,33 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 		
 		if(obj_cx == cell_x && obj_cy == cell_y)
 		{
-			resp_box = 0;
-			max_IoU = 0.0f;
+			targ_int[0] = target[j*(5+nb_param)+1]; targ_int[1] = target[j*(5+nb_param)+2];
+			targ_int[2] = target[j*(5+nb_param)+3]; targ_int[3] = target[j*(5+nb_param)+4];
+			
+			targ_w = targ_int[2] - targ_int[0];
+			targ_h = targ_int[3] - targ_int[1];
+		
+			resp_box = -1;
+			max_IoU = -1.0f;
 			for(k = 0; k < nb_box; k++)
 			{
-				if(box_locked[k] == 2)
+				larger_box = 0;
+				smaller_box = 0;
+				for(l = k; l < nb_box - 1; l++)
+				{
+					if(prior_w[l+1] > prior_w[k] && prior_h[l+1] > prior_h[k])
+						if(targ_w > prior_w[l+1] && targ_h > prior_h[l+1])
+							larger_box = 1;
+				}
+				for(l = k; l > 0; l--)
+				{
+					if(prior_w[l-1] < prior_w[k] && prior_h[l-1] < prior_h[k])
+						if(targ_w < prior_w[l-1] && targ_h < prior_h[l-1])
+							smaller_box = 1;
+				}
+			
+				if(box_locked[k] == 2 || larger_box || smaller_box)
 					continue;
-				targ_int[0] = target[j*(5+nb_param)+1]; targ_int[1] = target[j*(5+nb_param)+2];
-				targ_int[2] = target[j*(5+nb_param)+3]; targ_int[3] = target[j*(5+nb_param)+4];
 			
 				c_box_in_pix = box_in_pix+k*4;
 				out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[2];
@@ -1929,144 +1632,104 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 				out_int[2] = c_box_in_pix[0] + 0.5f*c_box_in_pix[2];
 				out_int[3] = c_box_in_pix[1] + 0.5f*c_box_in_pix[3];
 
-				current_IoU = gpu_IoU(out_int, targ_int);
+				current_IoU = y_param.c_IoU_fct(out_int, targ_int);
 				
 				if(current_IoU > max_IoU)
 				{
 					max_IoU = current_IoU;
 					resp_box = k;
 				}
-				if(current_IoU > 0.5f) //Avoid update of non best but still good match boxes
+				if(current_IoU > good_IoU_lim) //Avoid update of non best but still good match boxes
 					box_locked[k] = 1;
-
 			}
 			
-			if(max_IoU < 0.1f)
-			{
-				obj_diag = sqrt((targ_int[2] - targ_int[0])*(targ_int[2] - targ_int[0]) + (targ_int[3] - targ_int[1])*(targ_int[3] - targ_int[1]));
-				dist_diag = abs(obj_diag-prior_diag[resp_box]);
-				for(k = 0; k < nb_box; k++)
-				{
-					if(box_locked[k] == 2)
-	                                        continue;
-					c_dist = abs(obj_diag-prior_diag[k]);
-					if(c_dist < dist_diag)
-					{
-						dist_diag = c_dist;
-						resp_box = k;
-					}
-				}
-			}
-			
-			if(box_locked[resp_box] == 2)
+			if(resp_box == -1 || box_locked[resp_box] == 2)
                                 continue;
 			box_locked[resp_box] = 2;
 		
-			//Already compute error for the responsible box
-			
 			obj_in_offset[0] = ((targ_int[2] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
 			obj_in_offset[1] = ((targ_int[3] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
-			obj_in_offset[2] = (targ_int[2] - targ_int[0])/prior_w[resp_box];
-			if(obj_in_offset[2] < 0.05f)
-                                obj_in_offset[2] = logf(0.05f);
-                        else if(obj_in_offset[2] > 7.0f)
-                                obj_in_offset[2] = logf(7.0f);
-                        else
-                                obj_in_offset[2] = logf(obj_in_offset[2]);
-                        obj_in_offset[3] = (targ_int[3] - targ_int[1])/(float)prior_h[resp_box];
-                        if(obj_in_offset[3] < 0.05f)
-                                obj_in_offset[3] = logf(0.05f);
-                        else if(obj_in_offset[3] > 7.0f)
-                                obj_in_offset[3] = logf(7.0f);
-                        else
-                                obj_in_offset[3] = logf(obj_in_offset[3]);
-
-			for(k = 0; k < 2; k++)
-				output_error[(resp_box*(5+nb_class+nb_param)+k)*f_offset] =
-					0.5f*lambda_coord*((float)output[(resp_box*(5+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k])
-					*((float)output[(resp_box*(5+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]);
-			for(k = 0; k < 2; k++)
-				output_error[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] =
-					0.5f*lambda_size*((float)output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2])
-					*((float)output[(resp_box*(5+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2]);
+			obj_in_offset[2] = (targ_w)/(float)prior_w[resp_box];
+			if(obj_in_offset[2] < size_min_sat)
+                    obj_in_offset[2] = logf(size_min_sat);
+            else if(obj_in_offset[2] > size_max_sat)
+                    obj_in_offset[2] = logf(size_max_sat);
+            else
+                    obj_in_offset[2] = logf(obj_in_offset[2]);
+            obj_in_offset[3] = (targ_h)/(float)prior_h[resp_box];
+            if(obj_in_offset[3] < size_min_sat)
+                    obj_in_offset[3] = logf(size_min_sat);
+            else if(obj_in_offset[3] > size_max_sat)
+                    obj_in_offset[3] = logf(size_max_sat);
+            else
+                    obj_in_offset[3] = logf(obj_in_offset[3]);
 			
-			switch(0) //IoU objectness
-			{
-				case 0:
-					if(max_IoU > 0.5f)
-					{
-						output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] =
-							0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-max_IoU)
-							*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-max_IoU);
-					}
-					else
-					{
-						output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] =
-							0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-0.5f)
-							*((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-0.5f);
-					}
-					break;
+			//Already compute error for the responsible box
+			for(k = 0; k < 2; k++)
+				output_error[(resp_box*(6+nb_class+nb_param)+k)*f_offset] =
+					0.5f*coord_scale*((float)output[(resp_box*(6+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k])
+					*((float)output[(resp_box*(6+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]);
+			for(k = 0; k < 2; k++)
+				output_error[(resp_box*(6+nb_class+nb_param)+k+2)*f_offset] =
+					0.5f*size_scale*((float)output[(resp_box*(6+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2])
+					*((float)output[(resp_box*(6+nb_class+nb_param)+k+2)*f_offset] - obj_in_offset[k+2]);
 			
-				case 1:
-					dist_x_obj = ((float)output[(resp_box*(5+nb_class+nb_param)+0)*f_offset] - obj_in_offset[0])*cell_w;
-					dist_y_obj = ((float)output[(resp_box*(5+nb_class+nb_param)+1)*f_offset] - obj_in_offset[1])*cell_h;
-					dist_objectness = exp(-0.5*sqrt(dist_x_obj*dist_x_obj + dist_y_obj*dist_y_obj));
-                                        output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] =
-                                                0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-dist_objectness)
-                                                *((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-dist_objectness);
-					break;
-
-				case 2:
-				default:
-					output_error[(resp_box*(5+nb_class+nb_param)+4)*f_offset] =
-                                                0.5f*obj_scale*((float)output[(resp_box*(5+nb_class)+nb_param+4)*f_offset]-1.0f)
-                                                *((float)output[(resp_box*(5+nb_class+nb_param)+4)*f_offset]-1.0f);
-					break;
-				}
-
-			//cross entropy error on classes
-			for(k = 0; k < nb_class; k++)
+			if(max_IoU > min_prob_IoU_lim)
+				output_error[(resp_box*(6+nb_class+nb_param)+4)*f_offset] =
+		                        0.5f*prob_scale*((float)output[(resp_box*(6+nb_class+nb_param)+4)*f_offset]-0.99f)
+		                        *((float)output[(resp_box*(6+nb_class+nb_param)+4)*f_offset]-0.99f);
+            else
+            	output_error[(resp_box*(6+nb_class+nb_param)+4)*f_offset] = 0.0f;
+			
+			if(max_IoU > min_obj_IoU_lim)
 			{
-				if(k == (int)target[j*(5+nb_param)]-1)
-				{
-					if((float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] < 0.001f)
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.001f);
-					else
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] =
-							-logf((float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]);
-				}
-				else
-				{
-					if((float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] > 0.999f)
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(0.001f);
-					else
-						output_error[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset] = -logf(1.0f - (float)output[(resp_box*(5+nb_class+nb_param)+5+k)*f_offset]);
-				}
+				if(max_IoU > 0.99f)
+				    	max_IoU = 0.99f;
+				output_error[(resp_box*(6+nb_class+nb_param)+5)*f_offset] =
+						     0.5f*obj_scale*((float)output[(resp_box*(6+nb_class+nb_param)+5)*f_offset]-(1.0+max_IoU)*0.5)
+						     *((float)output[(resp_box*(6+nb_class+nb_param)+5)*f_offset]-(1.0+max_IoU)*0.5);
 			}
-			
-			//linear error of additional parameters
-			if(max_IoU > 0.5f)
+			else
+				output_error[(resp_box*(6+nb_class+nb_param)+5)*f_offset] = 0.0f;
+
+			//mean square error on classes => could be changed to soft max (change in activation needed as well)
+			if(max_IoU > min_class_IoU_lim)
 			{
-				for(k = 0; k < nb_param; k++)
+				for(k = 0; k < nb_class; k++)
 				{
-					output_error[(resp_box*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 
-						(0.5f*param_scale*((float)output[(resp_box*(5+nb_class+nb_param)
-						+5+nb_class+k)*f_offset] - (float) target[j*(5+nb_param)+5+k])
-						*((float)output[(resp_box*(5+nb_class+nb_param)
-						+5+nb_class+k)*f_offset] - (float) target[j*(5+nb_param)+5+k]));
+					if(k == (int)target[j*(5+nb_param)]-1)
+						output_error[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset] = 0.5f*class_scale
+							*((float)output[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset]-0.99f)
+				            *((float)output[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset]-0.99f);
+					else
+						output_error[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset] = 0.5f*class_scale
+							*((float)output[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset]-0.01f)
+				            *((float)output[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset]-0.01f);;
 				}
 			}
 			else
 			{
-				for(k = 0; k < nb_param; k++)
-				{
-					output_error[(resp_box*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 0.0f;
-				}
+				for(k = 0; k < nb_class; k++)
+					output_error[(resp_box*(6+nb_class+nb_param)+6+k)*f_offset] = 0.0f;
 			}
-
+			
+			//linear error of additional parameters
+			if(max_IoU > min_param_IoU_lim)
+			{
+				for(k = 0; k < nb_param; k++)
+					output_error[(resp_box*(6+nb_class+nb_param)+6+nb_class+k)*f_offset] = 
+						(0.5f*param_scale*((float)output[(resp_box*(6+nb_class+nb_param)
+						+6+nb_class+k)*f_offset] - (float) target[j*(5+nb_param)+5+k])
+						*((float)output[(resp_box*(6+nb_class+nb_param)
+						+6+nb_class+k)*f_offset] - (float) target[j*(5+nb_param)+5+k]));
+			}
+			else
+			{
+				for(k = 0; k < nb_param; k++)
+					output_error[(resp_box*(6+nb_class+nb_param)+6+nb_class+k)*f_offset] = 0.0f;
+			}
 		}
 	}
-	
 	
 	for(j = 0; j < nb_box; j++)
 	{
@@ -2074,34 +1737,32 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 		if(box_locked[j] != 2)
 		{
 			for(k = 0; k < 4; k++)
-				output_error[(j*(5+nb_class+nb_param)+k)*f_offset] = 0.0f;
+				output_error[(j*(6+nb_class+nb_param)+k)*f_offset] = 0.0f;
 				
 			if(box_locked[j] == 1)
 			{
-				output_error[(j*(5+nb_class+nb_param)+4)*f_offset] = 0.0f;
-			
-				for(k = 0; k < nb_param; k++)
-	                                output_error[(j*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 0.0f;
+				output_error[(j*(6+nb_class+nb_param)+4)*f_offset] = 0.0f;
 			}
 			else
 			{
-				output_error[(j*(5+nb_class+nb_param)+4)*f_offset] =
-					0.5f*lambda_noobj*((float)output[(j*(5+nb_class+nb_param)+4)*f_offset]-0.0f)
-					*((float)output[(j*(5+nb_class+nb_param)+4)*f_offset]-0.0f);
-			
-				for(k = 0; k < nb_param; k++)
-					output_error[(j*(5+nb_class+nb_param)+5+nb_class+k)*f_offset] = 0.0f;
-
+				output_error[(j*(6+nb_class+nb_param)+4)*f_offset] =
+					0.5f*(lambda_noobj_prior[j])*prob_scale*((float)output[(j*(6+nb_class+nb_param)+4)*f_offset]-0.01f)
+					*((float)output[(j*(6+nb_class+nb_param)+4)*f_offset]-0.01f);
 			}
+			
+			output_error[(j*(6+nb_class+nb_param)+5)*f_offset] = 0.0f;
+			
+			for(k = 0; k < nb_param; k++)
+					output_error[(j*(6+nb_class+nb_param)+6+nb_class+k)*f_offset] = 0.0f;
+			
 			for(k = 0; k < nb_class; k++)
-				output_error[(j*(5+nb_class+nb_param)+5+k)*f_offset] = 0.0f;
+				output_error[(j*(6+nb_class+nb_param)+6+k)*f_offset] = 0.0f;
 				
 		}
 	}
 	
 	free(box_in_pix);
 	free(box_locked);
-
 }
 
 

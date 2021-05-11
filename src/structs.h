@@ -34,20 +34,35 @@
 
 enum GPU_type{FP32, FP16, BF16};
 enum layer_type{CONV, POOL, DENSE};
-enum activation_functions{RELU, LOGISTIC, SOFTMAX, YOLO, LINEAR};
+enum activation_functions{RELU, RELU_6, LOGISTIC, SOFTMAX, YOLO, LINEAR};
 enum initializers{N_XAVIER, U_XAVIER, N_LECUN, U_LECUN, U_RAND, N_RAND};
 enum inference_modes{AVG_MODEL, MC_MODEL};
 enum batch_param{OFF, SGD, FULL};
 enum data_types{c_FP32, c_UINT16, c_UINT8};
 enum compute_method{C_NAIV, C_BLAS, C_CUDA};
 enum memory_localization{HOST, DEVICE};
+enum IoU_types{IOU, GIOU, DIOU};
 
+
+typedef struct Dataset Dataset;
+typedef struct layer layer;
+typedef struct network network;
+
+typedef struct dense_param dense_param;
+typedef struct conv_param conv_param;
+typedef struct pool_param pool_param;
+
+typedef struct linear_param linear_param;
+typedef struct ReLU_param ReLU_param;
+typedef struct logistic_param logistic_param;
+typedef struct softmax_param softmax_param;
+typedef struct yolo_param yolo_param;
 
 //############################################
 //                  Global
 //############################################
 
-typedef struct Dataset
+struct Dataset
 {
 	void **input;
 	void **target;
@@ -56,10 +71,7 @@ typedef struct Dataset
 	int size;
 	int nb_batch;
 	int localization;
-} Dataset;
-
-typedef struct layer layer;
-typedef struct network network;
+};
 
 struct layer
 {
@@ -73,6 +85,7 @@ struct layer
 	void *output;
 	void *delta_o;
 	
+	int frozen;
 	layer *previous;
 	
 	void (*forward)(layer *parent);
@@ -113,8 +126,13 @@ struct network
 	int batch_size;
 	int batch_param;
 	int epoch;
+	
 	int is_inference;
 	int inference_drop_mode;
+	int no_error;
+	int perf_eval;
+	float *fwd_perf, *back_perf;
+	int *fwd_perf_n, *back_perf_n;
 	
 	void* input;
 	void* target;
@@ -123,11 +141,7 @@ struct network
 	void* output_error_cuda;
 	
 	//Possible yolo_param
-	int yolo_nb_box;
-	float* yolo_prior_w;
-	float* yolo_prior_h;
-	int yolo_nb_class;
-	int yolo_nb_param;
+	yolo_param *y_param;
 
 	//Normalization parameters used for the formated dataset laoding
 	int norm_factor_defined; 
@@ -142,7 +156,7 @@ struct network
 //               Various Layers
 //############################################
 
-typedef struct dense_param
+struct dense_param
 {
 	int in_size;
 	int nb_neurons;
@@ -161,10 +175,10 @@ typedef struct dense_param
 	float bias_value;
 	float dropout_rate;
 
-} dense_param;
+};
 
 
-typedef struct conv_param
+struct conv_param
 {
 	int f_size;
 	int flat_f_size;
@@ -192,16 +206,15 @@ typedef struct conv_param
 	float bias_value;
 	float dropout_rate;
 
-} conv_param;
+};
 
 
-typedef struct pool_param
+struct pool_param
 {
 	int p_size;
 	int nb_area_w;
 	int nb_area_h;
 	int nb_maps;
-	
 	int prev_size_w;
 	int prev_size_h;
 	int prev_depth;
@@ -211,23 +224,32 @@ typedef struct pool_param
 	int *pool_map;
 	void* temp_delta_o;
 
-} pool_param;
+};
 
 
 //############################################
 //            Activation functions
 //############################################
 
-typedef struct ReLU_param
+struct linear_param
 {
 	int size;
 	int dim;
 	int biased_dim;
+	
+};
+
+struct ReLU_param
+{
+	int size;
+	int dim;
+	int biased_dim;
+	float saturation;
 	float leaking_factor;
 
-} ReLU_param;
+};
 
-typedef struct logistic_param
+struct logistic_param
 {
 	int size;
 	int dim;
@@ -235,39 +257,43 @@ typedef struct logistic_param
 	float beta;
 	float saturation;
 	
-} logistic_param;
+};
 
-typedef struct softmax_param
+struct softmax_param
 {
 	int dim;
 	int biased_dim;
-		
-} softmax_param;
+	
+};
 
-typedef struct yolo_param
+struct yolo_param
 {
-	int nb_box;
-	int nb_class;
-	int nb_param;
-	float *prior_w;
-	float *prior_h;
-	float *prior_diag;
 	int size;
 	int dim;
 	int biased_dim;
 	int cell_w, cell_h;
 	float beta;
 	float saturation;
-	
-} yolo_param;
 
-typedef struct linear_param
-{
-	int size;
-	int dim;
-	int biased_dim;
-	
-} linear_param;
+	int nb_box;
+	int nb_class;
+	int nb_param;
+	int IoU_type;
+	float (*c_IoU_fct)(float*, float*);
+	float *prior_w;
+	float *prior_h;
+	float *noobj_prob_prior;
+
+	//Error scaling, 6 elements
+	float *scale_tab;
+	//activation slopes, 6 times 3 elements
+	float **slopes_and_maxes_tab;
+	//minimum IoU required before elements fit
+	float *IoU_limits;
+	//use to disable the fit of given loss parts
+	int *fit_parts;
+};
+
 
 #endif // STRUCTS_H
 

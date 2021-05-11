@@ -53,7 +53,6 @@ This might produce unstable results !\n\n");
 
 void conv_define_activation_param(layer *current)
 {
-	int i;
 	c_param = (conv_param*) current->param;
 	
 	switch(current->activation_type)
@@ -64,6 +63,18 @@ void conv_define_activation_param(layer *current)
 				c_param->nb_area_h * c_param->nb_filters * current->c_network->batch_size;
 			((ReLU_param*)current->activ_param)->dim = ((ReLU_param*)current->activ_param)->size;
 			((ReLU_param*)current->activ_param)->biased_dim = ((ReLU_param*)current->activ_param)->dim;
+			((ReLU_param*)current->activ_param)->saturation = 100.0;
+			((ReLU_param*)current->activ_param)->leaking_factor = 0.05;
+			c_param->bias_value = 0.1;
+			break;
+			
+		case RELU_6:
+			current->activ_param = (ReLU_param*) malloc(sizeof(ReLU_param));
+			((ReLU_param*)current->activ_param)->size = c_param->nb_area_w * 
+				c_param->nb_area_h * c_param->nb_filters * current->c_network->batch_size;
+			((ReLU_param*)current->activ_param)->dim = ((ReLU_param*)current->activ_param)->size;
+			((ReLU_param*)current->activ_param)->biased_dim = ((ReLU_param*)current->activ_param)->dim;
+			((ReLU_param*)current->activ_param)->saturation = 6.0;
 			((ReLU_param*)current->activ_param)->leaking_factor = 0.05;
 			c_param->bias_value = 0.1;
 			break;
@@ -92,22 +103,17 @@ void conv_define_activation_param(layer *current)
 			
 		case YOLO:
 			current->activ_param = (yolo_param*) malloc(sizeof(yolo_param));
-			if(current->c_network->yolo_nb_box*(5+current->c_network->yolo_nb_class
-					+ current->c_network->yolo_nb_param) != c_param->nb_filters)
+			if(current->c_network->y_param->nb_box*(6+current->c_network->y_param->nb_class
+					+ current->c_network->y_param->nb_param) != c_param->nb_filters)
 			{
+				printf("%d %d\n", current->c_network->y_param->nb_box*(6+current->c_network->y_param->nb_class
+					+ current->c_network->y_param->nb_param), c_param->nb_filters);
 				printf("ERROR: Nb filters size mismatch in YOLO dimensions!\n");
 				exit(EXIT_FAILURE);
 			}
-			((yolo_param*)current->activ_param)->nb_box = current->c_network->yolo_nb_box;
-			((yolo_param*)current->activ_param)->nb_class = current->c_network->yolo_nb_class;
-			((yolo_param*)current->activ_param)->nb_param = current->c_network->yolo_nb_param;
-			//Priors table must be sent to GPU memory if C_CUDA
-			((yolo_param*)current->activ_param)->prior_w = current->c_network->yolo_prior_w;
-			((yolo_param*)current->activ_param)->prior_h = current->c_network->yolo_prior_h;
-			((yolo_param*)current->activ_param)->prior_diag = malloc(current->c_network->yolo_nb_box*sizeof(float));
-			for(i = 0; i < current->c_network->yolo_nb_box; i++)
-				((yolo_param*)current->activ_param)->prior_diag[i] = sqrt(current->c_network->yolo_prior_w[i]*current->c_network->yolo_prior_w[i] 
-											+ current->c_network->yolo_prior_h[i]*current->c_network->yolo_prior_h[i]);
+			
+			//real copy to keep network properties accessible
+			*((yolo_param*)current->activ_param) = *(current->c_network->y_param);			
 			((yolo_param*)current->activ_param)->size = c_param->nb_area_w 
 				* c_param->nb_area_h *  c_param->nb_filters * current->c_network->batch_size;
 			((yolo_param*)current->activ_param)->dim = ((yolo_param*)current->activ_param)->size;
@@ -150,6 +156,7 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	//define the parameters values
 	current->type = CONV;
 	current->activation_type = activation;
+	current->frozen = 0;
 	c_param->f_size = f_size;
 	c_param->stride = stride;
 	c_param->padding = padding;
@@ -362,13 +369,13 @@ void conv_load(network *net, FILE *f)
 {
 	int nb_filters, f_size, stride, padding;
 	float drop_rate;
-	char activ_type[20];
+	char activ_type[40];
 	layer *previous;
 	
 	printf("Loading conv layer, L:%d\n", net->nb_layers);
 	
 	fscanf(f, "%df%d.%ds%dp%fd%s\n", &nb_filters, &f_size, &stride, &padding, &drop_rate, activ_type);
-	
+
 	if(net->nb_layers <= 0)
 		previous = NULL;
 	else

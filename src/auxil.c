@@ -42,7 +42,7 @@ void init_network(int network_number, int u_input_dim[3], int u_output_dim, floa
 {
 
 	printf("############################################################\n\
-CIANNA V-0.9.2.2 EXPERIMENTAL BUILD (03/2021), by D.Cornu\n\
+CIANNA V-0.9.2.4 EXPERIMENTAL BUILD (05/2021), by D.Cornu\n\
 ############################################################\n\n");
 
 
@@ -116,23 +116,33 @@ CIANNA V-0.9.2.2 EXPERIMENTAL BUILD (03/2021), by D.Cornu\n\
 	}
 	else if(u_batch_size <= 0)
 	{
-		net->batch_size = 256;
+		net->batch_size = 16;
 		net->batch_param = FULL;
-		printf("Undefined batch size -> automatic value is 256\n");
+		printf("Undefined batch size -> automatic value is 16\n");
 	}
 	net->compute_method = u_compute_method;
 	net->nb_layers = 0;
 	net->epoch = 0;
 	net->norm_factor_defined = 0;
 	net->is_inference = 0;
-        net->inference_drop_mode = AVG_MODEL;
+	net->inference_drop_mode = AVG_MODEL;
+	net->no_error = 0;
+	net->perf_eval = 1;
 	
 	//YOLO null setting
-	net->yolo_nb_box = 0;
-	net->yolo_prior_w = NULL;
-	net->yolo_prior_h = NULL;
-	net->yolo_nb_class = 0;
-	net->yolo_nb_param = 0;
+	net->y_param = (yolo_param*) malloc(sizeof(yolo_param));
+	net->y_param->nb_box = 0;
+	net->y_param->prior_w = NULL;
+	net->y_param->prior_h = NULL;
+	net->y_param->IoU_type = IOU;
+	net->y_param->c_IoU_fct = NULL;
+	net->y_param->noobj_prob_prior = NULL;
+	net->y_param->scale_tab = NULL;
+	net->y_param->slopes_and_maxes_tab = NULL;
+	net->y_param->IoU_limits = NULL;
+	net->y_param->fit_parts = NULL;
+	net->y_param->nb_class = 0;
+	net->y_param->nb_param = 0;
 
 }
 
@@ -375,8 +385,6 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 }
 
 
-
-
 Dataset load_formated_dataset(network *net, const char *filename, int input_data_type, int output_data_type)
 {
 	// Create and load a dataset from a format specific file
@@ -547,6 +555,7 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 	return data;
 }
 
+
 void set_normalize_dataset_parameters(network *net, float *offset_input, float *norm_input, int dim_size_input, float *offset_output, float *norm_output, int dim_size_output)
 {
 	net->norm_factor_defined = 1;
@@ -558,6 +567,7 @@ void set_normalize_dataset_parameters(network *net, float *offset_input, float *
 	net->dim_size_input = dim_size_input;
 	net->dim_size_output = dim_size_output;
 }
+
 
 void normalize_dataset(network *net, Dataset c_data)
 {
@@ -633,6 +643,7 @@ int argmax(float *tab, int size)
 	return imax;
 }
 
+
 void save_network(network *net, char *filename)
 {
 	int i;
@@ -661,6 +672,7 @@ void save_network(network *net, char *filename)
 	
 	fclose(f);
 }
+
 
 void load_network(network *net, char *filename, int epoch)
 {
@@ -711,6 +723,7 @@ void load_network(network *net, char *filename, int epoch)
 	fclose(f);
 }
 
+
 void host_only_shuffle(network *net, Dataset data)
 {
 	int i, j, k;
@@ -743,7 +756,6 @@ void host_only_shuffle(network *net, Dataset data)
 }
 
 
-
 void update_weights(void *weights, void* update, int size)
 {
 	int i;
@@ -756,6 +768,100 @@ void update_weights(void *weights, void* update, int size)
 }
 
 
+void perf_eval_init(network *net)
+{
+	if(net->perf_eval == 1)
+	{
+		net->fwd_perf =  (float*) calloc(net->nb_layers,sizeof(float));
+		net->back_perf = (float*) calloc(net->nb_layers,sizeof(float));
+		net->fwd_perf_n =  (int*) calloc(net->nb_layers,sizeof(int));
+		net->back_perf_n = (int*) calloc(net->nb_layers,sizeof(int));
+	
+		#ifdef CUDA
+		if(net->compute_method == C_CUDA)
+			cuda_perf_eval_init();
+		#endif
+		net->perf_eval = 2;
+	}
+	else
+		return;
+}
+
+
+void perf_eval_in(network *net)
+{
+	if(net->perf_eval == 0)
+		return;
+	if(net->compute_method == C_CUDA)
+	{
+		#ifdef CUDA
+		cuda_perf_eval_in();
+		#endif
+	}
+}
+
+
+void perf_eval_out(network *net, int layer_id, float *vect, int *n_vect)
+{
+	float time = 0.0f;
+	if(net->perf_eval == 0)
+		return;
+	if(net->compute_method == C_CUDA)
+	{
+		#ifdef CUDA
+		time = cuda_perf_eval_out();
+		#endif
+	}
+	
+	if(n_vect[layer_id] < 999)
+	{
+		vect[layer_id] += time;
+		n_vect[layer_id] += 1;
+	}
+}
+
+
+void perf_eval_display(network *net)
+{
+	int i;
+	float *fwd_time, *back_time, *cumul_time;
+	float total_fwd = 0.0f, total_back = 0.0f, total_cumul = 0.0f;
+	
+	fwd_time   = (float*) calloc(net->nb_layers, sizeof(float));
+	back_time  = (float*) calloc(net->nb_layers, sizeof(float));
+	cumul_time = (float*) calloc(net->nb_layers, sizeof(float));
+	
+	if (net->perf_eval == 0)
+		return;
+	
+	for(i = 0; i < net->nb_layers; i++)
+	{
+		fwd_time[i] = net->fwd_perf[i]/net->fwd_perf_n[i];
+		total_fwd += fwd_time[i];
+		back_time[i] = net->back_perf[i]/net->back_perf_n[i];
+		total_back += back_time[i];
+		cumul_time[i] = fwd_time[i] + back_time[i];
+		total_cumul += cumul_time[i];
+		if(net->fwd_perf_n[i] == 0)
+			printf("Warning: some layers were not benchmarked\n");
+	}
+	
+	
+	printf("\n   Layer         Forward            Backprop           Cumulated\n");
+	printf("       N       [ms] / [%%]          [ms] / [%%]         [ms] / [%%]\n");	
+	printf("  -------------------------------------------------------------------\n");
+	for(i = 0; i < net->nb_layers; i++)
+		printf("   %5d      %5.3f / %4.1f        %5.3f / %4.1f       %5.3f / %4.1f\n", i+1,
+			fwd_time[i], fwd_time[i]/total_fwd*100.0, back_time[i], back_time[i]/total_back*100.0,
+			cumul_time[i], cumul_time[i]/total_cumul*100.0);
+	
+	printf("  -------------------------------------------------------------------\n\n");
+	
+	free(fwd_time);
+	free(back_time);
+	free(cumul_time);
+}
+
 
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat)
 {
@@ -765,9 +871,10 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	int arg1, arg2;
 	float count;
 	float *rapp_err = NULL, *rapp_err_rec = NULL;
-	int o, pos;
-	float total_error;
-	float batch_error = 0.0;
+	int o, pos, in_col;
+	float total_error, batch_error = 0.0;
+	float pos_error = 0.0, size_error = 0.0, prob_error = 0.0;
+	float objectness_error = 0.0, class_error = 0.0, param_error = 0.0;
 	void* output_save = NULL;
 	void* output_buffer = NULL;
 	struct timeval ep_timer;
@@ -775,13 +882,14 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	FILE *f_save = NULL;
 	char f_save_name[100];
 	conv_param *c_param;
+	yolo_param *a_param;
 	
 	#ifdef CUDA
 	float* cuda_mat;
 	void* temp_error = NULL;
 	#endif
 
-	//FILE *f_err;
+	FILE *f_err;
 	
 	o = net->output_dim;
 	
@@ -803,7 +911,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		#endif
 	}	
 	
-	if(saving == 1)
+	if(saving > 0)
 	{
 		#ifdef CUDA
 		if(net->compute_method == C_CUDA)
@@ -812,7 +920,10 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			cuda_create_host_table_FP16(net, &output_buffer, net->batch_size*net->out_size);
 		#endif
 		sprintf(f_save_name, "fwd_res/net%d_%04d.dat", net->id, net->epoch);
-		f_save = fopen(f_save_name, "w+");
+		if(saving == 1)
+			f_save = fopen(f_save_name, "w+");
+		else if(saving == 2)
+			f_save = fopen(f_save_name, "wb+");
 		if(f_save == NULL)
 		{
 			printf("ERROR : can not oppen %s !\n", f_save_name);
@@ -824,7 +935,10 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		init_timing(&ep_timer);
 		if(repeat > 1)
 			printf("Forward repeat step: %d /%d\n", r+1, repeat);
+		
 		total_error = 0.0;
+		pos_error = 0.0, size_error = 0.0, prob_error = 0.0;
+		objectness_error = 0.0, class_error = 0.0, param_error = 0.0;
 		
 		if(repeat <= 1)
 			printf("\nForward: %d\n", net->epoch);
@@ -864,7 +978,9 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			//forward
 			for(k = 0; k < net->nb_layers; k++)
 			{
+				perf_eval_in(net);
 				net->net_layers[k]->forward(net->net_layers[k]);
+				perf_eval_out(net, k,net->fwd_perf, net->fwd_perf_n);
 			}
 			
 			output_error(net->net_layers[net->nb_layers-1]);
@@ -877,7 +993,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				#ifdef CUDA
 				cuda_get_table_FP32(net, net->output_error, temp_error, net->batch_size*net->out_size);
 				net->output_error = temp_error;	
-				if(saving == 1)
+				if(saving > 0)
 				{
 					switch(net->use_cuda_TC)
 					{
@@ -896,25 +1012,44 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					{
 						default:
 						case DENSE:
-							for(k = 0; k < net->length; k++)
+							if(saving == 1)
 							{
-								for(l = 0; l < net->out_size; l++)
-									fprintf(f_save, "%g ", ((float*)output_save)[k*net->out_size + l]);
-								fprintf(f_save, "\n");
+								for(k = 0; k < net->length; k++)
+								{
+									for(l = 0; l < net->out_size; l++)
+										fprintf(f_save, "%g ", ((float*)output_save)[k*net->out_size + l]);
+									fprintf(f_save, "\n");
+								}
+							}
+							else if(saving == 2)
+							{
+								for(k = 0; k < net->length; k++)
+									fwrite(&((float*)output_save)[k*net->out_size], sizeof(float), net->out_size, f_save);
 							}
 							break;
 						case CONV:
 							c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
 							int batch_offset = c_param->nb_area_w*c_param->nb_area_h;
 							int filter_offset = batch_offset*net->batch_size;
-							for(k = 0; k < net->length; k++)
+							if(saving == 1)
 							{
-								for(l = 0; l < c_param->nb_filters; l++)
+								for(k = 0; k < net->length; k++)
 								{
-									for(m = 0; m < batch_offset; m++)
-										fprintf(f_save,"%g ", ((float*)output_save)[k*batch_offset + l*filter_offset + m]);
+									for(l = 0; l < c_param->nb_filters; l++)
+									{
+										for(m = 0; m < batch_offset; m++)
+											fprintf(f_save,"%g ", ((float*)output_save)[k*batch_offset + l*filter_offset + m]);
+									}
+									fprintf(f_save, "\n");
 								}
-								fprintf(f_save, "\n");
+							}
+							else if(saving == 2)
+							{
+								for(k = 0; k < net->length; k++)
+								{
+									for(l = 0; l < c_param->nb_filters; l++)
+										fwrite(&((float*)output_save)[k*batch_offset + l*filter_offset], sizeof(float), batch_offset, f_save);
+								}
 							}
 							break;
 					}
@@ -923,7 +1058,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			}
 			else
 			{
-				if(saving == 1)
+				/*MUST BE UPDATED FOR CONV LAYER OUTPUT*/
+				if(saving > 0)
 				{
 					for(k = 0; k < net->length; k++)
 					{
@@ -973,6 +1109,33 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 							}
 						}
 					}
+					
+					if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
+					{
+						a_param = (yolo_param*)net->net_layers[net->nb_layers-1]->activ_param;
+						for(k = 0; k < net->length; k++)
+						{
+							for(l = 0; l < c_param->nb_filters; l++)
+							{
+								in_col = l%(6+a_param->nb_class+a_param->nb_param);
+								for(m = 0; m < batch_offset; m++)
+								{
+									if(in_col < 2)
+										pos_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+									else if(in_col < 4)
+										size_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+									else if(in_col < 5)
+										prob_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+									else if(in_col < 6)
+										objectness_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+									else if(in_col < 6 + a_param->nb_class)
+										class_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+									else if(in_col < 6 + a_param->nb_class + a_param->nb_param)
+										param_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+								}
+							}
+						}
+					}
 					break;
 			}
 			batch_error /= net->length;
@@ -986,15 +1149,34 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			}
 		}
 		
-		//f_err = fopen("error.txt", "a");
-		
 		items_per_s = data.size/ellapsed_time(ep_timer);
 		printf("\nNet. forward perf.: %0.2f items/s\n", items_per_s);
-		printf("Cumulated error: \t %g\n", total_error/data.size);
-		
-		//fprintf(f_err, "%g\n",  total_error/data.size);
-		//fclose(f_err);
-		
+		if(net->no_error == 0)
+		{
+			if(net->epoch == 1)
+				f_err = fopen("error.txt", "w+");
+			else
+				f_err = fopen("error.txt", "a");
+			
+			printf("Cumulated error: \t %g\n", total_error/data.size);
+			fprintf(f_err, "%d %g",  net->epoch, total_error/data.size);
+			if(net->net_layers[net->nb_layers-1]->type == CONV)
+			{
+				if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
+				{
+					printf("Error dist - Pos: %f, Size: %f, Prob: %f, Objct: %f, Class: %f, Param: %f\n",
+					pos_error/data.size, size_error/data.size, prob_error/data.size, 
+					objectness_error/data.size, class_error/data.size, param_error/data.size);
+					
+					fprintf(f_err, " %g %g %g %g %g %g",  
+					pos_error/data.size, size_error/data.size, prob_error/data.size, 
+					objectness_error/data.size, class_error/data.size, param_error/data.size);
+				}
+			}
+
+			fprintf(f_err, "\n");
+			fclose(f_err);
+		}
 		
 	}
 	
@@ -1006,7 +1188,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		#endif
 	}
 	
-	if(saving == 1)
+	if(saving > 0)
 	{
 		if(output_save != NULL)
 			free(output_save);
@@ -1015,7 +1197,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		fclose(f_save);
 	}
 
-	if(confusion_matrix)
+	if(confusion_matrix && net->no_error == 0)
 	{
 		printf("\nConfMat (valid set)\n");
 		for(j = 0; j < o; j++)
@@ -1074,6 +1256,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	Dataset shuffle_duplicate;
 	void* temp_error = NULL;
 	int *index_shuffle = NULL, *index_shuffle_device = NULL;
+	
+	perf_eval_init(net);
 	
 	if(net->compute_method == C_CUDA)
 	{
@@ -1195,17 +1379,22 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			
 			for(k = 0; k < net->nb_layers; k++)
 			{
+				perf_eval_in(net);
 				net->net_layers[k]->forward(net->net_layers[k]);
+				perf_eval_out(net, k,net->fwd_perf, net->fwd_perf_n);
 			}
 			
+			perf_eval_in(net); //Include output deriv error in the last layer performance metric
 			output_deriv_error(net->net_layers[net->nb_layers-1]);
 			
 			//Propagate error through all layers
 			for(k = 0; k < net->nb_layers; k++)
 			{
+				if(k != 0)
+					perf_eval_in(net);
 				net->net_layers[net->nb_layers-1-k]->backprop(net->net_layers[net->nb_layers-1-k]);
+				perf_eval_out(net, net->nb_layers-1-k, net->back_perf, net->back_perf_n);
 			}
-			
 			
 			// Live loss monitoring
 			if(net->compute_method == C_CUDA)
@@ -1215,8 +1404,9 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				net->output_error = net->output_error_cuda;
 				#endif
 			}
-			
+
 			output_error(net->net_layers[net->nb_layers-1]);
+						
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
@@ -1262,12 +1452,12 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		
 		if(((net->epoch) % control_interv == 0) || (i == nb_epochs - 1))
 		{
-			printf("\nControl step epoch: %d\n", net->epoch);
-			printf("Net. training perf.: %0.2f items/s\n", items_per_s);
+			//printf("\nControl step epoch: %d\n", net->epoch);
+			printf("\nNet. training perf.: %0.2f items/s\n", items_per_s);
 			printf("Learning rate : %g\n", net->learning_rate);
 			net->is_inference = 1;
 			compute_error(net, net->valid, 0, show_confmat, 1);
-			printf("\n");
+			//printf("\n");
 		}
 		if(save_net > 0 && ((net->epoch) % save_net) == 0)
 		{
@@ -1304,8 +1494,10 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 }
 
 
-void forward_testset(network *net, int train_step, int repeat, int drop_mode)
+void forward_testset(network *net, int train_step, int saving, int repeat, int drop_mode)
 {
+	perf_eval_init(net);
+
 	//update out_size in case of forward with no training
 	switch(net->net_layers[net->nb_layers-1]->type)
 	{
@@ -1354,7 +1546,7 @@ void forward_testset(network *net, int train_step, int repeat, int drop_mode)
 		printf("before compute forward\n");
 		net->is_inference = 1;
         	net->inference_drop_mode = drop_mode;
-		compute_error(net, net->test, 1, 0, repeat);
+		compute_error(net, net->test, saving, 0, repeat);
 		printf("after compute forward\n");
 	}
 	
