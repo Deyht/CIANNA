@@ -829,23 +829,23 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 {
 	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_net = 0, network_id = nb_networks-1;
 	int shuffle_gpu = 1, shuffle_every = 1, silent = 0;
-	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0;
-	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "decay", "confmat", "save_each", "network", "shuffle_gpu", "shuffle_every", "silent", NULL};
+	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 4.0;
+	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "decay", "confmat", "save_each", "network", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "silent", NULL};
 	
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|diddiiiiii", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_net, &network_id, &shuffle_gpu, &shuffle_every, &silent))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|diddiiiiidi", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_net, &network_id, &shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &silent))
 	    return Py_None;
 	
 	if(silent == 0)
-		printf("py_nb_epoch %d, py_control_interv %d, py_learning_rate %g, py_end_learning_rate %g , py_momentum %0.2f, py_decay %g, py_confmat %d, save_net %d, shuffle_gpu %d , shuffle_every %d \n", 
+		printf("py_nb_epoch %d, py_control_interv %d, py_learning_rate %g, py_end_learning_rate %g , py_momentum %0.2f, py_decay %g, py_confmat %d, save_net %d, shuffle_gpu %d , shuffle_every %d, TC_scale_factor %g\n", 
 			py_nb_epoch, py_control_interv, py_learning_rate, py_end_learning_rate, py_momentum, 
-			py_decay, py_confmat, save_net, shuffle_gpu, shuffle_every);
+			py_decay, py_confmat, save_net, shuffle_gpu, shuffle_every, py_TC_scale_factor);
 		
 	// GIL MACRO : Allow to serialize C thread with python threads
 	Py_BEGIN_ALLOW_THREADS
 		
 	train_network(networks[network_id], py_nb_epoch, py_control_interv, 
-		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_net, shuffle_gpu, shuffle_every);
+		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_net, shuffle_gpu, shuffle_every, py_TC_scale_factor);
 		
 	Py_END_ALLOW_THREADS
 

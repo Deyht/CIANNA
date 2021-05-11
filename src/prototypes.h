@@ -57,7 +57,7 @@ void perf_eval_display(network *net);
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat);
 void save_network(network *net, char *filename);
 void load_network(network *net, char *filename, int epoch);
-void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every);
+void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor);
 void forward_testset(network *net, int train_step, int saving, int repeat, int drop_mode);
 
 
@@ -139,7 +139,7 @@ void cuda_update_weights(network* net, void *weights, void* update, int size);
 __device__ int cuda_argmax(void* tab, int dim_out);
 #endif
 void init_cuda(network* net);
-//void cuda_set_TC_scale_factor(float val);
+void cuda_set_TC_scale_factor(float val);
 void cuda_sync(void);
 void cuda_free_table(void* tab);
 void cuda_create_host_table_FP16(network* net, void **tab, int size);

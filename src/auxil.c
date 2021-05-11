@@ -1238,7 +1238,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 }
 
 
-void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every)
+void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor)
 {
 	int i, j, k, l, m;
 	float begin_learn_rate;
@@ -1252,12 +1252,14 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	int pos;
 	conv_param *c_param;
 	
+	perf_eval_init(net);
+	
 	#ifdef CUDA
 	Dataset shuffle_duplicate;
 	void* temp_error = NULL;
 	int *index_shuffle = NULL, *index_shuffle_device = NULL;
 	
-	perf_eval_init(net);
+	cuda_set_TC_scale_factor(c_TC_scale_factor);
 	
 	if(net->compute_method == C_CUDA)
 	{

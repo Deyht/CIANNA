@@ -158,7 +158,7 @@ int main()
 	
 	printf("Start learning phase ...\n");
 	
-	train_network(networks[0], 1, 1, 0.0002, 0.0001, 0.9, 0.009, 1, 5, 1, 1);
+	train_network(networks[0], 1, 1, 0.0002, 0.0001, 0.9, 0.009, 1, 5, 1, 1, 2.0);
 
 	exit(EXIT_SUCCESS);
 }

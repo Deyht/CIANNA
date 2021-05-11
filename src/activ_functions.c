@@ -765,7 +765,7 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	for(i = 0; i < net->y_param->nb_box; i++)
 		printf("%7.3f ", net->y_param->noobj_prob_prior[i]);
 	printf("]\n");
-	printf(" Error scales: Posit.   Size   Proba.  Objct.  Class.  Param.\n            [");
+	printf(" Error scales: Posit.   Size   Proba.  Objct.  Class.  Param.\n          = [");
 	for(i = 0; i < 6; i++)
 		printf("  %5.3f ",net->y_param->scale_tab[i]);
 	printf("]\n IoU lim. = [");
