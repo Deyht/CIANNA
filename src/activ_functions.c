@@ -670,7 +670,7 @@ void cross_entropy_output_error(void *output_error, void *output, void *target, 
 //#####################################################
 
 
-int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *yolo_noobj_prob_prior, int nb_class, int nb_param, float *scale_tab, float **slopes_and_maxes_tab, float *IoU_limits, int *fit_parts)
+int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *yolo_noobj_prob_prior, int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *IoU_limits, int *fit_parts)
 {
 	int i;
 	float *temp;
@@ -678,6 +678,7 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	char IoU_type_char[40];
 	
 	net->y_param->IoU_type = IoU_type;
+	net->y_param->strict_box_size_association = strict_box_size;
 	
 	switch(net->y_param->IoU_type)
 	{
@@ -761,7 +762,10 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	printf("]\n H priors = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
 		printf("%7.3f ", net->y_param->prior_h[i]);
-	printf("]\n No obj. prob. priors\n          = [");
+	printf("]\n");
+	if(net->y_param->strict_box_size_association)
+		printf(" Strict box size association is ENABLED\n");
+	printf(" No obj. prob. priors\n          = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
 		printf("%7.3f ", net->y_param->noobj_prob_prior[i]);
 	printf("]\n");

@@ -120,8 +120,6 @@ void conv_define_activation_param(layer *current)
 			((yolo_param*)current->activ_param)->biased_dim = ((yolo_param*)current->activ_param)->dim;
 			((yolo_param*)current->activ_param)->cell_w = current->c_network->input_width / c_param->nb_area_w;
 			((yolo_param*)current->activ_param)->cell_h = current->c_network->input_height / c_param->nb_area_h;
-			((yolo_param*)current->activ_param)->beta = 1.0;
-			((yolo_param*)current->activ_param)->saturation = 10.0;
 			c_param->bias_value = 0.01;
 			break;
 			

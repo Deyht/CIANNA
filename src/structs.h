@@ -19,9 +19,6 @@
 */
 
 
-
-
-
 #ifndef STRUCTS_H
 #define STRUCTS_H
 
@@ -272,8 +269,6 @@ struct yolo_param
 	int dim;
 	int biased_dim;
 	int cell_w, cell_h;
-	float beta;
-	float saturation;
 
 	int nb_box;
 	int nb_class;
@@ -284,6 +279,7 @@ struct yolo_param
 	float *prior_h;
 	float *noobj_prob_prior;
 
+	int strict_box_size_association;
 	//Error scaling, 6 elements
 	float *scale_tab;
 	//activation slopes, 6 times 3 elements

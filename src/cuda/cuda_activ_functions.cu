@@ -1254,6 +1254,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 	int nb_box = y_param.nb_box, nb_class = y_param.nb_class, nb_param = y_param.nb_param; 
 	float *prior_w = y_param.prior_w, *prior_h = y_param.prior_h;
 	int cell_w = y_param.cell_w, cell_h = y_param.cell_h;
+	int strict_box_size_association = y_param.strict_box_size_association;
 	
 	float coord_scale = y_param.scale_tab[0], size_scale  = y_param.scale_tab[1];
 	float prob_scale  = y_param.scale_tab[2], obj_scale   = y_param.scale_tab[3];
@@ -1340,17 +1341,20 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			{
 				larger_box = 0;
 				smaller_box = 0;
-				for(l = k; l < nb_box - 1; l++)
+				if(strict_box_size_association)
 				{
-					if(prior_w[l+1] > prior_w[k] && prior_h[l+1] > prior_h[k])
-						if(targ_w > prior_w[l+1] && targ_h > prior_h[l+1])
-							larger_box = 1;
-				}
-				for(l = k; l > 0; l--)
-				{
-					if(prior_w[l-1] < prior_w[k] && prior_h[l-1] < prior_h[k])
-						if(targ_w < prior_w[l-1] && targ_h < prior_h[l-1])
-							smaller_box = 1;
+					for(l = k; l < nb_box - 1; l++)
+					{
+						if(prior_w[l+1] > prior_w[k] && prior_h[l+1] > prior_h[k])
+							if(targ_w > prior_w[l+1] && targ_h > prior_h[l+1])
+								larger_box = 1;
+					}
+					for(l = k; l > 0; l--)
+					{
+						if(prior_w[l-1] < prior_w[k] && prior_h[l-1] < prior_h[k])
+							if(targ_w < prior_w[l-1] && targ_h < prior_h[l-1])
+								smaller_box = 1;
+					}
 				}
 			
 				if(box_locked[k] == 2 || larger_box || smaller_box)

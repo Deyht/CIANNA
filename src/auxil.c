@@ -135,6 +135,7 @@ CIANNA V-0.9.2.4 EXPERIMENTAL BUILD (05/2021), by D.Cornu\n\
 	net->y_param->prior_w = NULL;
 	net->y_param->prior_h = NULL;
 	net->y_param->IoU_type = IOU;
+	net->y_param->strict_box_size_association = 0;
 	net->y_param->c_IoU_fct = NULL;
 	net->y_param->noobj_prob_prior = NULL;
 	net->y_param->scale_tab = NULL;
