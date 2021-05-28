@@ -134,6 +134,7 @@ CIANNA V-0.9.2.4 EXPERIMENTAL BUILD (05/2021), by D.Cornu\n\
 	net->y_param->nb_box = 0;
 	net->y_param->prior_w = NULL;
 	net->y_param->prior_h = NULL;
+	net->y_param->prior_d = NULL;
 	net->y_param->IoU_type = IOU;
 	net->y_param->strict_box_size_association = 0;
 	net->y_param->c_IoU_fct = NULL;
@@ -873,17 +874,18 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	float count;
 	float *rapp_err = NULL, *rapp_err_rec = NULL;
 	int o, pos, in_col;
-	float total_error, batch_error = 0.0;
-	float pos_error = 0.0, size_error = 0.0, prob_error = 0.0;
-	float objectness_error = 0.0, class_error = 0.0, param_error = 0.0;
+	float total_error, batch_error = 0.0f;
+	float pos_error = 0.0f, size_error = 0.0f, prob_error = 0.0f;
+	float objectness_error = 0.0f, class_error = 0.0f, param_error = 0.0f;
 	void* output_save = NULL;
 	void* output_buffer = NULL;
 	struct timeval ep_timer;
-	float items_per_s = 0.0;
+	float items_per_s = 0.0f;
 	FILE *f_save = NULL;
 	char f_save_name[100];
 	conv_param *c_param;
 	yolo_param *a_param;
+	float nb_IoU = 0.0f, sum_IoU = 0.0f;
 	
 	#ifdef CUDA
 	float* cuda_mat;
@@ -940,6 +942,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		total_error = 0.0;
 		pos_error = 0.0, size_error = 0.0, prob_error = 0.0;
 		objectness_error = 0.0, class_error = 0.0, param_error = 0.0;
+		nb_IoU = 0.0f;
+		sum_IoU = 0.0f;
 		
 		if(repeat <= 1)
 			printf("\nForward: %d\n", net->epoch);
@@ -1099,6 +1103,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
 					int batch_offset = c_param->nb_area_w*c_param->nb_area_h;
 					int filter_offset = batch_offset*net->batch_size;
+					float *host_IoU_monitor = NULL;
 					for(k = 0; k < net->length; k++)
 					{
 						for(l = 0; l < c_param->nb_filters; l++)
@@ -1118,24 +1123,35 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 						{
 							for(l = 0; l < c_param->nb_filters; l++)
 							{
-								in_col = l%(6+a_param->nb_class+a_param->nb_param);
+								in_col = l%(8+a_param->nb_class+a_param->nb_param);
 								for(m = 0; m < batch_offset; m++)
 								{
-									if(in_col < 2)
+									if(in_col < 3)
 										pos_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
-									else if(in_col < 4)
-										size_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
-									else if(in_col < 5)
-										prob_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
 									else if(in_col < 6)
+										size_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+									else if(in_col < 7)
+										prob_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+									else if(in_col < 8)
 										objectness_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
-									else if(in_col < 6 + a_param->nb_class)
+									else if(in_col < 9 + a_param->nb_class)
 										class_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
-									else if(in_col < 6 + a_param->nb_class + a_param->nb_param)
+									else if(in_col < 9 + a_param->nb_class + a_param->nb_param)
 										param_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
 								}
 							}
 						}
+						//cuda_print_table_FP32(net, a_param->IoU_monitor, 2*a_param->nb_box*batch_offset*net->batch_size,  2*a_param->nb_box);
+						//move the alloc and free to avoid having them at each batch
+						host_IoU_monitor = (float*) calloc(2*a_param->nb_box*batch_offset*net->batch_size, sizeof(float));
+						cuda_get_table_FP32(net, a_param->IoU_monitor, host_IoU_monitor, 2*a_param->nb_box*batch_offset*net->batch_size);
+						for(k = 0; k < 2*a_param->nb_box*batch_offset*net->batch_size; k += 2)
+						{
+							nb_IoU += host_IoU_monitor[k];
+							sum_IoU += host_IoU_monitor[k+1];
+						}
+						free(host_IoU_monitor);
+						//printf("%d %f %f\n", 2*a_param->nb_box*batch_offset*net->batch_size, nb_IoU, sum_IoU);
 					}
 					break;
 			}
@@ -1165,9 +1181,9 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			{
 				if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
 				{
-					printf("Error dist - Pos: %f, Size: %f, Prob: %f, Objct: %f, Class: %f, Param: %f\n",
+					printf("Error dist - Pos: %f, Size: %f, Prob: %f, Objct: %f, Class: %f, Param: %f  - Mean IoU = %f\n",
 					pos_error/data.size, size_error/data.size, prob_error/data.size, 
-					objectness_error/data.size, class_error/data.size, param_error/data.size);
+					objectness_error/data.size, class_error/data.size, param_error/data.size, sum_IoU/nb_IoU);
 					
 					fprintf(f_err, " %g %g %g %g %g %g",  
 					pos_error/data.size, size_error/data.size, prob_error/data.size, 
@@ -1327,8 +1343,9 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*net->epoch);
 		net->epoch++;
 	
-		if((net->epoch) % shuffle_every == 0 && net->batch_param != SGD)
+		if((net->epoch+1) % shuffle_every == 0 && net->batch_param != SGD)
 		{
+			//printf("Shuffle !\n");
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
@@ -1453,7 +1470,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		
 		items_per_s = net->train.size/ellapsed_time(ep_timer); 
 		
-		if(((net->epoch) % control_interv == 0) || (i == nb_epochs - 1))
+		if(((net->epoch) % control_interv == 0))
 		{
 			//printf("\nControl step epoch: %d\n", net->epoch);
 			printf("\nNet. training perf.: %0.2f items/s\n", items_per_s);

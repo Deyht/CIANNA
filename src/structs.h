@@ -40,7 +40,6 @@ enum compute_method{C_NAIV, C_BLAS, C_CUDA};
 enum memory_localization{HOST, DEVICE};
 enum IoU_types{IOU, GIOU, DIOU};
 
-
 typedef struct Dataset Dataset;
 typedef struct layer layer;
 typedef struct network network;
@@ -113,6 +112,7 @@ struct network
 	float momentum;
 	
 	Dataset train, test, valid;
+	Dataset train_buf, test_buf, valid_buf;
 	
 	int input_width, input_height, input_depth;
 	int input_dim;
@@ -268,7 +268,7 @@ struct yolo_param
 	int size;
 	int dim;
 	int biased_dim;
-	int cell_w, cell_h;
+	int cell_w, cell_h, cell_d;
 
 	int nb_box;
 	int nb_class;
@@ -277,6 +277,7 @@ struct yolo_param
 	float (*c_IoU_fct)(float*, float*);
 	float *prior_w;
 	float *prior_h;
+	float *prior_d;
 	float *noobj_prob_prior;
 
 	int strict_box_size_association;
@@ -288,6 +289,9 @@ struct yolo_param
 	float *IoU_limits;
 	//use to disable the fit of given loss parts
 	int *fit_parts;
+	
+	//monitoring
+	float *IoU_monitor;
 };
 
 

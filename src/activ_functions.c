@@ -19,10 +19,7 @@
 */
 
 
-
-
 #include "prototypes.h"
-
 
 //public are in "prototypes.h"
 
@@ -670,7 +667,7 @@ void cross_entropy_output_error(void *output_error, void *output, void *target, 
 //#####################################################
 
 
-int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *yolo_noobj_prob_prior, int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *IoU_limits, int *fit_parts)
+int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, float *yolo_noobj_prob_prior, int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *IoU_limits, int *fit_parts)
 {
 	int i;
 	float *temp;
@@ -729,6 +726,7 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	net->y_param->nb_box = nb_box;
 	net->y_param->prior_w = prior_w;
 	net->y_param->prior_h = prior_h;
+	net->y_param->prior_d = prior_d;
 	net->y_param->noobj_prob_prior = yolo_noobj_prob_prior;
 	net->y_param->nb_class = nb_class;
 	net->y_param->nb_param = nb_param;
@@ -755,13 +753,16 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	}
 	
 	printf("\nYOLO layer set with:\n Nboxes = %d\n Ndimensions = %d\n Nclasses = %d\n Nparams = %d\n IoU type = %s\n",
-			net->y_param->nb_box, 2, net->y_param->nb_class, net->y_param->nb_param, IoU_type_char);
+			net->y_param->nb_box, 3, net->y_param->nb_class, net->y_param->nb_param, IoU_type_char);
 	printf(" W priors = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
 		printf("%7.3f ", net->y_param->prior_w[i]);
 	printf("]\n H priors = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
 		printf("%7.3f ", net->y_param->prior_h[i]);
+	printf("]\n D priors = [");
+	for(i = 0; i < net->y_param->nb_box; i++)
+		printf("%7.3f ", net->y_param->prior_d[i]);
 	printf("]\n");
 	if(net->y_param->strict_box_size_association)
 		printf(" Strict box size association is ENABLED\n");
@@ -777,7 +778,7 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 		printf("%7.3f ", net->y_param->IoU_limits[i]);
 	printf("]\n\n");
 	
-	return(nb_box*(6+nb_class+nb_param));
+	return(nb_box*(8+nb_class+nb_param));
 }
 
 

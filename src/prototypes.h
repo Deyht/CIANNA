@@ -20,8 +20,6 @@
 
 
 
-
-
 #ifndef PROTOTYPES_H
 #define PROTOTYPES_H
 
@@ -68,7 +66,7 @@ void output_deriv_error(layer* current);
 void print_activ_param(FILE *f, int type);
 void get_string_activ_param(char* activ, int type);
 int load_activ_param(char *type);
-int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *yolo_noobj_prob_prior, int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *IoU_limits, int *fit_parts);
+int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, float *yolo_noobj_prob_prior, int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *IoU_limits, int *fit_parts);
 
 //dense_layer.c
 void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, FILE *f_load);

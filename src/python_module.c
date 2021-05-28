@@ -96,11 +96,12 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOO|iii", kwlist, &dataset_type, &size, &py_data, &py_target, &flat, &network_id, &silent))
 	    return Py_None;
 	
+	Py_BEGIN_ALLOW_THREADS
 	
 	if(strcmp(dataset_type,"TRAIN") == 0)
 	{
 		if(silent == 0)
-			printf("Setting training set\n");
+			printf("Setting train set\n");
 		data = &networks[network_id]->train;
 	}
 	else if(strcmp(dataset_type,"VALID") == 0)
@@ -112,12 +113,32 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	else if(strcmp(dataset_type,"TEST") == 0)
 	{
 		if(silent == 0)
-			printf("Setting testing test\n");
+			printf("Setting test set\n");
 		data = &networks[network_id]->test;
 	}
+	else if(strcmp(dataset_type,"TRAIN_buf") == 0)
+	{
+		if(silent == 0)
+			printf("Setting train buffer set\n");
+		data = &networks[network_id]->train_buf;
+	}
+	else if(strcmp(dataset_type,"VALID_buf") == 0)
+	{
+		if(silent == 0)
+			printf("Setting valid buffer set\n");
+		data = &networks[network_id]->valid_buf;
+	}
+	else if(strcmp(dataset_type,"TEST_buf") == 0)
+	{
+		if(silent == 0)
+			printf("Setting test buffer set\n");
+		data = &networks[network_id]->test_buf;
+	}
 	
-	
+	struct timeval time;
+	init_timing(&time);
 	*data = create_dataset(networks[network_id], size);
+	printf("Time raw create %f\n",ellapsed_time(time));
 	
 	if(silent == 0)
 	{
@@ -168,7 +189,8 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 					* py_target->strides[1]);
 			}
 	}
-	printf("Done !\n");
+	if(silent == 0)
+		printf("Done !\n");
 	
 	#ifdef CUDA
 	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 0)
@@ -188,6 +210,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	if(silent == 0)
 		printf("\n");
 	
+	Py_END_ALLOW_THREADS
 	return Py_None;
 }
 
@@ -202,10 +225,12 @@ static PyObject* py_delete_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "s|ii", kwlist, &dataset_type, &network_id, &silent))
 		return Py_None;
 	
+	Py_BEGIN_ALLOW_THREADS
+	
 	if(strcmp(dataset_type,"TRAIN") == 0)
 	{
 		if(silent == 0)
-			printf("Deleting training set\n");
+			printf("Deleting train set\n");
 		data = &networks[network_id]->train;
 	}
 	else if(strcmp(dataset_type,"VALID") == 0)
@@ -217,8 +242,26 @@ static PyObject* py_delete_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	else if(strcmp(dataset_type,"TEST") == 0)
 	{
 		if(silent == 0)
-			printf("Deleting testing test\n");
+			printf("Deleting test set\n");
 		data = &networks[network_id]->test;
+	}
+	else if(strcmp(dataset_type,"TRAIN_buf") == 0)
+	{
+		if(silent == 0)
+			printf("Deleting train buffer set\n");
+		data = &networks[network_id]->train_buf;
+	}
+	else if(strcmp(dataset_type,"VALID_buf") == 0)
+	{
+		if(silent == 0)
+			printf("Deleting valid buffer set\n");
+		data = &networks[network_id]->valid_buf;
+	}
+	else if(strcmp(dataset_type,"TEST_buf") == 0)
+	{
+		if(silent == 0)
+			printf("Deleting test buffer set\n");
+		data = &networks[network_id]->test_buf;
 	}
 	else
 	{
@@ -226,7 +269,43 @@ static PyObject* py_delete_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	}
 
 	free_dataset(*data);
+	Py_END_ALLOW_THREADS
 
+	return Py_None;
+}
+
+
+static PyObject* py_swap_data_buffers(PyObject* self, PyObject* args)
+{
+	int network_id = nb_networks - 1;
+	const char *dataset_type;
+	Dataset temp;
+	if(!PyArg_ParseTuple(args, "s|i", &dataset_type, &network_id))
+		return Py_None;
+	
+	if(strcmp(dataset_type,"TRAIN") == 0)
+	{
+		temp = networks[network_id]->train;
+		networks[network_id]->train = networks[network_id]->train_buf;
+		networks[network_id]->train_buf = temp;
+	}
+	else if(strcmp(dataset_type,"VALID") == 0)
+	{
+		temp = networks[network_id]->valid;
+		networks[network_id]->valid = networks[network_id]->valid_buf;
+		networks[network_id]->valid_buf = temp;
+	}
+	else if(strcmp(dataset_type,"TEST") == 0)
+	{
+		temp = networks[network_id]->test;
+		networks[network_id]->test = networks[network_id]->test_buf;
+		networks[network_id]->test_buf = temp;
+	}
+	else
+	{
+		printf("Warning: No matching dataset to delete!\n");
+	}
+	
 	return Py_None;
 }
 
@@ -280,7 +359,6 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 	fwrite(&networks[network_id]->output_dim, sizeof(int), 1, f);
 	
 	// As for the C function, this one could probably be strongly simplified to avoid repetition
-	
 	switch(input_data_type_C)
 	{
 		case c_UINT8:
@@ -317,7 +395,6 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 							}
 					}
 					fwrite(temp_input, datasize, networks[network_id]->input_dim, f);
-					
 				}
 			}
 			free(temp_input);
@@ -358,7 +435,6 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 							}
 					}
 					fwrite(temp_input, datasize, networks[network_id]->input_dim, f);
-					
 				}
 			}
 			free(temp_input);
@@ -399,14 +475,12 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 							}
 					}
 					fwrite(temp_input, datasize, networks[network_id]->input_dim, f);
-					
 				}
 			}
 			free(temp_input);
 			break;
 		}
 	}
-	
 	
 	if(strcmp(output_data_type,"UINT8") == 0)
 		output_data_type_C = c_UINT8;
@@ -419,7 +493,6 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 		printf("ERROR : Unsuported datatype %s\n", output_data_type);
 		exit(EXIT_FAILURE);
 	}
-	
 	
 	switch(output_data_type_C)
 	{
@@ -537,8 +610,16 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 	if(silent == 0)
 		printf("Loading dataset from file %s ...",filename);
 	
+	struct timeval time;
+	
+	init_timing(&time);
 	data = load_formated_dataset(networks[network_id], filename, input_data_type_C, output_data_type_C);
+	if(silent == 0)
+		printf("Time load %f\n",ellapsed_time(time));
+	init_timing(&time);
 	normalize_dataset(networks[network_id], data);
+	if(silent == 0)
+		printf("Time normalise %f\n",ellapsed_time(time));
 	
 	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 0)
 		cuda_convert_dataset(networks[network_id], &data);
@@ -560,6 +641,21 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 	{
 		//printf("Testing test loaded\n");
 		networks[network_id]->test = data;
+	}
+	else if(strcmp(dataset_type,"TRAIN_buf") == 0)
+	{
+		//printf("Testing test loaded\n");
+		networks[network_id]->train_buf = data;
+	}
+	else if(strcmp(dataset_type,"VALID_buf") == 0)
+	{
+		//printf("Testing test loaded\n");
+		networks[network_id]->valid_buf = data;
+	}
+	else if(strcmp(dataset_type,"TEST_buf") == 0)
+	{
+		//printf("Testing test loaded\n");
+		networks[network_id]->test_buf = data;
 	}
 	
 	if(silent == 0)
@@ -724,21 +820,22 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 	int i,j;
 	int nb_box, nb_class, nb_param, IoU_type;
 	int strict_box_size_association = 0, network_id = 0;
-	PyArrayObject *py_prior_w = NULL, *py_prior_h = NULL, *py_prior_noobj_prob;
-	float *C_prior_w, *C_prior_h, *C_prior_noobj_prob;
+	PyArrayObject *py_prior_w = NULL, *py_prior_h = NULL, *py_prior_d = NULL, *py_prior_noobj_prob;
+	float *C_prior_w, *C_prior_h, *C_prior_d, *C_prior_noobj_prob;
 	PyArrayObject *py_error_scales = NULL, *py_slopes_and_maxes = NULL, *py_IoU_limits = NULL, *py_fit_parts = NULL;
 	const char* IoU_type_char = "empty";
 	float *error_scales = NULL, **slopes_and_maxes = NULL, *IoU_limits = NULL;
 	int *fit_parts = NULL;
 	float* temp;
-	static char *kwlist[] = {"nb_box", "prior_w", "prior_h", "prior_noobj_prob", "nb_class", "nb_param", "error_scales", "slopes_and_maxes", "IoU_limits", "fit_parts", "IoU_type", "strict_box_size_association","network", NULL};
+	static char *kwlist[] = {"nb_box", "prior_w", "prior_h", "prior_noobj_prob", "nb_class", "nb_param", "error_scales", "slopes_and_maxes", "IoU_limits", "fit_parts", "prior_d", "IoU_type", "strict_box_size_association", "network", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iOOOii|OOOOsii", kwlist, 
-			&nb_box, &py_prior_w, &py_prior_h, &py_prior_noobj_prob, &nb_class, &nb_param, &py_error_scales, &py_slopes_and_maxes, &py_IoU_limits, &py_fit_parts, &IoU_type_char, &strict_box_size_association, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iOOOii|OOOOOsii", kwlist, 
+			&nb_box, &py_prior_w, &py_prior_h, &py_prior_noobj_prob, &nb_class, &nb_param, &py_error_scales, &py_slopes_and_maxes, &py_IoU_limits, &py_fit_parts, &py_prior_d, &IoU_type_char, &strict_box_size_association, &network_id))
 	    return PyLong_FromLong(0);
 
 	C_prior_w = (float*) calloc(nb_box,sizeof(float));
 	C_prior_h = (float*) calloc(nb_box,sizeof(float));
+	C_prior_d = (float*) calloc(nb_box,sizeof(float));
 	C_prior_noobj_prob = (float*) calloc(nb_box,sizeof(float));
 	
 	if(strcmp(IoU_type_char, "IoU") == 0)
@@ -759,6 +856,17 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 		C_prior_h[i] = *((float*)(py_prior_h->data + i * py_prior_h->strides[0]));
 		C_prior_noobj_prob[i] = *((float*)(py_prior_noobj_prob->data 
 									 + i * py_prior_noobj_prob->strides[0]));
+	}
+	
+	if(py_prior_d != NULL)
+	{
+		for(i = 0; i < nb_box; i++)
+			C_prior_d[i] = *((float*)(py_prior_d->data + i * py_prior_d->strides[0]));
+	}
+	else
+	{
+		for(i = 0; i < nb_box; i++)
+			C_prior_d[i] = 1.0f;
 	}
 	
 	if(py_error_scales != NULL)
@@ -793,7 +901,7 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 			fit_parts[i] = *(int *)(py_fit_parts->data + i*py_fit_parts->strides[0]);
 	}
 	
-	return PyLong_FromLong(set_yolo_params(networks[network_id], nb_box, IoU_type, C_prior_w, C_prior_h, C_prior_noobj_prob, 
+	return PyLong_FromLong(set_yolo_params(networks[network_id], nb_box, IoU_type, C_prior_w, C_prior_h, C_prior_d, C_prior_noobj_prob, 
 					nb_class, nb_param, strict_box_size_association,  error_scales, slopes_and_maxes, IoU_limits, fit_parts));
 }
 
@@ -885,6 +993,7 @@ static PyMethodDef CIANNAMethods[] = {
     { "init_network", (PyCFunction)py_init_network, METH_VARARGS | METH_KEYWORDS, "Initialize network basic sahpes and properties" },
     { "create_dataset", (PyCFunction)py_create_dataset, METH_VARARGS | METH_KEYWORDS, "Allocate dataset structure" },
     { "delete_dataset", (PyCFunction)py_delete_dataset, METH_VARARGS | METH_KEYWORDS, "Free dataset structure" },
+    { "swap_data_buffers", py_swap_data_buffers, METH_VARARGS, "Put the selected buffered dataset as current dataset for training"},
     { "write_formated_dataset", (PyCFunction)py_write_formated_dataset, METH_VARARGS | METH_KEYWORDS, "Write a proper numpy table onto a formated binary dataset file"},
     { "load_formated_dataset", (PyCFunction)py_load_formated_dataset, METH_VARARGS | METH_KEYWORDS, "Read a formated binary dataset file and directly store it into a network dataset"},
     { "set_normalize_factors", (PyCFunction)py_set_normalize_factors, METH_VARARGS | METH_KEYWORDS, "Set normalization factor for transformation on all the datasets subsequently loaded (with formated loading) in the C framework"},
@@ -898,7 +1007,6 @@ static PyMethodDef CIANNAMethods[] = {
     { "forward_network", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },
     { NULL, NULL, 0, NULL }
 };
-
 
 static struct PyModuleDef CIANNA = {
     PyModuleDef_HEAD_INIT,

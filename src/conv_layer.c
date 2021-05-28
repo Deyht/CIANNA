@@ -103,24 +103,31 @@ void conv_define_activation_param(layer *current)
 			
 		case YOLO:
 			current->activ_param = (yolo_param*) malloc(sizeof(yolo_param));
-			if(current->c_network->y_param->nb_box*(6+current->c_network->y_param->nb_class
+			if(current->c_network->y_param->nb_box*(8+current->c_network->y_param->nb_class
 					+ current->c_network->y_param->nb_param) != c_param->nb_filters)
 			{
-				printf("%d %d\n", current->c_network->y_param->nb_box*(6+current->c_network->y_param->nb_class
+				printf("%d %d\n", current->c_network->y_param->nb_box*(8+current->c_network->y_param->nb_class
 					+ current->c_network->y_param->nb_param), c_param->nb_filters);
 				printf("ERROR: Nb filters size mismatch in YOLO dimensions!\n");
 				exit(EXIT_FAILURE);
 			}
 			
+			printf("Nb_elem IoU monitor %d\n", 2 * current->c_network->y_param->nb_box
+				* c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size);
+			//exit();
 			//real copy to keep network properties accessible
-			*((yolo_param*)current->activ_param) = *(current->c_network->y_param);			
+			*((yolo_param*)current->activ_param) = *(current->c_network->y_param);	
 			((yolo_param*)current->activ_param)->size = c_param->nb_area_w 
 				* c_param->nb_area_h *  c_param->nb_filters * current->c_network->batch_size;
+			printf(" %d %d %d\n", c_param->nb_filters, c_param->nb_area_w, c_param->nb_area_h);
 			((yolo_param*)current->activ_param)->dim = ((yolo_param*)current->activ_param)->size;
 			((yolo_param*)current->activ_param)->biased_dim = ((yolo_param*)current->activ_param)->dim;
 			((yolo_param*)current->activ_param)->cell_w = current->c_network->input_width / c_param->nb_area_w;
 			((yolo_param*)current->activ_param)->cell_h = current->c_network->input_height / c_param->nb_area_h;
+			((yolo_param*)current->activ_param)->cell_d = current->c_network->input_depth;
 			c_param->bias_value = 0.01;
+			((yolo_param*)current->activ_param)->IoU_monitor = (float*) calloc(2 * current->c_network->y_param->nb_box
+				* c_param->nb_area_w * c_param->nb_area_h * current->c_network->batch_size, sizeof(float));
 			break;
 			
 		case LINEAR:
@@ -132,7 +139,6 @@ void conv_define_activation_param(layer *current)
 			((linear_param*)current->activ_param)->biased_dim = ((linear_param*)current->activ_param)->dim;
 			c_param->bias_value = 0.5;
 			break;
-	
 	}
 }
 
@@ -218,6 +224,8 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	//allocate the resulting flatten activation map regarding the batch size
 	//Activation maps are not continuous for each image : 
 	//		A1_im1, A1_im2, A1_im3, ... , A2_im1, A2_im2, A2_im3, ... 
+	
+	//printf("%d %d %d %d\n", c_param->nb_filters, c_param->nb_area_w, c_param->nb_area_h, net->batch_size);
 	current->output = (float*) calloc( c_param->nb_filters * (c_param->nb_area_w * c_param->nb_area_h) *
 		net->batch_size, sizeof(float));
 	//allocate output error comming from next layer
@@ -225,8 +233,8 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 		net->batch_size, sizeof(float));
 	
 	//temporary output error used for format conversion
-	c_param->temp_delta_o = (float*) calloc( c_param->prev_depth * (c_param->prev_size_w 
-		* c_param->prev_size_h) * current->c_network->batch_size, sizeof(float));
+	/*c_param->temp_delta_o = (float*) calloc( c_param->prev_depth * (c_param->prev_size_w 
+		* c_param->prev_size_h) * current->c_network->batch_size, sizeof(float));*/
 		
 	//allocate the im2col input flatten table regarding the batch size
 	c_param->im2col_input = (float*) calloc( (c_param->flat_f_size * c_param->nb_area_w * c_param->nb_area_h)

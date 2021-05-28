@@ -21,9 +21,6 @@
 
 
 
-
-
-
 #include "../prototypes.h"
 
 static int cu_blocks;
@@ -93,8 +90,8 @@ void cuda_convert_conv_layer(layer *current)
 		* (c_param->nb_area_w * c_param->nb_area_h) * current->c_network->batch_size);
 	cuda_convert_table(current->c_network, &(current->delta_o), c_param->nb_filters 
 		* (c_param->nb_area_w * c_param->nb_area_h) * current->c_network->batch_size);
-	cuda_convert_table(current->c_network, &(c_param->temp_delta_o), c_param->prev_depth 
-		* (c_param->prev_size_w * c_param->prev_size_h) * current->c_network->batch_size);
+	/*cuda_convert_table(current->c_network, &(c_param->temp_delta_o), c_param->prev_depth 
+		* (c_param->prev_size_w * c_param->prev_size_h) * current->c_network->batch_size);*/
 	
 	cuda_convert_table(current->c_network, &(c_param->im2col_input), 
 		(c_param->flat_f_size * c_param->nb_area_w * c_param->nb_area_h) 
