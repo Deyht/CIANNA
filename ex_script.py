@@ -2,7 +2,7 @@
 
 import numpy as np
 import sys
-sys.path.insert(0,'/home/dcornu/Work/MINERVA/YOLO_SDC1_standalone/CIANNA_exp_new/src/build/lib.linux-x86_64-3.8')
+sys.path.insert(0,'/home/dcornu/Work/MINERVA/YOLO_SDC2/CIANNA_exp/src/build/lib.linux-x86_64-3.8')
 import CIANNA as cnn
 
 ############################################################################

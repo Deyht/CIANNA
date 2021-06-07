@@ -148,8 +148,13 @@ CIANNA V-0.9.2.4 EXPERIMENTAL BUILD (05/2021), by D.Cornu\n\
 
 }
 
+void copy_to_float(void* in_tab, void* out_tab, int out_offset, int size)
+{
+	for(int i = 0; i < size; i++)
+		((float*)out_tab + out_offset)[i] = *((float*)in_tab + i);
+}
 
-Dataset create_dataset(network *net, int nb_elem)
+Dataset create_dataset_FP32(network *net, int nb_elem)
 {
 	int i,j;
 	Dataset data;
@@ -159,6 +164,7 @@ Dataset create_dataset(network *net, int nb_elem)
 	data.input = (void**) malloc(data.nb_batch*sizeof(float*));
 	data.target = (void**) malloc(data.nb_batch*sizeof(float*));
 	data.localization = HOST;
+	data.cont_copy = copy_to_float;
 	
 	for(i = 0; i < data.nb_batch; i++)
 	{
@@ -175,6 +181,24 @@ Dataset create_dataset(network *net, int nb_elem)
 	}
 	
 	return data;
+}
+
+
+Dataset create_dataset(network *net, int nb_elem)
+{
+	switch(net->use_cuda_TC)
+	{
+		default:
+		case 0:
+			return create_dataset_FP32(net, nb_elem);
+			break;
+			
+		case 1:
+			#ifdef CUDA
+			return create_dataset_FP16(net, nb_elem);
+			#endif
+			break;
+	}
 }
 
 void print_table(float* tab, int column_size, int nb_column)

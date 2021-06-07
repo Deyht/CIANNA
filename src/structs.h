@@ -64,6 +64,7 @@ struct Dataset
 	void **target;
 	void **input_device;
 	void **target_device;
+	void (*cont_copy)(void *elem_in, void *elem_out, int out_offset, int nb_elem);
 	int size;
 	int nb_batch;
 	int localization;

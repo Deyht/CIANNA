@@ -40,8 +40,8 @@ __global__ void cuda_unroll_conv_FP32(float* in, float* out, int map_size, int f
 __global__ void cuda_unroll_conv_FP16(half* in, half* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 __global__ void cuda_reroll_delta_o_FP32(float* in, float* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 __global__ void cuda_reroll_delta_o_FP16(half* in, half* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
-__global__ void im2col_kernel_v4_FP32(float* output, float* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
-__global__ void im2col_kernel_v4_FP16(half* output, half* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
+__global__ void im2col_kernel_v4_FP32(float* output, float* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int h_size, int nb_area_w, int bias);
+__global__ void im2col_kernel_v4_FP16(half* output, half* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int h_size, int nb_area_w, int bias);
 __global__ void im2col_kernel_v5_FP16(half* output, half* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
 
 __global__ void init_block_state_conv(unsigned int seed, curandState_t* states);
@@ -186,16 +186,16 @@ void cuda_forward_conv_layer(layer *current)
 				(float*)current->input, c_param->prev_size_w*c_param->prev_size_h, c_param->nb_area_w 
 				* c_param->nb_area_h * c_param->flat_f_size, c_param->stride, c_param->padding, 0, 
 				c_param->prev_depth, depth_padding, image_padding, current->c_network->batch_size, 
-				c_param->f_size, c_param->flat_f_size, c_param->prev_size_w, c_param->nb_area_w,
-				im2col_prev_bias);
+				c_param->f_size, c_param->flat_f_size, c_param->prev_size_w, c_param->prev_size_h,
+				c_param->nb_area_w, im2col_prev_bias);
 			break;
 		case 1:
 			im2col_kernel_v4_FP16<<< numBlocks2, threadsPerBlock2 >>>((half*)c_param->im2col_input,
 				(half*)current->input, c_param->prev_size_w*c_param->prev_size_h, c_param->nb_area_w 
 				* c_param->nb_area_h * c_param->flat_f_size, c_param->stride, c_param->padding, 0, 
 				c_param->prev_depth,  depth_padding, image_padding, current->c_network->batch_size, 
-				c_param->f_size,  c_param->flat_f_size, c_param->prev_size_w, c_param->nb_area_w,
-				im2col_prev_bias);
+				c_param->f_size,  c_param->flat_f_size, c_param->prev_size_w, c_param->prev_size_h,
+				c_param->nb_area_w, im2col_prev_bias);
 			break;
 	}
 	//cuda im2col conversion kernel -> one of the most complex function, go see details above
@@ -356,7 +356,7 @@ void cuda_backward_conv_layer(layer *current)
 					(c_param->prev_size_w * c_param->prev_size_h) * flat_f_size, 1, back_padding, 
 					c_param->stride - 1 , c_param->nb_filters, depth_padding, image_padding, 
 					current->c_network->batch_size, c_param->f_size, flat_f_size, c_param->nb_area_w,
-					c_param->prev_size_w, 0);
+					c_param->nb_area_h, c_param->prev_size_w, 0);
 				break;
 			case 1:
 				im2col_kernel_v4_FP16<<< numBlocks2, threadsPerBlock2>>>((half*)c_param->im2col_delta_o,
@@ -364,7 +364,7 @@ void cuda_backward_conv_layer(layer *current)
 					(c_param->prev_size_w * c_param->prev_size_h) * flat_f_size, 1, back_padding,
 					c_param->stride - 1 , c_param->nb_filters, depth_padding, image_padding,
 					current->c_network->batch_size, c_param->f_size, flat_f_size, c_param->nb_area_w, 
-					c_param->prev_size_w, 0);
+					c_param->nb_area_h, c_param->prev_size_w, 0);
 				break;
 		}
 
@@ -417,7 +417,7 @@ void cuda_backward_conv_layer(layer *current)
 //due to subsequent matrix operations. Currently memory bound despite only 1 load per element of the original image.
 //VERSION 4.1
 
-__global__ void im2col_kernel_v4_FP32(float* output, float* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias)
+__global__ void im2col_kernel_v4_FP32(float* output, float* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int h_size, int nb_area_w, int bias)
 {
 	int z = blockIdx.x*blockDim.x + threadIdx.x;
 	int d = blockIdx.y*blockDim.y + threadIdx.y;
@@ -445,10 +445,10 @@ __global__ void im2col_kernel_v4_FP32(float* output, float* input, int image_siz
 				w = (z % w_size)*(1 + internal_padding) + padding;
 				h = (z / w_size)*(1 + internal_padding) + padding;
 				
-				for(x = w/stride; (w-x*stride < f_size) && (x >= 0); x -= 1)
+				for(x = w/stride; (w-x*stride < f_size) && (x >= 0) && (x*stride <= w_size - f_size); x -= 1)
 				{
 					pos_w_filter = w-x*stride;
-					for(y = h/stride; (h-y*stride < f_size) && (y >= 0); y-= 1)
+					for(y = h/stride; (h-y*stride < f_size) && (y >= 0) && (y*stride <= h_size - f_size); y -= 1)
 					{
 						pos_h_filter = h-y*stride;
 						loc = x*flat_f_size + y*nb_area_w*flat_f_size + pos_w_filter + pos_h_filter*f_size;
@@ -461,7 +461,7 @@ __global__ void im2col_kernel_v4_FP32(float* output, float* input, int image_siz
 	}
 }
 
-__global__ void im2col_kernel_v4_FP16(half* output, half* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias)
+__global__ void im2col_kernel_v4_FP16(half* output, half* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int h_size, int nb_area_w, int bias)
 {
 	int z = blockIdx.x*blockDim.x + threadIdx.x;
 	int d = blockIdx.y*blockDim.y + threadIdx.y;
@@ -489,12 +489,16 @@ __global__ void im2col_kernel_v4_FP16(half* output, half* input, int image_size,
 				w = (z % w_size)*(1 + internal_padding) + padding;
 				h = (z / w_size)*(1 + internal_padding) + padding;
 				
-				for(x = w/stride; (w-x*stride < f_size) && (x >= 0); x -= 1)
+				for(x = w/stride; (w-x*stride < f_size) /*&& (x >= 0)*/; x -= 1)
 				{
 					pos_w_filter = w-x*stride;
-					for(y = h/stride; (h-y*stride < f_size) && (y >= 0); y-= 1)
+					if((x < 0) || (x*stride > w_size*(1 + internal_padding) + 2*padding - f_size)/*(pos_w_filter > (w_size - f_size))*/)
+						continue;
+					for(y = h/stride; (h-y*stride < f_size) /*&& (y >= 0)*/; y -= 1)
 					{
 						pos_h_filter = h-y*stride;
+						if((y < 0) || (y*stride > h_size*(1 + internal_padding) + 2*padding - f_size) /*(pos_h_filter > (h_size - f_size))*/)
+							continue;
 						loc = x*flat_f_size + y*nb_area_w*flat_f_size + pos_w_filter + pos_h_filter*f_size;
 						if(loc >= 0 && loc < flat_image_size)
 							output[x*flat_f_size + y*nb_area_w*flat_f_size + pos_w_filter + pos_h_filter*f_size] = local_pix;

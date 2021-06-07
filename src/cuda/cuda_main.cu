@@ -105,10 +105,19 @@ void cuda_free_table(void* tab)
 	cudaFree(tab);
 }
 
-void cuda_copy_to_half(float* in_tab, half* out_tab, int size)
+void copy_to_half(void* in_tab, void* out_tab, int out_offset, int size)
 {
+	/*printf("\n");
 	for(int i = 0; i < size; i++)
-		out_tab[i] = (half)in_tab[i];
+		printf("%f ", *(((float*)in_tab + i)));
+	printf("\n");
+*/
+	for(int i = 0; i < size; i++)
+		*((half*)out_tab + out_offset + i) = __float2half_rz(*((float*)in_tab + i));
+	
+	/*for(int i = 0; i < size; i++)
+		printf("%f ", (float)((half*)out_tab)[i]);
+	printf("\n");*/
 }
 
 
@@ -134,7 +143,7 @@ void cuda_convert_table(network* net, void **tab, int size)
 			break;
 		case 1:
 			temp_half = (half*) malloc(size*sizeof(half));
-			cuda_copy_to_half((float*)temp_tab, temp_half, size);
+			copy_to_half((float*)temp_tab, temp_half, 0, size);
 			free(temp_tab);
 			cudaMalloc(tab, size*sizeof(half));
 			cudaMemcpy(*tab, temp_half, size*sizeof(half),cudaMemcpyHostToDevice);
@@ -262,7 +271,7 @@ void cuda_convert_batched_table(network* net, void **tab, int batch_size, int nb
 			for(i = 0; i < nb_batch; i++)
 			{
 				temp_tab = tab[i];
-				cuda_copy_to_half((float*)temp_tab, temp_half, batch_size*size);
+				copy_to_half((float*)temp_tab, temp_half, 0, batch_size*size);
 				free(temp_tab);
 				cudaMalloc(&(tab[i]), batch_size*size*sizeof(half));
 				cudaMemcpy(tab[i], temp_half, batch_size*size*sizeof(half),cudaMemcpyHostToDevice);
@@ -298,9 +307,9 @@ void cuda_convert_batched_host_table_FP32(network* net, void **tab, int batch_si
 	{
 		temp_tab = tab[i];
 		tab[i] = (half*) malloc(batch_size*size*sizeof(half));
-		cuda_copy_to_half((float*)temp_tab, ((half*)tab[i]), batch_size*size);
+		copy_to_half((float*)temp_tab, ((half*)tab[i]), 0, batch_size*size);
 		free(temp_tab);
-	}		
+	}
 }
 
 
@@ -309,6 +318,36 @@ void cuda_convert_host_dataset_FP32(network *net, Dataset *data)
 	cuda_convert_batched_host_table_FP32(net, data->input, net->batch_size, data->nb_batch, net->input_dim + 1);
 	cuda_convert_batched_host_table_FP32(net, data->target, net->batch_size, data->nb_batch, net->output_dim);
 	data->localization = HOST;
+}
+
+
+Dataset create_dataset_FP16(network *net, int nb_elem)
+{
+	int i,j;
+	Dataset data;
+	
+	data.size = nb_elem;
+	data.nb_batch = (data.size - 1) / net->batch_size + 1;
+	data.input = (void**) malloc(data.nb_batch*sizeof(half*));
+	data.target = (void**) malloc(data.nb_batch*sizeof(half*));
+	data.localization = HOST;
+	data.cont_copy = copy_to_half;
+	
+	for(i = 0; i < data.nb_batch; i++)
+	{
+		((half**)data.input)[i] = (half*) calloc(net->batch_size * (net->input_dim + 1), sizeof(half));
+		((half**)data.target)[i] = (half*) calloc(net->batch_size * net->output_dim, sizeof(half));
+	}
+	
+	for(i = 0; i < data.nb_batch; i++)
+	{
+		for(j = 0; j < net->batch_size; j++)
+		{
+			((half**)data.input)[i][j*(net->input_dim+1) + net->input_dim] = net->input_bias;
+		}
+	}
+	
+	return data;
 }
 
 void cuda_free_dataset(Dataset *data)
@@ -430,6 +469,17 @@ void cuda_print_table(network* net, void* tab, int size, int return_every)
 	printf("\n");
 	
 	free(temp);
+}
+
+void cuda_print_table_host_fp16(network* net, void* tab, int size, int return_every)
+{
+	int i;
+	for(i = 0; i < size; i ++)
+	{
+		if(i%return_every == 0)
+			printf("\n");
+		printf("%g \t ", (float)(((half*)tab)[i]));
+	}
 }
 
 /*

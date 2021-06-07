@@ -145,6 +145,7 @@ void cuda_convert_table(network* net, void **tab, int size);
 void cuda_convert_table_int(network* net, int **tab, int size);
 void cuda_convert_dataset(network *net, Dataset *data);
 void cuda_convert_host_dataset_FP32(network *net, Dataset *data);
+Dataset create_dataset_FP16(network *net, int nb_elem);
 void cuda_free_dataset(Dataset *data);
 void cuda_create_table_FP32(network* net, float **tab, float size);
 void cuda_create_table(network* net, void **tab, int size);
@@ -155,6 +156,7 @@ void cuda_put_table_FP32(network* net, float *cuda_table, float *table, int size
 void cuda_put_table(network* net, void *cuda_table, void *table, int size);
 void cuda_print_table_FP32(network* net, float* tab, int size, int return_every);
 void cuda_print_table(network* net, void* tab, int size, int return_every);
+void cuda_print_table_host_fp16(network* net, void* tab, int size, int return_every);
 void cuda_print_table_transpose(void* tab, int line_size, int column_size);
 void cuda_confmat(network *net, float* mat);
 void cuda_perf_eval_init(void);

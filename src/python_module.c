@@ -88,6 +88,8 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	int i, j, k, l, m;
 	Dataset *data = NULL;
 	const char *dataset_type;
+	float *py_cont_array;
+	int c_array_offset = 0;
 	PyArrayObject *py_data = NULL, *py_target = NULL;
 	int size, flat = 0, silent = 0;
 	int network_id = nb_networks-1;
@@ -146,8 +148,11 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 		printf("Creating dataset with size %d (nb_batch = %d) ... ", data->size, data->nb_batch);
 	}
 	
+	init_timing(&time);
+	
 	if(py_data != NULL && py_target != NULL)
 	{
+		py_cont_array = (float*) calloc(networks[network_id]->input_width, sizeof(float));
 		for(i = 0; i < data->nb_batch; i++)
 		{
 			for(j = 0; j < networks[network_id]->batch_size; j++)
@@ -157,41 +162,52 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 				for(k = 0; k < networks[network_id]->input_depth; k++)
 				{
 					for(l = 0; l < networks[network_id]->input_height; l++)
+					{
+						c_array_offset = j*(networks[network_id]->input_dim + 1) 
+							+ k * networks[network_id]->input_height * networks[network_id]->input_width 
+							+ l * networks[network_id]->input_width;
 						for(m = 0; m < networks[network_id]->input_width; m++)
-						{
-							if(!flat)
-	((float*)data->input[i])[j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height 
-		* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
-		= *((float*)(py_data->data + (i*networks[network_id]->batch_size 
-		* networks[network_id]->input_depth*networks[network_id]->input_height 
-		+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
-		+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]));
-							else
-	((float*)data->input[i])[j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height
+							py_cont_array[m] = *((float*)(py_data->data + (i * networks[network_id]->batch_size + j)
+							* py_data->strides[0] + (k * networks[network_id]->input_height 
+							* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
+								* py_data->strides[1]));
+	/*((float*)data->input[i])[j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height
 		* networks[network_id]->input_width + l * networks[network_id]->input_width + m] 
 		= *((float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
 		* py_data->strides[0] + (k*networks[network_id]->input_height 
 		* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
-		* py_data->strides[1]));	
-						}
+		* py_data->strides[1]));*/
+						
+						data->cont_copy(py_cont_array, data->input[i], c_array_offset, networks[network_id]->input_width);
+					}
 				}
 			}
 		}
+		free(py_cont_array);
+		py_cont_array = (float*) calloc(networks[network_id]->output_dim, sizeof(float));
 		for(i = 0; i < data->nb_batch; i++)
+		{
 			for(j = 0; j < networks[network_id]->batch_size; j++)
 			{
 				if(i*networks[network_id]->batch_size + j >= data->size)
 					continue;
 				for(k = 0; k < networks[network_id]->output_dim; k++)
-					((float*)data->target[i])[j*networks[network_id]->output_dim + k] 
-					= *(float*)(py_target->data + i * (networks[network_id]->batch_size 
+					py_cont_array[k] = *((float*)(py_target->data + i * (networks[network_id]->batch_size 
 					* py_target->strides[0]) + j * py_target->strides[0] + k 
-					* py_target->strides[1]);
+					* py_target->strides[1]));
+
+				data->cont_copy(py_cont_array, data->target[i], j*networks[network_id]->output_dim, networks[network_id]->output_dim);
 			}
+		}
+		free(py_cont_array);
 	}
+	
 	if(silent == 0)
 		printf("Done !\n");
 	
+	printf("Time copy %f\n",ellapsed_time(time));
+	
+	init_timing(&time);
 	#ifdef CUDA
 	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 0)
 	{
@@ -203,8 +219,9 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	{
 		if(silent == 0)
 			printf("Converting dataset into host stored FP16\n");
-		cuda_convert_host_dataset_FP32(networks[network_id], data);
+		//cuda_convert_host_dataset_FP32(networks[network_id], data);
 	}
+	printf("Time convert data for CUDA %f\n", ellapsed_time(time));
 	
 	#endif
 	if(silent == 0)
