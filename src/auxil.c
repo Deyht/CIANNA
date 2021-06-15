@@ -38,7 +38,7 @@ float ellapsed_time(struct timeval tstart)
     return ((float)diff*1.0e-6);
 }
 
-void init_network(int network_number, int u_input_dim[3], int u_output_dim, float in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load, int u_use_cuda_TC)
+void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load, int u_use_cuda_TC)
 {
 
 	printf("############################################################\n\
@@ -99,7 +99,8 @@ CIANNA V-0.9.2.4 EXPERIMENTAL BUILD (05/2021), by D.Cornu\n\
 	net->input_width = u_input_dim[0]; 
 	net->input_height = u_input_dim[1];
 	net->input_depth = u_input_dim[2];
-	net->input_dim = u_input_dim[0]*u_input_dim[1]*u_input_dim[2];
+	net->input_channels = u_input_dim[3];
+	net->input_dim = u_input_dim[0]*u_input_dim[1]*u_input_dim[2]*u_input_dim[3];
 	net->output_dim = u_output_dim;
 	
 	net->input_bias = in_bias;
@@ -269,6 +270,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 	fwrite(&net->input_width, sizeof(int), 1, f);
 	fwrite(&net->input_height, sizeof(int), 1, f);
 	fwrite(&net->input_depth, sizeof(int), 1, f);
+	fwrite(&net->input_channels, sizeof(int), 1, f);
 	fwrite(&net->output_dim, sizeof(int), 1, f);
 	
 	// Should rework this function to avoid repetions, try to use a void pointer that is 
@@ -418,7 +420,7 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 
 	FILE *f = NULL;
 	f = fopen(filename, "rb"); 
-	int size, width, height, depth, out_dim;
+	int size, width, height, depth, channels, out_dim;
 	int i, j, k;
 	int datasize;
 	
@@ -432,14 +434,15 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 	fread(&width, sizeof(int), 1, f);
 	fread(&height, sizeof(int), 1, f);
 	fread(&depth, sizeof(int), 1, f);
+	fread(&channels, sizeof(int), 1, f);
 	fread(&out_dim, sizeof(int), 1, f);
 	
 	
-	if( width * height * depth != net->input_dim || out_dim != net->output_dim)
+	if( width * height * depth * channels != net->input_dim || out_dim != net->output_dim)
 	{
 		printf("\nERROR : input dimensions do not match in file %s !\n", filename);
-		printf("File dimensions are, size: %d, input dimensions : %dx%dx%d, output dimension : %d\n"
-					, size, width, height, depth, out_dim);
+		printf("File dimensions are, size: %d, input dimensions : %dx%dx%dx%d, output dimension : %d\n"
+					, size, width, height, depth, channels, out_dim);
 		exit(EXIT_FAILURE);
 	}
 	
@@ -676,7 +679,7 @@ void save_network(network *net, char *filename)
 	FILE* f;
 	
 	f = fopen(filename, "w+");
-	fprintf(f, "%dx%dx%d\n", net->input_width, net->input_height, net->input_depth);
+	fprintf(f, "%dx%dx%dx%d\n", net->input_width, net->input_height, net->input_depth, net->input_channels);
 	for(i = 0; i < net->nb_layers; i++)
 	{
 		switch(net->net_layers[i]->type)
@@ -703,7 +706,7 @@ void save_network(network *net, char *filename)
 void load_network(network *net, char *filename, int epoch)
 {
 	FILE* f = NULL;
-	int width, height, depth;
+	int width, height, depth, channels;
 	char layer_type;
 	
 	net->epoch = epoch;
@@ -715,11 +718,11 @@ void load_network(network *net, char *filename, int epoch)
 		printf("ERROR : cannot load/find %s file\n", filename);
 		exit(EXIT_FAILURE);
 	}
-	fscanf(f, "%dx%dx%d\n", &width, &height, &depth);
+	fscanf(f, "%dx%dx%dx%d\n", &width, &height, &depth, &channels);
 	
-	if(net->input_width != width || net->input_height != height || net->input_depth != depth)
+	if(net->input_width != width || net->input_height != height || net->input_depth != depth || net->input_channels != channels)
 	{
-		printf("ERROR : Wrong image format to load the network\nExpect : W = %d, H = %d, D = %d\n",width, height, depth);
+		printf("ERROR : Wrong image format to load the network\nExpect : W = %d, H = %d, D = %d, C = %d\n",width, height, depth, channels);
 		exit(EXIT_FAILURE);
 	}
 	
@@ -1058,7 +1061,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 							break;
 						case CONV:
 							c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
-							int batch_offset = c_param->nb_area_w*c_param->nb_area_h;
+							int batch_offset = c_param->nb_area_w*c_param->nb_area_h*c_param->nb_area_d;
 							int filter_offset = batch_offset*net->batch_size;
 							if(saving == 1)
 							{
@@ -1125,7 +1128,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					break;
 				case CONV:
 					c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
-					int batch_offset = c_param->nb_area_w*c_param->nb_area_h;
+					int batch_offset = c_param->nb_area_w*c_param->nb_area_h*c_param->nb_area_d;
 					int filter_offset = batch_offset*net->batch_size;
 					float *host_IoU_monitor = NULL;
 					for(k = 0; k < net->length; k++)
@@ -1337,13 +1340,15 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		case CONV:
 			net->out_size = ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_filters *
 				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w * 
-				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h;
+				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h *
+				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_d;
 			break;
 			
 		case POOL:
 			net->out_size = ((pool_param*)net->net_layers[net->nb_layers-1]->param)->prev_depth *
 				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w * 
-				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h;
+				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h * 
+				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_d;
 			break;
 	
 		case DENSE:
@@ -1475,7 +1480,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 					break;
 				case CONV:
 					c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
-					int batch_offset = c_param->nb_area_w*c_param->nb_area_h;
+					int batch_offset = c_param->nb_area_w*c_param->nb_area_h*c_param->nb_area_d;
 					int filter_offset = batch_offset*net->batch_size;
 					for(k = 0; k < net->length; k++)
 					{
@@ -1548,13 +1553,15 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 		case CONV:
 			net->out_size = ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_filters 
 				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w 
-				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h;
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_d;
 			break;
 			
 		case POOL:
 			net->out_size = ((pool_param*)net->net_layers[net->nb_layers-1]->param)->prev_depth 
 				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w 
-				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h;
+				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_d;
 			break;
 	
 		case DENSE:

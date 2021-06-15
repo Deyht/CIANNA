@@ -41,7 +41,7 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	PyArrayObject *py_dims;
 	int i;
 	double bias = 0.1;
-	int dims[3] = {1,1,1}, out_dim, b_size, comp_int = C_CUDA, network_id = nb_networks;
+	int dims[4] = {1,1,1,1}, out_dim, b_size, comp_int = C_CUDA, network_id = nb_networks;
 	int dynamic_load = 0, mixed_precision = 0;
 	char string_comp[10];
 	const char *comp_meth = "C_CUDA";
@@ -75,7 +75,7 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	
     init_network(network_id, dims, out_dim, bias, b_size, comp_int, dynamic_load, mixed_precision);
     
-	printf("Network have been initialized with : \nInput dimensions: %dx%dx%d \nOutput dimension: %d \nBatch size: %d \nUsing %s compute methode\n\n", dims[0], dims[1], dims[2], out_dim, b_size, string_comp);
+	printf("Network have been initialized with : \nInput dimensions: %dx%dx%dx%d \nOutput dimension: %d \nBatch size: %d \nUsing %s compute methode\n\n", dims[0], dims[1], dims[2], dims[3], out_dim, b_size, string_comp);
 	if(dynamic_load)
 		printf("Dynamic load ENABLED\n\n");
 	
@@ -85,13 +85,14 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 
 static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	int i, j, k, l, m;
+	int i, j, k, l;
 	Dataset *data = NULL;
 	const char *dataset_type;
 	float *py_cont_array;
 	int c_array_offset = 0;
 	PyArrayObject *py_data = NULL, *py_target = NULL;
 	int size, flat = 0, silent = 0;
+	int flat_image_size = 0;
 	int network_id = nb_networks-1;
 	static char *kwlist[] = {"dataset", "size", "input", "target", "flat", "network_id", "silent", NULL};
 
@@ -140,7 +141,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	struct timeval time;
 	init_timing(&time);
 	*data = create_dataset(networks[network_id], size);
-	printf("Time raw create %f\n",ellapsed_time(time));
+	//printf("Time raw create %f\n",ellapsed_time(time));
 	
 	if(silent == 0)
 	{
@@ -150,36 +151,28 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	
 	init_timing(&time);
 	
+	flat_image_size = networks[network_id]->input_depth*networks[network_id]->input_height*networks[network_id]->input_width;
+	
 	if(py_data != NULL && py_target != NULL)
 	{
-		py_cont_array = (float*) calloc(networks[network_id]->input_width, sizeof(float));
+		py_cont_array = (float*) calloc(flat_image_size, sizeof(float));
 		for(i = 0; i < data->nb_batch; i++)
 		{
 			for(j = 0; j < networks[network_id]->batch_size; j++)
 			{
 				if(i*networks[network_id]->batch_size + j >= data->size)
 					continue;
-				for(k = 0; k < networks[network_id]->input_depth; k++)
+				for(k = 0; k < networks[network_id]->input_channels; k++)
 				{
-					for(l = 0; l < networks[network_id]->input_height; l++)
+					c_array_offset = j*(networks[network_id]->input_dim + 1) 
+							+ k * flat_image_size;
+					for(l = 0; l < flat_image_size; l++)
 					{
-						c_array_offset = j*(networks[network_id]->input_dim + 1) 
-							+ k * networks[network_id]->input_height * networks[network_id]->input_width 
-							+ l * networks[network_id]->input_width;
-						for(m = 0; m < networks[network_id]->input_width; m++)
-							py_cont_array[m] = *((float*)(py_data->data + (i * networks[network_id]->batch_size + j)
-							* py_data->strides[0] + (k * networks[network_id]->input_height 
-							* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
+						py_cont_array[l] = *((float*)(py_data->data + (i * networks[network_id]->batch_size + j)
+							* py_data->strides[0] + (k * flat_image_size + l) 
 								* py_data->strides[1]));
-	/*((float*)data->input[i])[j*(networks[network_id]->input_dim+1) + k * networks[network_id]->input_height
-		* networks[network_id]->input_width + l * networks[network_id]->input_width + m] 
-		= *((float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
-		* py_data->strides[0] + (k*networks[network_id]->input_height 
-		* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
-		* py_data->strides[1]));*/
-						
-						data->cont_copy(py_cont_array, data->input[i], c_array_offset, networks[network_id]->input_width);
 					}
+					data->cont_copy(py_cont_array, data->input[i], c_array_offset, flat_image_size);
 				}
 			}
 		}
@@ -205,7 +198,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	if(silent == 0)
 		printf("Done !\n");
 	
-	printf("Time copy %f\n",ellapsed_time(time));
+	//printf("Time copy %f\n",ellapsed_time(time));
 	
 	init_timing(&time);
 	#ifdef CUDA
@@ -221,7 +214,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 			printf("Converting dataset into host stored FP16\n");
 		//cuda_convert_host_dataset_FP32(networks[network_id], data);
 	}
-	printf("Time convert data for CUDA %f\n", ellapsed_time(time));
+	//printf("Time convert data for CUDA %f\n", ellapsed_time(time));
 	
 	#endif
 	if(silent == 0)

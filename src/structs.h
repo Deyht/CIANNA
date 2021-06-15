@@ -115,7 +115,7 @@ struct network
 	Dataset train, test, valid;
 	Dataset train_buf, test_buf, valid_buf;
 	
-	int input_width, input_height, input_depth;
+	int input_width, input_height, input_depth, input_channels;
 	int input_dim;
 	//Correspond to the "target size"
 	int output_dim;
@@ -186,9 +186,11 @@ struct conv_param
 	int nb_filters;
 	int nb_area_w;
 	int nb_area_h;
+	int nb_area_d;
 
 	int prev_size_w;
 	int prev_size_h;
+	int prev_size_d;
 	int prev_depth;
 
 	void *im2col_input;
@@ -212,9 +214,11 @@ struct pool_param
 	int p_size;
 	int nb_area_w;
 	int nb_area_h;
+	int nb_area_d;
 	int nb_maps;
 	int prev_size_w;
 	int prev_size_h;
+	int prev_size_d;
 	int prev_depth;
 	
 	int next_layer_type;

@@ -53,7 +53,8 @@ void pool_create(network *net, layer* previous, int pool_size)
 		//Case of the first layer
 		p_param->prev_size_w = net->input_width;
 		p_param->prev_size_h = net->input_height;
-		p_param->prev_depth = net->input_depth;
+		p_param->prev_size_d = net->input_depth;
+		p_param->prev_depth = net->input_channels;
 		//input pointer must be set at the begining of forward
 		current->input = net->input;
 		
@@ -69,6 +70,7 @@ void pool_create(network *net, layer* previous, int pool_size)
 			default:
 				p_param->prev_size_w = ((conv_param*)previous->param)->nb_area_w;
 				p_param->prev_size_h = ((conv_param*)previous->param)->nb_area_h;
+				p_param->prev_size_d = ((conv_param*)previous->param)->nb_area_d;
 				p_param->prev_depth =  ((conv_param*)previous->param)->nb_filters;
 				break;
 			case POOL:
@@ -80,7 +82,7 @@ void pool_create(network *net, layer* previous, int pool_size)
 		current->input = previous->output;
 	}
 	
-	if(p_param->prev_size_w % pool_size != 0 || p_param->prev_size_h % pool_size)
+	if(p_param->prev_size_w % pool_size != 0 || p_param->prev_size_h % pool_size || p_param->prev_size_d % pool_size)
 	{
 		printf("ERROR : Pool layer can not handle unheaven activation map size for now, please change network architecture.\n");
 		exit(EXIT_FAILURE);
@@ -88,6 +90,7 @@ void pool_create(network *net, layer* previous, int pool_size)
 	
 	p_param->nb_area_w = p_param->prev_size_w / pool_size;
 	p_param->nb_area_h = p_param->prev_size_h / pool_size;
+	p_param->nb_area_d = p_param->prev_size_d / pool_size;
 	p_param->nb_maps = p_param->prev_depth;
 	
 	if(p_param->nb_area_w != p_param->nb_area_h)
@@ -96,14 +99,14 @@ void pool_create(network *net, layer* previous, int pool_size)
 		exit(EXIT_FAILURE);
 	}
 	
-	p_param->pool_map = (int*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
-		* net->batch_size * sizeof(float));
-	current->output = (float*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
+	p_param->pool_map = (int*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_area_d * p_param->nb_maps 
+		* net->batch_size * sizeof(int));
+	current->output = (float*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_area_d * p_param->nb_maps 
 		* net->batch_size * sizeof(float));
 	
-	current->delta_o = (float*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_maps 
+	current->delta_o = (float*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_area_d * p_param->nb_maps 
 		* net->batch_size * sizeof(float));
-	p_param->temp_delta_o = (float*) malloc(p_param->prev_size_w * p_param->prev_size_h 
+	p_param->temp_delta_o = (float*) malloc(p_param->prev_size_w * p_param->prev_size_h * p_param->prev_size_d
 		* p_param->prev_depth * net->batch_size * sizeof(float));
 	
 	//No activation for this layer for now
@@ -136,10 +139,10 @@ void pool_create(network *net, layer* previous, int pool_size)
 	
 	
 	printf("L:%d - Pooling layer layer created:\n \
-Input: %dx%dx%d, P. size: %d, Output: %dx%dx%d \n",
-		net->nb_layers, p_param->prev_size_w, p_param->prev_size_h, 
+Input: %dx%dx%dx%d, P. size: %d, Output: %dx%dx%dx%d \n",
+		net->nb_layers, p_param->prev_size_w, p_param->prev_size_h, p_param->prev_size_h, 
 		p_param->prev_depth, p_param->p_size,
-		p_param->nb_area_w, p_param->nb_area_h, p_param->nb_maps);
+		p_param->nb_area_w, p_param->nb_area_h, p_param->nb_area_d, p_param->nb_maps);
 	
 }
 

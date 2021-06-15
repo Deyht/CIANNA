@@ -126,7 +126,7 @@ void cuda_create_host_table_FP16(network* net, void **tab, int size)
 	*tab = (half*) malloc(size*sizeof(half));
 }
 
-void cuda_convert_table(network* net, void **tab, int size)
+void cuda_convert_table(network* net, void **tab, long long int size)
 {
 	void* temp_tab;
 	
@@ -436,6 +436,64 @@ void cuda_print_table_FP32(network* net, float* tab, int size, int return_every)
 }
 
 
+void cuda_print_table_4d(network* net, void* tab, int w_size, int h_size, int d_size, int last_dim, int biased)
+{
+	int i, j, k, l;
+	void *temp;
+	
+	int flat_3d_size = w_size*h_size*d_size + biased;
+	
+	printf("\n");
+	switch(net->use_cuda_TC)
+	{
+		default:
+		case 0:
+			for(i = 0; i < last_dim; i++)
+			{
+				printf("Cube %d\n", i);
+				temp = (void*) malloc(flat_3d_size*sizeof(float));
+				cudaMemcpy(temp, (float*)tab+i*flat_3d_size, flat_3d_size*sizeof(float), cudaMemcpyDeviceToHost);
+				for(j = 0; j < d_size; j ++)
+				{
+					printf("Depth %d\n", j);
+					for(k = 0; k < h_size; k++)
+					{
+						for(l = 0; l < w_size; l++)
+						{
+							printf("%5.4f ", ((float*)temp)[j*w_size*h_size + k*w_size + l]);
+						}
+						printf("\n");
+					}
+				}
+				free(temp);
+			}
+			break;
+		case 1:
+			for(i = 0; i < last_dim; i++)
+			{
+				printf("Cube %d\n", i);
+				temp = (void*) malloc(flat_3d_size*sizeof(half));
+				cudaMemcpy(temp, (half*)tab+i*flat_3d_size, flat_3d_size*sizeof(half), cudaMemcpyDeviceToHost);
+				for(j = 0; j < d_size; j ++)
+				{
+					printf("Depth %d\n", j);
+					for(k = 0; k < h_size; k++)
+					{
+						for(l = 0; l < w_size; l++)
+						{
+							printf("%5.4f ", (float)(((half*)temp)[j*w_size*h_size + k*w_size + l]));
+						}
+						printf("\n");
+					}
+				}
+				free(temp);
+			}
+			break;
+	}
+	printf("\n");
+}
+
+
 void cuda_print_table(network* net, void* tab, int size, int return_every)
 {
 	int i;
@@ -452,7 +510,7 @@ void cuda_print_table(network* net, void* tab, int size, int return_every)
 			{
 				if(i%return_every == 0)
 					printf("\n");
-				printf("%g \t ", ((float*)temp)[i]);
+				printf("%5.4f ", ((float*)temp)[i]);
 			}
 			break;
 		case 1:
@@ -462,9 +520,28 @@ void cuda_print_table(network* net, void* tab, int size, int return_every)
 			{
 				if(i%return_every == 0)
 					printf("\n");
-				printf("%g \t ", (float)(((half*)temp)[i]));
+				printf("%5.4f ", (float)(((half*)temp)[i]));
 			}
 			break;
+	}
+	printf("\n");
+	
+	free(temp);
+}
+
+void cuda_print_table_int(network* net, int* tab, int size, int return_every)
+{
+	int i;
+	int *temp = NULL;
+	
+	printf("\n");
+	temp = (int*) malloc(size * sizeof(int));
+	cudaMemcpy(temp, tab, size * sizeof(int), cudaMemcpyDeviceToHost);
+	for(i = 0; i < size; i ++)
+	{
+		if(i%return_every == 0)
+			printf("\n");
+		printf("%d ", (int)(((int*)temp)[i]));
 	}
 	printf("\n");
 	
