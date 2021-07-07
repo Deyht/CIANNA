@@ -1319,7 +1319,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 	float targ_w, targ_h, targ_d;
 	int larger_box, smaller_box;
 	
-	//float dim_scale[3] = {0.5,0.5,8.0};
+	float dim_scale[3] = {1.0,1.0,1.0};
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
 	box_in_pix = (float*) malloc(nb_box*6*sizeof(float));
@@ -1330,8 +1330,8 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 
 	i = i % flat_output_size;
 	cell_z = i / (nb_area_w*nb_area_h);
-	cell_y = i % (nb_area_w*nb_area_h) / nb_area_w;
-	cell_x = i % (nb_area_w*nb_area_h) % nb_area_w;
+	cell_y = (int)(i % (nb_area_w*nb_area_h)) / nb_area_w;
+	cell_x = (int)(i % (nb_area_w*nb_area_h)) % nb_area_w;
 	
 	delta_o += (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
 	output  += (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
@@ -1481,7 +1481,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			for(k = 0; k < 3; k++)
 			{
 				delta_o[(resp_box*(8+nb_class+nb_param)+k)*f_offset] = (half)(
-					TC_scale_factor*sm_tab[0][0]*coord_scale*(float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset]
+					TC_scale_factor*sm_tab[0][0]*coord_scale*dim_scale[k]*(float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset]
 					*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset])
 					*((float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]));
 			}
@@ -1489,7 +1489,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			if(fit_size)
 			{
 				for(k = 0; k < 3; k++)
-					delta_o[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] = (half) (TC_scale_factor*sm_tab[1][0]*size_scale*
+					delta_o[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] = (half) (TC_scale_factor*sm_tab[1][0]*size_scale*dim_scale[k]*
 						((float)output[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] - obj_in_offset[k+3]));
 			}
 			else
@@ -1504,7 +1504,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 				delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = (half)(
 		                    	TC_scale_factor*sm_tab[2][0]*prob_scale*(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]
 		                    	*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset])
-		                    	*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f));
+		                    	*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f));
 	        else
 	        	delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = (half)(0.0f);
 		        
@@ -1570,6 +1570,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			if(box_locked[j] == 1)
 			{
 				delta_o[(j*(8+nb_class+nb_param)+6)*f_offset] = (half) 0.0f;
+				delta_o[(j*(8+nb_class+nb_param)+7)*f_offset] = (half) 0.0f;
 			}
 			else
 			{
@@ -1578,12 +1579,19 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 						TC_scale_factor*sm_tab[3][0]*(lambda_noobj_prior[j])*prob_scale
 						*(float)output[(j*(8+nb_class+nb_param)+6)*f_offset]
 						*(1.0f-(float)output[(j*(8+nb_class+nb_param)+6)*f_offset])
-						*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f));
+						*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f));
 				else
 					delta_o[(j*(8+nb_class+nb_param)+6)*f_offset] = (half)(0.0f);
-			}
 			
-			delta_o[(j*(8+nb_class+nb_param)+7)*f_offset] = (half) 0.0f;
+				/*if(fit_obj)
+					delta_o[(j*(8+nb_class+nb_param)+7)*f_offset] = (half)(
+		            	TC_scale_factor*sm_tab[3][0]*(lambda_noobj_prior[j])*obj_scale*(float)output[(j*(8+nb_class+nb_param)+7)*f_offset]
+		            	*(1.0f-(float)output[(j*(8+nb_class+nb_param)+7)*f_offset])
+		            	*((float)output[(j*(8+nb_class+nb_param)+7)*f_offset]-0.01f));
+				else*/
+				delta_o[(j*(8+nb_class+nb_param)+7)*f_offset] = (half) 0.0f;
+			
+			}			
 			
 			for(k = 0; k < nb_class; k++)
 				delta_o[(j*(8+nb_class+nb_param)+8+k)*f_offset] = (half) 0.0f;
@@ -1654,7 +1662,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 	int *box_locked;
 	float out_int[6], targ_int[6];
 	
-	//float dim_scale[3] = {0.5,0.5,8.0};
+	float dim_scale[3] = {1.0,1.0,1.0};
 	
 	float targ_w, targ_h, targ_d;
 	int larger_box, smaller_box;
@@ -1668,11 +1676,13 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 
 	i = i % flat_output_size;
 	cell_z = i / (nb_area_w*nb_area_h);
-	cell_y = i % (nb_area_w*nb_area_h) / nb_area_w;
-	cell_x = i % (nb_area_w*nb_area_h) % nb_area_w;
+	cell_y = (int)(i % (nb_area_w*nb_area_h)) / nb_area_w;
+	cell_x = (int)(i % (nb_area_w*nb_area_h)) % nb_area_w;
 	
 	output_error += (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
 	output += (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
+
+	IoU_monitor += 2 * nb_box * ((nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x);
 
 	nb_obj_target = target[0];
 	target++;
@@ -1688,6 +1698,8 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 		c_box_in_pix[4] = prior_h[k]*expf((float)output[(k*(8+nb_class+nb_param)+4)*f_offset]);
 		c_box_in_pix[5] = prior_d[k]*expf((float)output[(k*(8+nb_class+nb_param)+5)*f_offset]);
 		
+		IoU_monitor[k*2] = 0.0f;
+		IoU_monitor[k*2+1] = -1.0f;
 		/*printf("Box %d, cell %d %d: %f %f %f %f %f %f\n", k, cell_x, cell_y,
 		(float)delta_o[(k*(8+nb_class+nb_param)+0)*f_offset], (float)delta_o[(k*(8+nb_class+nb_param)+1)*f_offset],
 			(float)delta_o[(k*(8+nb_class+nb_param)+2)*f_offset], (float)delta_o[(k*(8+nb_class+nb_param)+3)*f_offset],
@@ -1773,7 +1785,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
             
 			box_locked[resp_box] = 2;
 			IoU_monitor[resp_box*2] = 1.0f;
-			IoU_monitor[resp_box*2+1] = max_IoU;
+			IoU_monitor[resp_box*2+1] = max_IoU*(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset];
 		
 			obj_in_offset[0] = ((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
 			obj_in_offset[1] = ((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
@@ -1803,17 +1815,17 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			//Already compute error for the responsible box
 			for(k = 0; k < 3; k++)
 				output_error[(resp_box*(8+nb_class+nb_param)+k)*f_offset] =
-					0.5f*coord_scale*((float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k])
+					0.5f*coord_scale*dim_scale[k]*((float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k])
 					*((float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]);
 			for(k = 0; k < 3; k++)
 				output_error[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] =
-					0.5f*size_scale*((float)output[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] - obj_in_offset[k+3])
+					0.5f*size_scale*dim_scale[k]*((float)output[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] - obj_in_offset[k+3])
 					*((float)output[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] - obj_in_offset[k+3]);
 			
 			if(max_IoU > min_prob_IoU_lim)
 				output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] =
-		                        0.5f*prob_scale*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f)
-		                        *((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f);
+		                        0.5f*prob_scale*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f)
+		                        *((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f);
             else
             	output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = 0.0f;
 			
@@ -1840,7 +1852,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 					else
 						output_error[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 0.5f*class_scale
 							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f)
-				            *((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f);;
+				            *((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f);
 				}
 			}
 			else
@@ -1878,15 +1890,19 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			if(box_locked[j] == 1)
 			{
 				output_error[(j*(8+nb_class+nb_param)+6)*f_offset] = 0.0f;
+				output_error[(j*(8+nb_class+nb_param)+7)*f_offset] = 0.0f;
 			}
 			else
 			{
 				output_error[(j*(8+nb_class+nb_param)+6)*f_offset] =
-					0.5f*(lambda_noobj_prior[j])*prob_scale*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f)
-					*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f);
-			}
+					0.5f*(lambda_noobj_prior[j])*prob_scale*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f)
+					*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f);
 			
-			output_error[(j*(8+nb_class+nb_param)+7)*f_offset] = 0.0f;
+				/*output_error[(j*(8+nb_class+nb_param)+7)*f_offset] =
+						     0.5f*obj_scale*(lambda_noobj_prior[j])*((float)output[(j*(8+nb_class+nb_param)+7)*f_offset]-0.01f)
+						     *((float)output[(j*(8+nb_class+nb_param)+7)*f_offset]-0.01f);*/
+				output_error[(j*(8+nb_class+nb_param)+7)*f_offset] = 0.0f;
+			}
 			
 			for(k = 0; k < nb_class; k++)
 				output_error[(j*(8+nb_class+nb_param)+8+k)*f_offset] = 0.0f;

@@ -64,8 +64,8 @@ void conv_define_activation_param(layer *current)
 			((ReLU_param*)current->activ_param)->dim = ((ReLU_param*)current->activ_param)->size;
 			((ReLU_param*)current->activ_param)->biased_dim = ((ReLU_param*)current->activ_param)->dim;
 			((ReLU_param*)current->activ_param)->saturation = 100.0;
-			((ReLU_param*)current->activ_param)->leaking_factor = 0.05;
-			c_param->bias_value = 0.1;
+			((ReLU_param*)current->activ_param)->leaking_factor = 0.02;
+			c_param->bias_value = 0.05;
 			break;
 			
 		case RELU_6:
@@ -75,8 +75,8 @@ void conv_define_activation_param(layer *current)
 			((ReLU_param*)current->activ_param)->dim = ((ReLU_param*)current->activ_param)->size;
 			((ReLU_param*)current->activ_param)->biased_dim = ((ReLU_param*)current->activ_param)->dim;
 			((ReLU_param*)current->activ_param)->saturation = 6.0;
-			((ReLU_param*)current->activ_param)->leaking_factor = 0.05;
-			c_param->bias_value = 0.1;
+			((ReLU_param*)current->activ_param)->leaking_factor = 0.02;
+			c_param->bias_value = 0.05;
 			break;
 			
 		case LOGISTIC:
@@ -260,8 +260,18 @@ void conv_create(network *net, layer *previous, int f_size, int nb_filters, int 
 	
 	if(f_load == NULL)
 	{
-		printf("Xavier init\n");
-		xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0);
+		
+		//if(activation == RELU)
+		if(1)
+		{
+			printf("Xavier normal init\n");
+			xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0);
+		}
+		else if(activation == RELU_6)
+		{
+			printf("Xavier uniform init\n");
+			xavier_uniform(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0);
+		}
 	}
 	else
 	{

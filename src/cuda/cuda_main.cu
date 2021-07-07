@@ -397,6 +397,7 @@ __global__ void cuda_update_weights_FP16_mixed(float *weights, half* update, int
 	if(i < size)
 	{
 		weights[i] -= (float)update[i] / TC_scale_factor;
+		//weights[i] = (weights[i] - (float)update[i] / TC_scale_factor)*0.9999f;
 	}
 }
 

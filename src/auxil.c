@@ -1175,7 +1175,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 						for(k = 0; k < 2*a_param->nb_box*batch_offset*net->batch_size; k += 2)
 						{
 							nb_IoU += host_IoU_monitor[k];
-							sum_IoU += host_IoU_monitor[k+1];
+							sum_IoU += host_IoU_monitor[k]*host_IoU_monitor[k+1];
 						}
 						free(host_IoU_monitor);
 						//printf("%d %f %f\n", 2*a_param->nb_box*batch_offset*net->batch_size, nb_IoU, sum_IoU);
@@ -1208,7 +1208,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			{
 				if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
 				{
-					printf("Error dist - Pos: %f, Size: %f, Prob: %f, Objct: %f, Class: %f, Param: %f  - Mean IoU = %f\n",
+					printf("Error dist - Pos: %f, Size: %f, Prob: %f, Objct: %f, Class: %f, Param: %f  - Mean Prob. Max IoU = %f\n",
 					pos_error/data.size, size_error/data.size, prob_error/data.size, 
 					objectness_error/data.size, class_error/data.size, param_error/data.size, sum_IoU/nb_IoU);
 					
@@ -1429,6 +1429,18 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			for(k = 0; k < net->nb_layers; k++)
 			{
 				perf_eval_in(net);
+				/*
+				if(net->epoch % 2 == 1)
+					if(k > 0 && k % 2 == 1)
+						net->net_layers[k]->frozen = 1;
+					else
+						net->net_layers[k]->frozen = 0;
+				else
+					if(k == 0 || k % 2 == 1)
+						net->net_layers[k]->frozen = 0;
+					else
+						net->net_layers[k]->frozen = 1;
+				*/
 				net->net_layers[k]->forward(net->net_layers[k]);
 				perf_eval_out(net, k,net->fwd_perf, net->fwd_perf_n);
 			}

@@ -67,9 +67,40 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 			f_tab[i] = 0.0;
 		else
 		{	
-			//f_tab[i] = random_normal()*sqrt(1.0/(dim_in+dim_out)); //real He normal
-			f_tab[i] = random_normal()*sqrt(2.0/(dim_in+dim_out)); //real Xavier normal
-			//f_tab[i] = random_normal()*sqrt(3.0/(dim_in+dim_out)); //custom init
+			//f_tab[i] = random_normal()*sqrt(1.0f/(dim_in+dim_out)); //real He normal
+			//f_tab[i] = random_normal()*sqrt(2.0f/(dim_in+dim_out)); //real Xavier normal
+			f_tab[i] = random_normal()*sqrt(2.0f/(dim_in+dim_out)); //custom init
+		}
+	}
+	
+	if(bias_padding)
+		f_tab[size-1] = bias_padding_value;
+
+}
+
+void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value)
+{
+	int i;
+	int size;
+	int limit;
+	
+	float* f_tab = (float*) tab;
+	
+	size = dim_in*dim_out;
+	if(bias_padding)
+	{
+		size += dim_out;
+		limit = size - 1;
+	}
+	else
+		limit = size;
+	for(i = 0; i < limit; i++)
+	{
+		if(bias_padding && (i+1) % (dim_in+bias_padding) == 0)
+			f_tab[i] = 0.0;
+		else
+		{	
+			f_tab[i] = random_uniform()*sqrt(12.0/(dim_in+dim_out)); //real Xavier normal
 		}
 	}
 	
