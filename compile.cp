@@ -107,10 +107,11 @@ echo "#####  End of BLAS compilation  #####"
 cd ..
 fi
 
-cd ./naiv
-gcc $compile_opt -std=c99 -c \
-../defs.h ../prototypes.h ../structs.h naiv_dense_layer.c naiv_conv_layer.c naiv_pool_layer.c -lm $arg $defines_variables
-cd ..
+#cd ./naiv
+#gcc $compile_opt -std=c99 -c \
+#../defs.h ../prototypes.h ../structs.h naiv_dense_layer.c naiv_conv_layer.c naiv_pool_layer.c -lm $arg $defines_variables
+#cd ..
+#RESTORE NAIV COMP IN SUBSEQUENT LINES naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o
 
 #compiling all the program
 gcc $compile_opt -std=c99 -c \
@@ -119,11 +120,11 @@ echo "#####  End of main program compilation  #####"
 
 #linking the main program (with cuda if needed)
 gcc $compile_opt -std=c99 -o \
-../main main.o $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o -lm $arg $defines_variables
+../main main.o $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o -lm $arg $defines_variables
 echo "#####  End of link edition and executable creation  #####"
 
 #External C library -> work in progress
-#ar rcs cianna.a $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o
+#ar rcs cianna.a $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o
 
 #rm *.o *.gch
 

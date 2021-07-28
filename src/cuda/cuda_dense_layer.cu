@@ -63,8 +63,8 @@ void cuda_convert_dense_layer(layer *current)
 			case CONV:
 				cuda_convert_table(current->c_network, &(d_param->flat_input), d_param->in_size*current->c_network->batch_size);
 				cuda_convert_table(current->c_network, &(d_param->flat_delta_o),
-					(((conv_param*)current->previous->param)->nb_area_w 
-						* ((conv_param*)current->previous->param)->nb_area_h 
+					(((conv_param*)current->previous->param)->nb_area[0] 
+						* ((conv_param*)current->previous->param)->nb_area[1] 
 						* ((conv_param*)current->previous->param)->nb_filters + 1) 
 						* current->c_network->batch_size);
 				break;
@@ -72,8 +72,8 @@ void cuda_convert_dense_layer(layer *current)
 			case POOL:
 				cuda_convert_table(current->c_network, &(d_param->flat_input), d_param->in_size * current->c_network->batch_size);
 				cuda_convert_table(current->c_network, &(d_param->flat_delta_o),
-					(((pool_param*)current->previous->param)->nb_area_w 
-						* ((pool_param*)current->previous->param)->nb_area_h 
+					(((pool_param*)current->previous->param)->nb_area[0]
+						* ((pool_param*)current->previous->param)->nb_area[1] 
 						* ((pool_param*)current->previous->param)->nb_maps + 1) 
 						* current->c_network->batch_size);
 				break;
@@ -119,6 +119,7 @@ void cuda_forward_dense_layer(layer *current)
 	int nb_area_w, nb_area_h, depth;
 	
 	void* ref_input;
+	float w_alpha;
 	
 	if(current->c_network->length == 0)
 		return;
@@ -140,15 +141,15 @@ void cuda_forward_dense_layer(layer *current)
 		switch(current->previous->type)
 		{
 			case CONV:
-				nb_area_w = ((conv_param*)current->previous->param)->nb_area_w;
-				nb_area_h = ((conv_param*)current->previous->param)->nb_area_h;
+				nb_area_w = ((conv_param*)current->previous->param)->nb_area[0];
+				nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
 				depth = ((conv_param*)current->previous->param)->nb_filters;
 				break;
 			
 			case POOL:
 			default:
-				nb_area_w = ((pool_param*)current->previous->param)->nb_area_w;
-				nb_area_h = ((pool_param*)current->previous->param)->nb_area_h;
+				nb_area_w = ((pool_param*)current->previous->param)->nb_area[0];
+				nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
 				depth = ((pool_param*)current->previous->param)->nb_maps;
 				break;
 		}
@@ -175,8 +176,19 @@ void cuda_forward_dense_layer(layer *current)
 		ref_input = d_param->flat_input;
 	}
 	
+	if(current->c_network->is_inference && current->c_network->inference_drop_mode == AVG_MODEL)
+	{
+		if(current->previous != NULL)
+			//w_alpha = (1.0f - ((conv_param*)current->previous->param)->dropout_rate);
+			w_alpha = (1.0f/(1.0f+ (((conv_param*)current->previous->param)->dropout_rate) )); //bias weight is included in drop, should change this behavior ?
+		else																				   //If so add a scaling like for conv layers
+			w_alpha = 1.0f;
+	}
+	else
+		w_alpha = 1.0f;
+	
 	cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, d_param->nb_neurons+1, 
-		current->c_network->batch_size, d_param->in_size, &cu_alpha, d_param->weights, cuda_data_type, 
+		current->c_network->batch_size, d_param->in_size, &w_alpha, d_param->weights, cuda_data_type, 
 		d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, &cu_beta, 
 		current->output, cuda_data_type, d_param->nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 	
@@ -255,15 +267,15 @@ void cuda_backward_dense_layer(layer* current)
 			switch(current->previous->type)
 			{
 				case POOL:
-					nb_area_w = ((pool_param*)current->previous->param)->nb_area_w;
-					nb_area_h = ((pool_param*)current->previous->param)->nb_area_h;
+					nb_area_w = ((pool_param*)current->previous->param)->nb_area[0];
+					nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
 					depth = ((pool_param*)current->previous->param)->nb_maps;
 					break;
 			
 				case CONV:
 				default:
-					nb_area_w = ((conv_param*)current->previous->param)->nb_area_w;
-					nb_area_h = ((conv_param*)current->previous->param)->nb_area_h;
+					nb_area_w = ((conv_param*)current->previous->param)->nb_area[0];
+					nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
 					depth = ((conv_param*)current->previous->param)->nb_filters;
 					break;	
 			}

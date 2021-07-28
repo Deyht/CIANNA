@@ -74,11 +74,11 @@ void dense_save(FILE *f, layer *current);
 void dense_load(network *net, FILE* f);
 
 //conv_layer.c
-void conv_create(network *net, layer *previous, int f_size, int nb_filters, int stride, int padding, int activation, float drop_rate, FILE *f_load);
+void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, int activation, float drop_rate, FILE *f_load);
 void conv_save(FILE *f, layer *current);
 void conv_load(network *net, FILE *f);
 
-void pool_create(network *net, layer* previous, int pool_size);
+void pool_create(network *net, layer* previous, int *pool_size, float drop_rate);
 void pool_save(FILE *f, layer *current);
 void pool_load(network *net, FILE *f);
 

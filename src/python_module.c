@@ -155,25 +155,20 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	
 	if(py_data != NULL && py_target != NULL)
 	{
-		py_cont_array = (float*) calloc(flat_image_size, sizeof(float));
+		py_cont_array = (float*) calloc(flat_image_size*networks[network_id]->input_channels, sizeof(float));
 		for(i = 0; i < data->nb_batch; i++)
 		{
 			for(j = 0; j < networks[network_id]->batch_size; j++)
 			{
 				if(i*networks[network_id]->batch_size + j >= data->size)
 					continue;
-				for(k = 0; k < networks[network_id]->input_channels; k++)
+				c_array_offset = j*(networks[network_id]->input_dim + 1);
+				for(l = 0; l < flat_image_size*networks[network_id]->input_channels; l++)
 				{
-					c_array_offset = j*(networks[network_id]->input_dim + 1) 
-							+ k * flat_image_size;
-					for(l = 0; l < flat_image_size; l++)
-					{
-						py_cont_array[l] = *((float*)(py_data->data + (i * networks[network_id]->batch_size + j)
-							* py_data->strides[0] + (k * flat_image_size + l) 
-								* py_data->strides[1]));
-					}
-					data->cont_copy(py_cont_array, data->input[i], c_array_offset, flat_image_size);
+					py_cont_array[l] = *((float*)(py_data->data + (i * networks[network_id]->batch_size + j)
+						* py_data->strides[0] + l* py_data->strides[1]));
 				}
+				data->cont_copy(py_cont_array, data->input[i], c_array_offset, flat_image_size*networks[network_id]->input_channels);
 			}
 		}
 		free(py_cont_array);
@@ -765,19 +760,28 @@ static PyObject* py_dense_create(PyObject* self, PyObject *args, PyObject *kwarg
 
 static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
-	int f_size, nb_filters, stride, padding, prev_layer = -1, i_activ = RELU, network_id = nb_networks-1;
+	int i;
+	int nb_filters, prev_layer = -1, i_activ = RELU, network_id = nb_networks-1;
+	PyArrayObject *py_f_size, *py_stride, *py_padding;
+	int C_f_size[3], C_stride[3], C_padding[3];
 	const char *activation = "RELU";
 	double drop_rate = 0.0;
 	static char *kwlist[] = {"f_size", "nb_filters", "stride", "padding", "activation", "prev_layer", "drop_rate", "network", NULL};
 	layer* prev;
 	
-	stride = 1; padding = 0;
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "ii|iisidi", kwlist, &f_size, &nb_filters, &stride, &padding, 
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|OOsidi", kwlist, &py_f_size, &nb_filters, &py_stride, &py_padding, 
 		&activation, &prev_layer, &drop_rate, &network_id))
 	    return Py_None;
 	    
 	if(prev_layer == -1)
 	    prev_layer = networks[network_id]->nb_layers - 1;
+	
+	for(i = 0; i < 3; i++)
+	{ 
+		C_f_size[i]  = *(int *)(py_f_size->data  + i*py_f_size->strides[0]);
+		C_stride[i]  = *(int *)(py_stride->data  + i*py_stride->strides[0]);
+		C_padding[i] = *(int *)(py_padding->data + i*py_padding->strides[0]);
+	}
 
 	if(strcmp(activation, "RELU") == 0)
 		i_activ = RELU;
@@ -797,7 +801,7 @@ static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	conv_create(networks[network_id], prev, f_size, nb_filters, stride, padding, i_activ, drop_rate, NULL);
+	conv_create(networks[network_id], prev, C_f_size, nb_filters, C_stride, C_padding, i_activ, drop_rate, NULL);
 	
 	return Py_None;
 }
@@ -805,22 +809,31 @@ static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs
 
 static PyObject* py_pool_create(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
-	int pool_size = 2, prev_layer = -1, network_id = nb_networks-1;
-	static char *kwlist[] = {"pool_size", "prev_layer", "network", NULL};
+	int i;
+	int prev_layer = -1, network_id = nb_networks-1;
+	PyArrayObject *py_pool_size;
+	int C_pool_size[3];
+	double drop_rate = 0.0;
+	static char *kwlist[] = {"pool_size", "prev_layer", "drop_rate", "network", NULL};
 	layer* prev;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|iii", kwlist, &pool_size, &prev_layer, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|Oidi", kwlist, &py_pool_size, &prev_layer, &drop_rate, &network_id))
 	    return Py_None;
 	    
 	if(prev_layer == -1)
 	    prev_layer = networks[network_id]->nb_layers - 1;
+
+	for(i = 0; i < 3; i++)
+	{ 
+		C_pool_size[i]  = *(int *)(py_pool_size->data  + i*py_pool_size->strides[0]);
+	}
 
 	if(prev_layer < 0)
 		prev = NULL;
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	pool_create(networks[network_id], prev, pool_size);
+	pool_create(networks[network_id], prev, C_pool_size, drop_rate);
 	
 	return Py_None;
 }
@@ -985,9 +998,13 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 		step = networks[network_id]->epoch;
 	
 	if(strcmp(drop_mode, "AVG_MODEL") == 0)
-                C_drop_mode = AVG_MODEL;
-        else if(strcmp(drop_mode, "MC_MODEL") == 0)
-                C_drop_mode = MC_MODEL;
+	{
+		C_drop_mode = AVG_MODEL;
+	}
+    else if(strcmp(drop_mode, "MC_MODEL") == 0)
+	{
+		C_drop_mode = MC_MODEL;
+	}
 
 	networks[network_id]->no_error = no_error;
 	
@@ -1033,7 +1050,7 @@ PyMODINIT_FUNC PyInit_CIANNA(void)
 	import_array();
 	
 	printf("###################################################################\n\
-Importing CIANNA Python module V-p.0.5.2 , by D.Cornu\n\
+Importing CIANNA Python module V-p.0.5.3 , by D.Cornu\n\
 ###################################################################\n\n");
 
 	PyObject *m;

@@ -178,19 +178,15 @@ struct dense_param
 
 struct conv_param
 {
-	int f_size;
+	int *f_size;
 	int flat_f_size;
-	int stride;
-	int padding;
+	int *stride;
+	int *padding;
 	
 	int nb_filters;
-	int nb_area_w;
-	int nb_area_h;
-	int nb_area_d;
+	int *nb_area;
 
-	int prev_size_w;
-	int prev_size_h;
-	int prev_size_d;
+	int *prev_size;
 	int prev_depth;
 
 	void *im2col_input;
@@ -200,8 +196,8 @@ struct conv_param
 	void *rotated_filters;
 	void *temp_delta_o;
 	void *update;
-	int* dropout_mask;
-	void* block_state;
+	int  *dropout_mask;
+	void *block_state;
 	
 	float bias_value;
 	float dropout_rate;
@@ -211,15 +207,15 @@ struct conv_param
 
 struct pool_param
 {
-	int p_size;
-	int nb_area_w;
-	int nb_area_h;
-	int nb_area_d;
+	int *p_size;
+	int *nb_area;
 	int nb_maps;
-	int prev_size_w;
-	int prev_size_h;
-	int prev_size_d;
+	int *prev_size;
 	int prev_depth;
+	
+	int* dropout_mask;
+	void* block_state;
+	float dropout_rate;
 	
 	int next_layer_type;
 	

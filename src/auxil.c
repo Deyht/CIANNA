@@ -42,7 +42,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
 {
 
 	printf("############################################################\n\
-CIANNA V-0.9.2.4 EXPERIMENTAL BUILD (05/2021), by D.Cornu\n\
+CIANNA V-0.9.2.5 EXPERIMENTAL BUILD (07/2021), by D.Cornu\n\
 ############################################################\n\n");
 
 
@@ -962,7 +962,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	
 	for(r = 0; r < repeat; r++)
 	{
-		init_timing(&ep_timer);
+		if(r == 0)
+			printf("Forward: %d\n", net->epoch);
 		if(repeat > 1)
 			printf("Forward repeat step: %d /%d\n", r+1, repeat);
 		
@@ -972,8 +973,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		nb_IoU = 0.0f;
 		sum_IoU = 0.0f;
 		
-		if(repeat <= 1)
-			printf("\nForward: %d\n", net->epoch);
+		init_timing(&ep_timer);
+		
 		for(j = 0; j < data.nb_batch; j++)
 		{
 		
@@ -1061,7 +1062,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 							break;
 						case CONV:
 							c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
-							int batch_offset = c_param->nb_area_w*c_param->nb_area_h*c_param->nb_area_d;
+							int batch_offset = c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2];
 							int filter_offset = batch_offset*net->batch_size;
 							if(saving == 1)
 							{
@@ -1128,7 +1129,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					break;
 				case CONV:
 					c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
-					int batch_offset = c_param->nb_area_w*c_param->nb_area_h*c_param->nb_area_d;
+					int batch_offset = c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2];
 					int filter_offset = batch_offset*net->batch_size;
 					float *host_IoU_monitor = NULL;
 					for(k = 0; k < net->length; k++)
@@ -1195,15 +1196,29 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		
 		items_per_s = data.size/ellapsed_time(ep_timer);
 		printf("\nNet. forward perf.: %0.2f items/s\n", items_per_s);
-		if(net->no_error == 0)
+		if(net->no_error != 1)
 		{
 			if(net->epoch == 1)
 				f_err = fopen("error.txt", "w+");
 			else
 				f_err = fopen("error.txt", "a");
 			
+			if(net->no_error == 0)
+			{
+				fprintf(f_err, "%d %g",  net->epoch, total_error/data.size);
+				if(net->net_layers[net->nb_layers-1]->type == CONV)
+				{
+					if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
+					{
+						fprintf(f_err, " %g %g %g %g %g %g",  
+						pos_error/data.size, size_error/data.size, prob_error/data.size, 
+						objectness_error/data.size, class_error/data.size, param_error/data.size);
+					}
+				}
+			}
+			
+			
 			printf("Cumulated error: \t %g\n", total_error/data.size);
-			fprintf(f_err, "%d %g",  net->epoch, total_error/data.size);
 			if(net->net_layers[net->nb_layers-1]->type == CONV)
 			{
 				if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
@@ -1211,10 +1226,6 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					printf("Error dist - Pos: %f, Size: %f, Prob: %f, Objct: %f, Class: %f, Param: %f  - Mean Prob. Max IoU = %f\n",
 					pos_error/data.size, size_error/data.size, prob_error/data.size, 
 					objectness_error/data.size, class_error/data.size, param_error/data.size, sum_IoU/nb_IoU);
-					
-					fprintf(f_err, " %g %g %g %g %g %g",  
-					pos_error/data.size, size_error/data.size, prob_error/data.size, 
-					objectness_error/data.size, class_error/data.size, param_error/data.size);
 				}
 			}
 
@@ -1339,16 +1350,16 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	{
 		case CONV:
 			net->out_size = ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_filters *
-				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w * 
-				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h *
-				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_d;
+				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[0] * 
+				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[1] *
+				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[2];
 			break;
 			
 		case POOL:
 			net->out_size = ((pool_param*)net->net_layers[net->nb_layers-1]->param)->prev_depth *
-				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w * 
-				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h * 
-				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_d;
+				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[0] * 
+				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[1] * 
+				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[2];
 			break;
 	
 		case DENSE:
@@ -1399,7 +1410,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		//Loop on all batch for one epoch
 		printf("\nEpoch: %d\n", net->epoch);
 		net->is_inference = 0;
-        	net->inference_drop_mode = AVG_MODEL;
+        net->inference_drop_mode = AVG_MODEL;
 		for(j = 0; j < net->train.nb_batch; j++)
 		{
 		
@@ -1492,7 +1503,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 					break;
 				case CONV:
 					c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
-					int batch_offset = c_param->nb_area_w*c_param->nb_area_h*c_param->nb_area_d;
+					int batch_offset = c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2];
 					int filter_offset = batch_offset*net->batch_size;
 					for(k = 0; k < net->length; k++)
 					{
@@ -1517,6 +1528,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			printf("\nNet. training perf.: %0.2f items/s\n", items_per_s);
 			printf("Learning rate : %g\n", net->learning_rate);
 			net->is_inference = 1;
+			net->no_error = 0;
 			compute_error(net, net->valid, 0, show_confmat, 1);
 			//printf("\n");
 		}
@@ -1564,16 +1576,16 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 	{
 		case CONV:
 			net->out_size = ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_filters 
-				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w 
-				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h
-				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_d;
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[0] 
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[1]
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[2];
 			break;
 			
 		case POOL:
 			net->out_size = ((pool_param*)net->net_layers[net->nb_layers-1]->param)->prev_depth 
-				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_w 
-				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_h
-				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area_d;
+				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[0] 
+				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[1]
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[2];
 			break;
 	
 		case DENSE:
@@ -1608,7 +1620,7 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 	{
 		printf("before compute forward\n");
 		net->is_inference = 1;
-        	net->inference_drop_mode = drop_mode;
+        net->inference_drop_mode = drop_mode;
 		compute_error(net, net->test, saving, 0, repeat);
 		printf("after compute forward\n");
 	}

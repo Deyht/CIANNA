@@ -29,8 +29,9 @@ static pool_param *p_param;
 
 
 
-void pool_create(network *net, layer* previous, int pool_size)
+void pool_create(network *net, layer* previous, int *pool_size, float drop_rate)
 {
+	int k;
 	layer* current;
 	
 	current = (layer*) malloc(sizeof(layer));
@@ -44,16 +45,21 @@ void pool_create(network *net, layer* previous, int pool_size)
 	//activation type not used for now but could be add for optimization
 	current->activation_type = LINEAR;
 	current->previous = previous;
+	p_param->dropout_rate = drop_rate;
 	
-	p_param->p_size = pool_size;
+	p_param->nb_area = (int*) calloc(3, sizeof(int));
+	p_param->prev_size = (int*) calloc(3, sizeof(int));
+	p_param->p_size = (int*) calloc(3, sizeof(int));
+	for(k = 0; k < 3; k++)
+		p_param->p_size[k] = pool_size[k];
 	
 	
 	if(previous == NULL)
 	{
 		//Case of the first layer
-		p_param->prev_size_w = net->input_width;
-		p_param->prev_size_h = net->input_height;
-		p_param->prev_size_d = net->input_depth;
+		p_param->prev_size[0] = net->input_width;
+		p_param->prev_size[1] = net->input_height;
+		p_param->prev_size[2] = net->input_depth;
 		p_param->prev_depth = net->input_channels;
 		//input pointer must be set at the begining of forward
 		current->input = net->input;
@@ -68,9 +74,8 @@ void pool_create(network *net, layer* previous, int pool_size)
 		{
 			case CONV:
 			default:
-				p_param->prev_size_w = ((conv_param*)previous->param)->nb_area_w;
-				p_param->prev_size_h = ((conv_param*)previous->param)->nb_area_h;
-				p_param->prev_size_d = ((conv_param*)previous->param)->nb_area_d;
+				for(k = 0; k < 3; k++)
+					p_param->prev_size[k] = ((conv_param*)previous->param)->nb_area[k];
 				p_param->prev_depth =  ((conv_param*)previous->param)->nb_filters;
 				break;
 			case POOL:
@@ -82,31 +87,27 @@ void pool_create(network *net, layer* previous, int pool_size)
 		current->input = previous->output;
 	}
 	
-	if(p_param->prev_size_w % pool_size != 0 || p_param->prev_size_h % pool_size || p_param->prev_size_d % pool_size)
+	if(p_param->prev_size[0] % pool_size[0] != 0 || p_param->prev_size[1] % pool_size[1] || p_param->prev_size[2] % pool_size[2])
 	{
 		printf("ERROR : Pool layer can not handle unheaven activation map size for now, please change network architecture.\n");
 		exit(EXIT_FAILURE);
 	}
 	
-	p_param->nb_area_w = p_param->prev_size_w / pool_size;
-	p_param->nb_area_h = p_param->prev_size_h / pool_size;
-	p_param->nb_area_d = p_param->prev_size_d / pool_size;
+	for(k = 0; k < 3; k++)
+		p_param->nb_area[k] = p_param->prev_size[k] / pool_size[k];
 	p_param->nb_maps = p_param->prev_depth;
 	
-	if(p_param->nb_area_w != p_param->nb_area_h)
-	{
-		printf("ERROR : Pool layer can not hander non square map size for now, please change network architecture.\n");
-		exit(EXIT_FAILURE);
-	}
-	
-	p_param->pool_map = (int*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_area_d * p_param->nb_maps 
+	p_param->pool_map = (int*) malloc(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
 		* net->batch_size * sizeof(int));
-	current->output = (float*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_area_d * p_param->nb_maps 
+	current->output = (float*) malloc(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
 		* net->batch_size * sizeof(float));
+		
+	if(drop_rate > 0.01)
+		p_param->dropout_mask = (int*) calloc(p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), sizeof(int));
 	
-	current->delta_o = (float*) malloc(p_param->nb_area_w * p_param->nb_area_h * p_param->nb_area_d * p_param->nb_maps 
+	current->delta_o = (float*) malloc(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
 		* net->batch_size * sizeof(float));
-	p_param->temp_delta_o = (float*) malloc(p_param->prev_size_w * p_param->prev_size_h * p_param->prev_size_d
+	p_param->temp_delta_o = (float*) malloc(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]
 		* p_param->prev_depth * net->batch_size * sizeof(float));
 	
 	//No activation for this layer for now
@@ -128,7 +129,7 @@ void pool_create(network *net, layer* previous, int pool_size)
 			break;
 		case C_BLAS:
 		case C_NAIV:
-			pool_define(current);
+			//pool_define(current);
 			define_activation(current);
 			break;
 		default:
@@ -139,10 +140,10 @@ void pool_create(network *net, layer* previous, int pool_size)
 	
 	
 	printf("L:%d - Pooling layer layer created:\n \
-Input: %dx%dx%dx%d, P. size: %d, Output: %dx%dx%dx%d \n",
-		net->nb_layers, p_param->prev_size_w, p_param->prev_size_h, p_param->prev_size_h, 
-		p_param->prev_depth, p_param->p_size,
-		p_param->nb_area_w, p_param->nb_area_h, p_param->nb_area_d, p_param->nb_maps);
+Input: %dx%dx%dx%d, Output: %dx%dx%dx%d, P. size: %dx%dx%d, dropout rate: %f\n",
+		net->nb_layers, p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
+		p_param->prev_depth, p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
+		p_param->nb_maps, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->dropout_rate);
 	
 }
 
@@ -150,25 +151,26 @@ void pool_save(FILE *f, layer *current)
 {
 	p_param = (pool_param*) current->param;
 	
-	fprintf(f, "P%d\n", p_param->p_size);
+	fprintf(f, "P%dx%dx%d_%fd\n", p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->dropout_rate);
 	fprintf(f, "\n");
 }
 
 void pool_load(network *net, FILE *f)
 {
-	int p_size;
+	int p_size[3];
+	float dropout_rate;
 	layer* previous;
 
 	printf("Loading pool layer, L:%d\n", net->nb_layers);
 	
-	fscanf(f, "%d", &p_size);
+	fscanf(f, "%dx%dx%d_%fd\n", &p_size[0], &p_size[1], &p_size[2], &dropout_rate);
 	
 	if(net->nb_layers <= 0)
 		previous = NULL;
 	else
 		previous = net->net_layers[net->nb_layers-1];
 	
-	pool_create(net, previous, p_size);
+	pool_create(net, previous, p_size, dropout_rate);
 	
 }
 

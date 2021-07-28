@@ -205,15 +205,15 @@ void cuda_define_activation(layer *current)
 			
 			temp_tab = ((yolo_param*)a_param)->IoU_monitor;
 			cudaMalloc(&device_IoU_monitor, 2 * ((yolo_param*)a_param)->nb_box
-				* ((conv_param*)current->param)->nb_area_w
-				* ((conv_param*)current->param)->nb_area_h
-				* ((conv_param*)current->param)->nb_area_d
+				* ((conv_param*)current->param)->nb_area[0]
+				* ((conv_param*)current->param)->nb_area[1]
+				* ((conv_param*)current->param)->nb_area[2]
 				* current->c_network->batch_size * sizeof(float));
 			cudaMemcpy(device_IoU_monitor, temp_tab,
 				2 * ((yolo_param*)a_param)->nb_box
-				* ((conv_param*)current->param)->nb_area_w 
-				* ((conv_param*)current->param)->nb_area_h
-				* ((conv_param*)current->param)->nb_area_d
+				* ((conv_param*)current->param)->nb_area[0]
+				* ((conv_param*)current->param)->nb_area[1]
+				* ((conv_param*)current->param)->nb_area[2]
 				* current->c_network->batch_size * sizeof(float), cudaMemcpyHostToDevice);
 			
 			((yolo_param*)a_param)->prior_w = device_prior_w;
@@ -1041,13 +1041,13 @@ void cuda_YOLO_activation(layer *current)
 		default:
 		case 0:
 			YOLO_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output,
-				c_param->nb_area_w*c_param->nb_area_h*c_param->nb_area_d*current->c_network->batch_size,
+				c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]*current->c_network->batch_size,
 				a_param->biased_dim*current->c_network->length,
 				*a_param, a_param->size);
 			break;
 		case 1:
 			YOLO_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output, 
-				c_param->nb_area_w*c_param->nb_area_h*c_param->nb_area_d*current->c_network->batch_size,
+				c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]*current->c_network->batch_size,
 				a_param->biased_dim*current->c_network->length,
 				*a_param, a_param->size);
 			break;
@@ -1150,7 +1150,7 @@ void cuda_YOLO_deriv_output_error(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
 	conv_param *c_param = (conv_param*)current->param;
-	cu_blocks = (c_param->nb_area_w * c_param->nb_area_h * c_param->nb_area_d *
+	cu_blocks = (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] *
 			current->c_network->batch_size + cu_threads - 1) / cu_threads;
 			
 	//printf("\n%d %d %d %d\n", c_param->nb_area_w, c_param->nb_area_h, c_param->nb_filters, current->c_network->batch_size);
@@ -1162,15 +1162,15 @@ void cuda_YOLO_deriv_output_error(layer *current)
 			YOLO_deriv_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, 
 				(float*)current->c_network->target, current->c_network->output_dim, 
-				c_param->nb_area_w * c_param->nb_area_h * c_param->nb_area_d, c_param->nb_area_w, c_param->nb_area_h, c_param->nb_area_d, *a_param,
-				c_param->nb_area_w * c_param->nb_area_h * c_param->nb_area_d * current->c_network->batch_size);
+				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], *a_param,
+				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
 			break;
 		case 1:
 			YOLO_deriv_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, 
 				(half*)current->c_network->target, current->c_network->output_dim, 
-				c_param->nb_area_w * c_param->nb_area_h * c_param->nb_area_d, c_param->nb_area_w, c_param->nb_area_h, c_param->nb_area_d, *a_param,
-				c_param->nb_area_w * c_param->nb_area_h * c_param->nb_area_d * current->c_network->batch_size, TC_scale_factor);
+				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], *a_param,
+				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, TC_scale_factor);
 			break;
 	}
 	//cudaDeviceSynchronize();
@@ -1182,7 +1182,7 @@ void cuda_YOLO_output_error(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
 	conv_param *c_param = (conv_param*)current->param;
-	cu_blocks = (c_param->nb_area_w * c_param->nb_area_h * c_param->nb_area_d *
+	cu_blocks = (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] *
 			current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	switch(current->c_network->use_cuda_TC)
@@ -1192,15 +1192,15 @@ void cuda_YOLO_output_error(layer *current)
 			YOLO_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output, 
 				(float*)current->c_network->target, current->c_network->output_dim, 
-				c_param->nb_area_w * c_param->nb_area_h * c_param->nb_area_d, c_param->nb_area_w, c_param->nb_area_h, c_param->nb_area_d, *a_param,
-				c_param->nb_area_w * c_param->nb_area_h * c_param->nb_area_d * current->c_network->batch_size);
+				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], *a_param,
+				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
 			break;
 		case 1:
 			YOLO_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output, 
 				(half*)current->c_network->target, current->c_network->output_dim, 
-				c_param->nb_area_w * c_param->nb_area_h * c_param->nb_area_d, c_param->nb_area_w, c_param->nb_area_h, c_param->nb_area_d, *a_param,
-				c_param->nb_area_w * c_param->nb_area_h * c_param->nb_area_d * current->c_network->batch_size);
+				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], *a_param,
+				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
 			break;
 	}
 }
@@ -1320,6 +1320,8 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 	int larger_box, smaller_box;
 	
 	float dim_scale[3] = {1.0,1.0,1.0};
+	
+	float param_ind_scale[5] = {2.0,1.0,1.0,3.0,2.0};
 	
 	box_locked = (int*) malloc(nb_box*sizeof(int));
 	box_in_pix = (float*) malloc(nb_box*6*sizeof(float));
@@ -1504,7 +1506,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 				delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = (half)(
 		                    	TC_scale_factor*sm_tab[2][0]*prob_scale*(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]
 		                    	*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset])
-		                    	*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f));
+		                    	*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f));
 	        else
 	        	delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = (half)(0.0f);
 		        
@@ -1548,7 +1550,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 			{
 				for(k = 0; k < nb_param; k++)
 					delta_o[(resp_box*(8+nb_class+nb_param)+8+nb_class+k)*f_offset] = 
-						(half) (TC_scale_factor*sm_tab[5][0]*param_scale*((float)output[(resp_box*(8+nb_class+nb_param)
+						(half) (param_ind_scale[k]*TC_scale_factor*sm_tab[5][0]*param_scale*((float)output[(resp_box*(8+nb_class+nb_param)
 						+8+nb_class+k)*f_offset] - (float)target[j*(7+nb_param)+7+k]));
 			}
 			else
@@ -1579,7 +1581,7 @@ __global__ void YOLO_deriv_error_kernel_FP16(half *delta_o, half *output, half *
 						TC_scale_factor*sm_tab[3][0]*(lambda_noobj_prior[j])*prob_scale
 						*(float)output[(j*(8+nb_class+nb_param)+6)*f_offset]
 						*(1.0f-(float)output[(j*(8+nb_class+nb_param)+6)*f_offset])
-						*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f));
+						*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f));
 				else
 					delta_o[(j*(8+nb_class+nb_param)+6)*f_offset] = (half)(0.0f);
 			
@@ -1663,6 +1665,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 	float out_int[6], targ_int[6];
 	
 	float dim_scale[3] = {1.0,1.0,1.0};
+	float param_ind_scale[5] = {2.0,1.0,1.0,3.0,2.0};
 	
 	float targ_w, targ_h, targ_d;
 	int larger_box, smaller_box;
@@ -1676,8 +1679,8 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 
 	i = i % flat_output_size;
 	cell_z = i / (nb_area_w*nb_area_h);
-	cell_y = (int)(i % (nb_area_w*nb_area_h)) / nb_area_w;
-	cell_x = (int)(i % (nb_area_w*nb_area_h)) % nb_area_w;
+	cell_y = (int)(i % (nb_area_w*nb_area_h)) % nb_area_w;
+	cell_x = (int)(i % (nb_area_w*nb_area_h)) / nb_area_w;
 	
 	output_error += (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
 	output += (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
@@ -1824,8 +1827,8 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			
 			if(max_IoU > min_prob_IoU_lim)
 				output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] =
-		                        0.5f*prob_scale*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f)
-		                        *((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f);
+		                        0.5f*prob_scale*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f)
+		                        *((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f);
             else
             	output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = 0.0f;
 			
@@ -1866,7 +1869,7 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			{
 				for(k = 0; k < nb_param; k++)
 					output_error[(resp_box*(8+nb_class+nb_param)+8+nb_class+k)*f_offset] = 
-						(0.5f*param_scale*((float)output[(resp_box*(8+nb_class+nb_param)
+						(param_ind_scale[k]*0.5f*param_scale*((float)output[(resp_box*(8+nb_class+nb_param)
 						+8+nb_class+k)*f_offset] - (float) target[j*(7+nb_param)+7+k])
 						*((float)output[(resp_box*(8+nb_class+nb_param)
 						+8+nb_class+k)*f_offset] - (float) target[j*(7+nb_param)+7+k]));
@@ -1895,8 +1898,8 @@ __global__ void YOLO_error_kernel_FP16(float *output_error, half *output, half *
 			else
 			{
 				output_error[(j*(8+nb_class+nb_param)+6)*f_offset] =
-					0.5f*(lambda_noobj_prior[j])*prob_scale*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f)
-					*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f);
+					0.5f*(lambda_noobj_prior[j])*prob_scale*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f)
+					*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f);
 			
 				/*output_error[(j*(8+nb_class+nb_param)+7)*f_offset] =
 						     0.5f*obj_scale*(lambda_noobj_prior[j])*((float)output[(j*(8+nb_class+nb_param)+7)*f_offset]-0.01f)

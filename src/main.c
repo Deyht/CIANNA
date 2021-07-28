@@ -145,17 +145,17 @@ int main()
 	}
 	#endif
 	
-	
+	/* MUST UPDATE FILTER, STRIDE AND PADDING ARGUMENT PASSING
 	conv_create(networks[0], NULL, 5, 8, 1, 2, RELU, 0.0, NULL);
-	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
+	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2, 0.0);
 	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 2, RELU, 0.0, NULL);
-	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
+	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2, 0.0);
 	//conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 3, 48, 1, 1, RELU, 0.0, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 1024, RELU, 0.5, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.2, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 
 		networks[0]->output_dim, SOFTMAX, 0.0, NULL);
-	
+	*/
 	printf("Start learning phase ...\n");
 	
 	train_network(networks[0], 1, 1, 0.0002, 0.0001, 0.9, 0.009, 1, 5, 1, 1, 2.0);

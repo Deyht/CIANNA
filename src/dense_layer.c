@@ -123,15 +123,15 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 		switch(previous->type)
 		{
 			case CONV:
-				d_param->in_size = ((conv_param*)previous->param)->nb_area_w
-					* ((conv_param*)previous->param)->nb_area_h 
+				d_param->in_size = ((conv_param*)previous->param)->nb_area[0]
+					* ((conv_param*)previous->param)->nb_area[1] 
 					* ((conv_param*)previous->param)->nb_filters + 1;
 				d_param->flat_delta_o = (float*) calloc(d_param-> in_size * net->batch_size, sizeof(float));
 				break;
 			
 			case POOL:
-				d_param->in_size = ((pool_param*)previous->param)->nb_area_w 
-					* ((pool_param*)previous->param)->nb_area_h 
+				d_param->in_size = ((pool_param*)previous->param)->nb_area[0] 
+					* ((pool_param*)previous->param)->nb_area[1] 
 					* ((pool_param*)previous->param)->nb_maps + 1;
 				d_param->flat_delta_o = (float*) calloc(d_param->in_size * net->batch_size, sizeof(float));
 				((pool_param*)previous->param)->next_layer_type = current->type;
@@ -203,7 +203,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 			break;
 			
 		case C_NAIV:
-			naiv_dense_define(current);
+			//naiv_dense_define(current);
 			define_activation(current);
 			break;
 			
