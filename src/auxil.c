@@ -956,7 +956,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			f_save = fopen(f_save_name, "wb+");
 		if(f_save == NULL)
 		{
-			printf("ERROR : can not oppen %s !\n", f_save_name);
+			printf("ERROR: can not oppen %s !\n", f_save_name);
 		}
 	}
 	
@@ -1203,6 +1203,23 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			else
 				f_err = fopen("error.txt", "a");
 			
+			printf("Cumulated error: \t %g\n", total_error/data.size);
+			if(net->net_layers[net->nb_layers-1]->type == CONV)
+			{
+				if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
+				{
+					printf("Error dist - Pos: %f, Size: %f, Prob: %f, Objct: %f, Class: %f, Param: %f  - Mean Prob. Max IoU = %f\n",
+					pos_error/data.size, size_error/data.size, prob_error/data.size, 
+					objectness_error/data.size, class_error/data.size, param_error/data.size, sum_IoU/nb_IoU);
+				}
+			}
+			
+			if(isnan(total_error))
+			{
+				printf("ERROR: Network divergence detected (Nan)!\n\n");
+				exit(EXIT_FAILURE);
+			}
+			
 			if(net->no_error == 0)
 			{
 				fprintf(f_err, "%d %g",  net->epoch, total_error/data.size);
@@ -1214,18 +1231,6 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 						pos_error/data.size, size_error/data.size, prob_error/data.size, 
 						objectness_error/data.size, class_error/data.size, param_error/data.size);
 					}
-				}
-			}
-			
-			
-			printf("Cumulated error: \t %g\n", total_error/data.size);
-			if(net->net_layers[net->nb_layers-1]->type == CONV)
-			{
-				if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
-				{
-					printf("Error dist - Pos: %f, Size: %f, Prob: %f, Objct: %f, Class: %f, Param: %f  - Mean Prob. Max IoU = %f\n",
-					pos_error/data.size, size_error/data.size, prob_error/data.size, 
-					objectness_error/data.size, class_error/data.size, param_error/data.size, sum_IoU/nb_IoU);
 				}
 			}
 

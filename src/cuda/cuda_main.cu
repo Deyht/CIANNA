@@ -126,9 +126,10 @@ void cuda_create_host_table_FP16(network* net, void **tab, int size)
 	*tab = (half*) malloc(size*sizeof(half));
 }
 
-void cuda_convert_table(network* net, void **tab, long long int size)
+long long int cuda_convert_table(network* net, void **tab, long long int size)
 {
 	void* temp_tab;
+	long long int l_vram = 0;
 	
 	temp_tab = *tab;
 	half* temp_half;
@@ -138,6 +139,7 @@ void cuda_convert_table(network* net, void **tab, long long int size)
 		default:
 		case 0:
 			cudaMalloc(tab, size*sizeof(float));
+			l_vram += size*sizeof(float);
 			cudaMemcpy(*tab, temp_tab, size*sizeof(float),cudaMemcpyHostToDevice);
 			free(temp_tab);
 			break;
@@ -146,21 +148,27 @@ void cuda_convert_table(network* net, void **tab, long long int size)
 			copy_to_half((float*)temp_tab, temp_half, 0, size);
 			free(temp_tab);
 			cudaMalloc(tab, size*sizeof(half));
+			l_vram += size*sizeof(half);
 			cudaMemcpy(*tab, temp_half, size*sizeof(half),cudaMemcpyHostToDevice);
 			free(temp_half);
 			break;
 	}
+	return l_vram;
 }
 
-void cuda_convert_table_int(network* net, int **tab, int size)
+long long int cuda_convert_table_int(network* net, int **tab, int size)
 {
 	int* temp_tab;
+	long long int l_vram = 0;
 	
 	temp_tab = *tab;
 
 	cudaMalloc(tab, size*sizeof(int));
 	cudaMemcpy(*tab, temp_tab, size*sizeof(int),cudaMemcpyHostToDevice);
+	l_vram += size*sizeof(int);
 	free(temp_tab);
+	
+	return l_vram;
 }
 
 void cuda_create_table_FP32(network* net, float **tab, float size)

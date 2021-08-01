@@ -843,7 +843,7 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 	int i,j;
 	int nb_box, nb_class, nb_param, IoU_type;
 	int strict_box_size_association = 0, network_id = 0;
-	PyArrayObject *py_prior_w = NULL, *py_prior_h = NULL, *py_prior_d = NULL, *py_prior_noobj_prob;
+	PyArrayObject *py_prior_w = NULL, *py_prior_h = NULL, *py_prior_d = NULL, *py_prior_noobj_prob = NULL;
 	float *C_prior_w, *C_prior_h, *C_prior_d, *C_prior_noobj_prob;
 	PyArrayObject *py_error_scales = NULL, *py_slopes_and_maxes = NULL, *py_IoU_limits = NULL, *py_fit_parts = NULL;
 	const char* IoU_type_char = "empty";
@@ -877,7 +877,7 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 	{ 
 		C_prior_w[i] = *((float*)(py_prior_w->data + i * py_prior_w->strides[0]));
 		C_prior_h[i] = *((float*)(py_prior_h->data + i * py_prior_h->strides[0]));
-		C_prior_noobj_prob[i] = *((float*)(py_prior_noobj_prob->data 
+		C_prior_noobj_prob[i] = *((float *)(py_prior_noobj_prob->data 
 									 + i * py_prior_noobj_prob->strides[0]));
 	}
 	

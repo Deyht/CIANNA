@@ -58,63 +58,65 @@ void cuda_conv_define(layer *current)
 	current->backprop = cuda_backward_conv_layer;
 }
 
-void cuda_convert_conv_layer(layer *current)
+long long int cuda_convert_conv_layer(layer *current)
 {
 	c_param = (conv_param*)current->param;
+	long long int vram_approx = 0;
 	float* temp_tab;
 
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
 		case 0:
-			cuda_convert_table(current->c_network, &(c_param->filters), c_param->nb_filters 
+			vram_approx += cuda_convert_table(current->c_network, &(c_param->filters), c_param->nb_filters 
 				* c_param->flat_f_size);
 			break;
 		case 1:
 			temp_tab = (float*)c_param->filters;
 			cudaMalloc(&(c_param->FP32_filters), c_param->nb_filters 
 				* c_param->flat_f_size*sizeof(float));
+			vram_approx += c_param->nb_filters 
+				* c_param->flat_f_size*sizeof(float);
 			cudaMemcpy(c_param->FP32_filters, temp_tab, c_param->nb_filters 
 				* c_param->flat_f_size * sizeof(float),cudaMemcpyHostToDevice);
 			free(temp_tab);
 			cudaMalloc(&(c_param->filters), c_param->nb_filters 
 				* c_param->flat_f_size*sizeof(half));
+			vram_approx += c_param->nb_filters 
+				* c_param->flat_f_size*sizeof(half);
 			break;
 	}
 
-	cuda_convert_table(current->c_network, &(c_param->update), c_param->nb_filters 
+	vram_approx += cuda_convert_table(current->c_network, &(c_param->update), c_param->nb_filters 
 		* c_param->flat_f_size);
 	
-	cuda_convert_table(current->c_network, &(c_param->rotated_filters), c_param->nb_filters 
+	vram_approx += cuda_convert_table(current->c_network, &(c_param->rotated_filters), c_param->nb_filters 
 		* (c_param->flat_f_size-1));
 	
-	cuda_convert_table(current->c_network, &(current->output), c_param->nb_filters 
+	vram_approx += cuda_convert_table(current->c_network, &(current->output), c_param->nb_filters 
 		* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * current->c_network->batch_size);
-	cuda_convert_table(current->c_network, &(current->delta_o), c_param->nb_filters 
+	vram_approx += cuda_convert_table(current->c_network, &(current->delta_o), c_param->nb_filters 
 		* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * current->c_network->batch_size);
 	/*cuda_convert_table(current->c_network, &(c_param->temp_delta_o), c_param->prev_depth 
 		* (c_param->prev_size_w * c_param->prev_size_h) * current->c_network->batch_size);*/
 	
-	cuda_convert_table(current->c_network, &(c_param->im2col_input), 
+	vram_approx += cuda_convert_table(current->c_network, &(c_param->im2col_input), 
 		(c_param->flat_f_size * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) 
 		* current->c_network->batch_size);
-	cuda_convert_table(current->c_network, &(c_param->im2col_delta_o), 
+	vram_approx += cuda_convert_table(current->c_network, &(c_param->im2col_delta_o), 
 		(long long int) current->c_network->batch_size * (c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]) 
 		* (c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters));
 	
 	if(c_param->dropout_rate > 0.01)
 	{
-		cuda_convert_table_int(current->c_network, &(c_param->dropout_mask), c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
+		vram_approx += cuda_convert_table_int(current->c_network, &(c_param->dropout_mask), c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
 		cudaMalloc((void**) &c_param->block_state, (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t));
+		vram_approx += (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t);
 		cu_blocks = (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
 		init_block_state_conv<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)c_param->block_state);
 	}
-
-	if(current->previous != NULL)
-	{
-		cuda_convert_table(current->c_network, &(current->input), c_param->prev_depth 
-			* (c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * current->c_network->batch_size);
-	}
+	
+	return vram_approx;
 }
 
 
@@ -782,13 +784,13 @@ __global__ void cuda_dropout_apply_conv_FP16(half* table, int batch_size, int di
 	int i = blockIdx.y*blockDim.y + threadIdx.y;
 
 	int c_depth = j / dim;
-        int current_id = j % dim;
-        int offset = dim*batch_size;
+    int current_id = j % dim;
+    int offset = dim*batch_size;
 
-        if(i < batch_size && j < size)
-        {
-                table[i*dim + c_depth*offset + current_id] *= mask[j];
-        }
+    if(i < batch_size && j < size)
+    {
+            table[i*dim + c_depth*offset + current_id] *= mask[j];
+    }
 }
 
 

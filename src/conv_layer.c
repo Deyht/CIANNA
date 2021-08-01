@@ -147,6 +147,7 @@ void conv_define_activation_param(layer *current)
 void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, int activation, float drop_rate, FILE *f_load)
 {
 	int i, j, k;
+	long long int mem_approx = 0.0f;
 	layer *current;
 	
 	current = (layer*) malloc(sizeof(layer));
@@ -210,9 +211,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 				c_param->flat_f_size = (f_size[0] * f_size[1] * f_size[2] * ((conv_param*)previous->param)->nb_filters + 1);
 				break;
 		}
-		current->input = (float*) calloc(c_param->prev_depth * (c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) *
-		net->batch_size, sizeof(float));
-		
+		current->input = previous->output;
 	}
 	
 	for(k = 0; k < 3; k++)
@@ -222,13 +221,18 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	
 	//allocate all the filters in a flatten table. One filter is continuous. (include bias weight)
 	c_param->filters = (float*) malloc(nb_filters * c_param->flat_f_size * sizeof(float));
+	mem_approx += nb_filters * c_param->flat_f_size * sizeof(float);
 	//allocate the update for the filters
 	c_param->update = (float*) calloc(nb_filters * c_param->flat_f_size, sizeof(float));
+	mem_approx += nb_filters * c_param->flat_f_size * sizeof(float);
 	if(drop_rate > 0.01)
+	{
 		c_param->dropout_mask = (int*) calloc(c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), sizeof(int));
-	
+		mem_approx += c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * sizeof(int);
+	}
+		
 	c_param->rotated_filters = (float*) malloc(nb_filters * (c_param->flat_f_size-1) * sizeof(float));
-	
+	mem_approx += nb_filters * (c_param->flat_f_size-1) * sizeof(float);
 	
 	//allocate the resulting flatten activation map regarding the batch size
 	//Activation maps are not continuous for each image : 
@@ -237,9 +241,13 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	//printf("%d %d %d %d\n", c_param->nb_filters, c_param->nb_area_w, c_param->nb_area_h, net->batch_size);
 	current->output = (float*) calloc( c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) *
 		net->batch_size, sizeof(float));
+	mem_approx +=  c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) *
+		net->batch_size * sizeof(float);
 	//allocate output error comming from next layer
 	current->delta_o = (float*) calloc( c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * 
 		net->batch_size, sizeof(float));
+	mem_approx +=  c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * 
+		net->batch_size * sizeof(float);
 	
 	//temporary output error used for format conversion
 	/*c_param->temp_delta_o = (float*) calloc( c_param->prev_depth * (c_param->prev_size_w 
@@ -248,9 +256,13 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	//allocate the im2col input flatten table regarding the batch size
 	c_param->im2col_input = (float*) calloc( (c_param->flat_f_size * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])
 		* net->batch_size, sizeof(float));
+	mem_approx += (c_param->flat_f_size * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])
+		* net->batch_size * sizeof(float);
 	
 	c_param->im2col_delta_o = (float*) calloc( (long long int) net->batch_size * (c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * 
 		/* flat_filter*/(f_size[0]*f_size[1]*f_size[2]*c_param->nb_filters) ,  sizeof(float));
+	mem_approx += (long long int) (net->batch_size * (c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * 
+		/* flat_filter*/(f_size[0]*f_size[1]*f_size[2]*c_param->nb_filters)) *  sizeof(float);
 
 	current->param = c_param;
 
@@ -291,7 +303,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 		case C_CUDA:
 			#ifdef CUDA
 			cuda_conv_define(current);
-			cuda_convert_conv_layer(current);
+			mem_approx = cuda_convert_conv_layer(current);
 			cuda_define_activation(current);
 			#endif
 			break;
@@ -311,14 +323,16 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	
 	char activ[10];
 	get_string_activ_param(activ, current->activation_type);
-	printf("L:%d - Convolutional layer created:\n \
-Input: %dx%dx%dx%d, Filters: %dx%dx%dx%d, Output: %dx%dx%dx%d \n \
-Activation: %s, Stride: %dx%dx%d, padding: %dx%dx%d, dropout rate: %0.2f\n",
+	printf("L:%d - Convolutional layer created:\n\
+\t Input: %dx%dx%dx%d, Filters: %dx%dx%dx%d, Output: %dx%dx%dx%d \n\
+\t Activation: %s, Stride: %dx%dx%d, padding: %dx%dx%d, dropout rate: %0.2f\n\
+\t Nb. weights: %d, Approx layer Ram/VRam requirement: %d MB\n",
 		net->nb_layers, c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
 		c_param->prev_depth, c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], c_param->nb_filters,
 		c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], c_param->nb_filters,
 		activ, c_param->stride[0], c_param->stride[1], c_param->stride[2], 
-		c_param->padding[0], c_param->padding[1],  c_param->padding[2], c_param->dropout_rate);
+		c_param->padding[0], c_param->padding[1],  c_param->padding[2], c_param->dropout_rate,
+		nb_filters * c_param->flat_f_size, (int)(mem_approx/1000000));
 	
 	if(net->compute_method == C_CUDA && net->use_cuda_TC)
 	{

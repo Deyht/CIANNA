@@ -142,8 +142,8 @@ void cuda_set_TC_scale_factor(float val);
 void cuda_sync(void);
 void cuda_free_table(void* tab);
 void cuda_create_host_table_FP16(network* net, void **tab, int size);
-void cuda_convert_table(network* net, void **tab, long long int size);
-void cuda_convert_table_int(network* net, int **tab, int size);
+long long int cuda_convert_table(network* net, void **tab, long long int size);
+long long int cuda_convert_table_int(network* net, int **tab, int size);
 void cuda_convert_dataset(network *net, Dataset *data);
 void cuda_convert_host_dataset_FP32(network *net, Dataset *data);
 Dataset create_dataset_FP16(network *net, int nb_elem);
@@ -186,7 +186,7 @@ void cuda_convert_dense_layer(layer *current);
 
 //cuda_conv_layer.cu
 void cuda_conv_define(layer *current);
-void cuda_convert_conv_layer(layer *current);
+long long int cuda_convert_conv_layer(layer *current);
 
 //cuda_pool_layer.cu
 void cuda_pool_define(layer *current);

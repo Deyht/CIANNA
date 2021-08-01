@@ -768,7 +768,7 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 		printf(" Strict box size association is ENABLED\n");
 	printf(" No obj. prob. priors\n          = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
-		printf("%7.3f ", net->y_param->noobj_prob_prior[i]);
+		printf("%7.6f ", net->y_param->noobj_prob_prior[i]);
 	printf("]\n");
 	printf(" Error scales: Posit.   Size   Proba.  Objct.  Class.  Param.\n          = [");
 	for(i = 0; i < 6; i++)
