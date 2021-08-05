@@ -340,18 +340,18 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 		if(c_param->flat_f_size % 8 != 0 
 				|| current->c_network->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]) % 8 != 0 
 				|| c_param->nb_filters % 8 != 0)
-			printf("Warning : Forward gemm fallback to non TC version due to layer size mismatch\n");
+			printf("Warning : Forward gemm TC data misalignement due to layer size mismatch\n");
 			
 		if(current->previous != NULL &&
 				( c_param->prev_depth % 8 != 0 
 				|| c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * current->c_network->batch_size % 8 != 0 
 				|| c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters % 8 != 0))
-			printf("Warning : Backprop gemm fallback to non TC version due to layer size mismatch\n");
+			printf("Warning : Backprop gemm TC data misalignment due to layer size mismatch\n");
 
 		if( c_param->flat_f_size % 8 != 0 
 				|| c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size % 8 != 0 
 				|| c_param->nb_filters % 8 != 0)
-			printf("Warning : Weights update gemm fallback to non TC version due to layer size mismatch\n");
+			printf("Warning : Weights update gemm TC data misalignment due to layer size mismatch\n");
 	}
 	
 }
