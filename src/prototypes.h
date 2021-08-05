@@ -85,8 +85,8 @@ void pool_load(network *net, FILE *f);
 //initializers.c
 float random_uniform(void);
 float random_normal(void);
-void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value);
-void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value);
+void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding);
+void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding);
 
 
 //######################################

@@ -1441,7 +1441,14 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				net->input = net->train.input[batch_loc];
 				net->target = net->train.target[batch_loc];
 			}
+			/*
+			c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
 			
+			cuda_print_table(net, c_param->filters, c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding), (c_param->flat_f_size + c_param->TC_padding));
+			
+			cuda_print_table(net, c_param->im2col_input, (c_param->flat_f_size + c_param->TC_padding) * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]
+		* net->batch_size, (c_param->flat_f_size + c_param->TC_padding));
+			*/
 			for(k = 0; k < net->nb_layers; k++)
 			{
 				perf_eval_in(net);
@@ -1472,7 +1479,18 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				net->net_layers[net->nb_layers-1-k]->backprop(net->net_layers[net->nb_layers-1-k]);
 				perf_eval_out(net, net->nb_layers-1-k, net->back_perf, net->back_perf_n);
 			}
+			/*
+			c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
 			
+			cuda_print_table(net, c_param->filters, c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding), (c_param->flat_f_size + c_param->TC_padding));
+			
+			cuda_print_table(net, c_param->im2col_input, (c_param->flat_f_size + c_param->TC_padding) * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]
+		* net->batch_size, (c_param->flat_f_size + c_param->TC_padding));
+			
+			exit(1);
+			if(net->epoch == 1) 
+				exit(1);
+			*/
 			// Live loss monitoring
 			if(net->compute_method == C_CUDA)
 			{

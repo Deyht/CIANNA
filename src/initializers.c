@@ -45,7 +45,7 @@ float random_normal(void)
 
 
 
-void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value)
+void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding)
 {
 	int i;
 	int size;
@@ -53,7 +53,7 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 	
 	float* f_tab = (float*) tab;
 	
-	size = dim_in*dim_out;
+	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
 	{
 		size += dim_out;
@@ -63,13 +63,14 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 		limit = size;
 	for(i = 0; i < limit; i++)
 	{
-		if(bias_padding && (i+1) % (dim_in+bias_padding) == 0)
+		if(((i) % (dim_in+zero_padding+bias_padding) >= (dim_in + bias_padding)) 
+			|| (bias_padding && (i+1) % (dim_in + bias_padding + zero_padding) == (dim_in + bias_padding)))
 			f_tab[i] = 0.0;
 		else
 		{	
 			//f_tab[i] = random_normal()*sqrt(1.0f/(dim_in+dim_out)); //real He normal
-			//f_tab[i] = random_normal()*sqrt(2.0f/(dim_in+dim_out)); //real Xavier normal
-			f_tab[i] = random_normal()*sqrt(2.0f/(dim_in+dim_out)); //custom init
+			f_tab[i] = random_normal()*sqrt(2.0f/(dim_in+dim_out)); //real Xavier normal
+			//f_tab[i] = random_normal()*sqrt(3.0f/(dim_in+dim_out)); //custom init
 		}
 	}
 	
@@ -78,7 +79,7 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 
 }
 
-void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value)
+void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding)
 {
 	int i;
 	int size;
@@ -86,7 +87,7 @@ void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float 
 	
 	float* f_tab = (float*) tab;
 	
-	size = dim_in*dim_out;
+	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
 	{
 		size += dim_out;
@@ -96,7 +97,8 @@ void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float 
 		limit = size;
 	for(i = 0; i < limit; i++)
 	{
-		if(bias_padding && (i+1) % (dim_in+bias_padding) == 0)
+		if(((i+1) % (dim_in+zero_padding+bias_padding) > (dim_in + bias_padding)) 
+			|| (bias_padding && (i+1) % (dim_in + bias_padding + zero_padding) == (dim_in + bias_padding)))
 			f_tab[i] = 0.0;
 		else
 		{	

@@ -180,6 +180,7 @@ struct conv_param
 {
 	int *f_size;
 	int flat_f_size;
+	int TC_padding;
 	int *stride;
 	int *padding;
 	

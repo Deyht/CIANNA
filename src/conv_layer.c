@@ -214,24 +214,29 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 		current->input = previous->output;
 	}
 	
+	if(net->compute_method == C_CUDA && net->use_cuda_TC)
+		c_param->TC_padding = 8 - c_param->flat_f_size % 8;
+	else
+		c_param->TC_padding = 0;
+	
 	for(k = 0; k < 3; k++)
 		c_param->nb_area[k] = nb_area_comp(c_param->prev_size[k], c_param->f_size[k], c_param->padding[k], c_param->stride[k]);
 	
 	printf("Layer output: %d %d %d\n", c_param->nb_area[0],c_param->nb_area[1],c_param->nb_area[2]);
 	
 	//allocate all the filters in a flatten table. One filter is continuous. (include bias weight)
-	c_param->filters = (float*) malloc(nb_filters * c_param->flat_f_size * sizeof(float));
-	mem_approx += nb_filters * c_param->flat_f_size * sizeof(float);
+	c_param->filters = (float*) calloc(nb_filters * (c_param->flat_f_size + c_param->TC_padding), sizeof(float));
+	mem_approx += nb_filters * (c_param->flat_f_size + c_param->TC_padding) * sizeof(float);
 	//allocate the update for the filters
-	c_param->update = (float*) calloc(nb_filters * c_param->flat_f_size, sizeof(float));
-	mem_approx += nb_filters * c_param->flat_f_size * sizeof(float);
+	c_param->update = (float*) calloc(nb_filters * (c_param->flat_f_size + c_param->TC_padding), sizeof(float));
+	mem_approx += nb_filters * (c_param->flat_f_size + c_param->TC_padding) * sizeof(float);
 	if(drop_rate > 0.01)
 	{
 		c_param->dropout_mask = (int*) calloc(c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), sizeof(int));
 		mem_approx += c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * sizeof(int);
 	}
-		
-	c_param->rotated_filters = (float*) malloc(nb_filters * (c_param->flat_f_size-1) * sizeof(float));
+	
+	c_param->rotated_filters = (float*) calloc(nb_filters * (c_param->flat_f_size-1), sizeof(float));
 	mem_approx += nb_filters * (c_param->flat_f_size-1) * sizeof(float);
 	
 	//allocate the resulting flatten activation map regarding the batch size
@@ -254,9 +259,9 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 		* c_param->prev_size_h) * current->c_network->batch_size, sizeof(float));*/
 		
 	//allocate the im2col input flatten table regarding the batch size
-	c_param->im2col_input = (float*) calloc( (c_param->flat_f_size * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])
+	c_param->im2col_input = (float*) calloc( ((c_param->flat_f_size + c_param->TC_padding) * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])
 		* net->batch_size, sizeof(float));
-	mem_approx += (c_param->flat_f_size * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])
+	mem_approx += ((c_param->flat_f_size + c_param->TC_padding) * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])
 		* net->batch_size * sizeof(float);
 	
 	c_param->im2col_delta_o = (float*) calloc( (long long int) net->batch_size * (c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * 
@@ -272,29 +277,30 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 		((conv_param*)current->param)->bias_value = net->input_bias;
 	
 	//set bias value for the current layer, this value will not move during training
-	for(i = 1; i <= c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * net->batch_size; i++)
-		((float*)c_param->im2col_input)[i*(c_param->flat_f_size) - 1] = c_param->bias_value;
+	for(i = 0; i < c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * net->batch_size; i++)
+		((float*)c_param->im2col_input)[i*(c_param->flat_f_size+c_param->TC_padding) + c_param->flat_f_size - 1] = c_param->bias_value;
 	
 	if(f_load == NULL)
-	{
-		
+	{	
 		//if(activation == RELU)
 		if(1)
 		{
-			printf("Xavier normal init\n");
-			xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0);
+			//printf("Xavier normal init\n");
+			xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding);
 		}
 		else if(activation == RELU_6)
 		{
-			printf("Xavier uniform init\n");
-			xavier_uniform(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0);
+			//printf("Xavier uniform init\n");
+			xavier_uniform(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding);
 		}
 	}
 	else
 	{
 		for(i = 0; i < nb_filters; i++)
+		{
 			for(j = 0; j < c_param->flat_f_size; j++)
-				 fscanf(f_load, "%f", &(((float*)c_param->filters)[i*c_param->flat_f_size + j]));
+				fscanf(f_load, "%f", &(((float*)c_param->filters)[i*(c_param->flat_f_size+c_param->TC_padding) + j]));
+		}	
 	}
 	
 	//associate the conv specific functions to the layer
@@ -337,7 +343,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	if(net->compute_method == C_CUDA && net->use_cuda_TC)
 	{
 	
-		if(c_param->flat_f_size % 8 != 0 
+		if((c_param->flat_f_size + c_param->TC_padding) % 8 != 0 
 				|| current->c_network->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]) % 8 != 0 
 				|| c_param->nb_filters % 8 != 0)
 			printf("Warning : Forward gemm TC data misalignement due to layer size mismatch\n");
@@ -348,7 +354,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 				|| c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters % 8 != 0))
 			printf("Warning : Backprop gemm TC data misalignment due to layer size mismatch\n");
 
-		if( c_param->flat_f_size % 8 != 0 
+		if( (c_param->flat_f_size + c_param->TC_padding) % 8 != 0 
 				|| c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size % 8 != 0 
 				|| c_param->nb_filters % 8 != 0)
 			printf("Warning : Weights update gemm TC data misalignment due to layer size mismatch\n");
@@ -373,17 +379,17 @@ void conv_save(FILE *f, layer *current)
 	if(current->c_network->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		host_filters = (float*) malloc(c_param->nb_filters*c_param->flat_f_size*sizeof(float));
+		host_filters = (float*) calloc(c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding), sizeof(float));
 		switch(current->c_network->use_cuda_TC)
 		{
 			default:
 			case 0:
 				cuda_get_table_FP32(current->c_network, (float*)c_param->filters, (float*)host_filters, 
-					c_param->nb_filters*c_param->flat_f_size);
+					c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding));
 				break;
 			case 1:
 				cuda_get_table_FP32(current->c_network, (float*)c_param->FP32_filters, (float*)host_filters, 
-					c_param->nb_filters*c_param->flat_f_size);
+					c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding));
 				break;
 		
 		}
@@ -397,7 +403,7 @@ void conv_save(FILE *f, layer *current)
 	for(i = 0; i < c_param->nb_filters; i++)
 	{
 		for(j = 0; j < c_param->flat_f_size; j++)
-			fprintf(f, "%g ", ((float*)host_filters)[i*c_param->flat_f_size + j]);
+			fprintf(f, "%g ", ((float*)host_filters)[i*(c_param->flat_f_size+c_param->TC_padding) + j]);
 		fprintf(f,"\n");	
 	}
 	fprintf(f, "\n");

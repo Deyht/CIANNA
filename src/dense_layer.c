@@ -176,7 +176,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 		{
 			bias_padding_value = (float) d_param->bias_value/((dense_param*)current->previous->param)->bias_value;
 		}
-		xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, bias_padding_value);
+		xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, bias_padding_value, 0);
 	}
 	else
 	{
