@@ -390,6 +390,10 @@ void conv_save(FILE *f, layer *current)
 				cuda_get_table_FP32(current->c_network, (float*)c_param->FP32_filters, (float*)host_filters, 
 					c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding));
 				break;
+			case 2:
+				cuda_get_table_FP32(current->c_network, (float*)c_param->FP32_filters, (float*)host_filters, 
+					c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding));
+				break;
 		
 		}
 		#endif
