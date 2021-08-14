@@ -114,7 +114,6 @@ void conv_define_activation_param(layer *current)
 			
 			printf("Nb_elem IoU monitor %d\n", 2 * current->c_network->y_param->nb_box
 				* c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
-			//exit();
 			//real copy to keep network properties accessible
 			*((yolo_param*)current->activ_param) = *(current->c_network->y_param);	
 			((yolo_param*)current->activ_param)->size = c_param->nb_area[0] 
@@ -222,7 +221,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	for(k = 0; k < 3; k++)
 		c_param->nb_area[k] = nb_area_comp(c_param->prev_size[k], c_param->f_size[k], c_param->padding[k], c_param->stride[k]);
 	
-	printf("Layer output: %d %d %d\n", c_param->nb_area[0],c_param->nb_area[1],c_param->nb_area[2]);
+	//printf("Layer output: %d %d %d\n", c_param->nb_area[0],c_param->nb_area[1],c_param->nb_area[2]);
 	
 	//allocate all the filters in a flatten table. One filter is continuous. (include bias weight)
 	c_param->filters = (float*) calloc(nb_filters * (c_param->flat_f_size + c_param->TC_padding), sizeof(float));

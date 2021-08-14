@@ -288,6 +288,7 @@ struct yolo_param
 	//activation slopes, 6 times 3 elements
 	float **slopes_and_maxes_tab;
 	//minimum IoU required before elements fit
+	float *param_ind_scale;
 	float *IoU_limits;
 	//use to disable the fit of given loss parts
 	int *fit_parts;

@@ -42,7 +42,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
 {
 
 	printf("############################################################\n\
-CIANNA V-0.9.2.5 EXPERIMENTAL BUILD (07/2021), by D.Cornu\n\
+CIANNA V-0.9.2.6 EXPERIMENTAL BUILD (08/2021), by D.Cornu\n\
 ############################################################\n\n");
 
 
@@ -193,10 +193,14 @@ Dataset create_dataset(network *net, int nb_elem)
 		case 0:
 			return create_dataset_FP32(net, nb_elem);
 			break;
-			
 		case 1:
 			#ifdef CUDA
 			return create_dataset_FP16(net, nb_elem);
+			#endif
+			break;
+		case 2:
+			#ifdef CUDA
+			return create_dataset_BF16(net, nb_elem);
 			#endif
 			break;
 	}
@@ -946,8 +950,20 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		#ifdef CUDA
 		if(net->compute_method == C_CUDA)
 			output_save = (float*) calloc(net->batch_size*net->out_size, sizeof(float));
-		if(net->compute_method == C_CUDA && net->use_cuda_TC)
-			cuda_create_host_table_FP16(net, &output_buffer, net->batch_size*net->out_size);
+		if(net->compute_method == C_CUDA)
+		{
+			switch(net->use_cuda_TC)
+			{
+				default:
+				case 1:
+					cuda_create_host_table_FP16(net, &output_buffer, net->batch_size*net->out_size);
+					break;
+				case 2:
+					cuda_create_host_table_BF16(net, &output_buffer, net->batch_size*net->out_size);
+					break;
+			}
+				
+		}
 		#endif
 		sprintf(f_save_name, "fwd_res/net%d_%04d.dat", net->id, net->epoch);
 		if(saving == 1)
@@ -1037,6 +1053,10 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 							break;
 						case 1:
 							cuda_get_table_FP16_to_FP32(net->net_layers[net->nb_layers-1]->output,
+								output_save, net->batch_size*net->out_size, output_buffer);
+							break;
+						case 2:
+							cuda_get_table_BF16_to_FP32(net->net_layers[net->nb_layers-1]->output,
 								output_save, net->batch_size*net->out_size, output_buffer);
 							break;
 					}
@@ -1441,29 +1461,10 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				net->input = net->train.input[batch_loc];
 				net->target = net->train.target[batch_loc];
 			}
-			/*
-			c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
 			
-			cuda_print_table(net, c_param->filters, c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding), (c_param->flat_f_size + c_param->TC_padding));
-			
-			cuda_print_table(net, c_param->im2col_input, (c_param->flat_f_size + c_param->TC_padding) * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]
-		* net->batch_size, (c_param->flat_f_size + c_param->TC_padding));
-			*/
 			for(k = 0; k < net->nb_layers; k++)
 			{
 				perf_eval_in(net);
-				/*
-				if(net->epoch % 2 == 1)
-					if(k > 0 && k % 2 == 1)
-						net->net_layers[k]->frozen = 1;
-					else
-						net->net_layers[k]->frozen = 0;
-				else
-					if(k == 0 || k % 2 == 1)
-						net->net_layers[k]->frozen = 0;
-					else
-						net->net_layers[k]->frozen = 1;
-				*/
 				net->net_layers[k]->forward(net->net_layers[k]);
 				perf_eval_out(net, k,net->fwd_perf, net->fwd_perf_n);
 			}
@@ -1479,18 +1480,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				net->net_layers[net->nb_layers-1-k]->backprop(net->net_layers[net->nb_layers-1-k]);
 				perf_eval_out(net, net->nb_layers-1-k, net->back_perf, net->back_perf_n);
 			}
-			/*
-			c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
 			
-			cuda_print_table(net, c_param->filters, c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding), (c_param->flat_f_size + c_param->TC_padding));
-			
-			cuda_print_table(net, c_param->im2col_input, (c_param->flat_f_size + c_param->TC_padding) * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]
-		* net->batch_size, (c_param->flat_f_size + c_param->TC_padding));
-			
-			exit(1);
-			if(net->epoch == 1) 
-				exit(1);
-			*/
 			// Live loss monitoring
 			if(net->compute_method == C_CUDA)
 			{

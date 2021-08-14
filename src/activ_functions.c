@@ -667,7 +667,7 @@ void cross_entropy_output_error(void *output_error, void *output, void *target, 
 //#####################################################
 
 
-int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, float *yolo_noobj_prob_prior, int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *IoU_limits, int *fit_parts)
+int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, float *yolo_noobj_prob_prior, int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts)
 {
 	int i;
 	float *temp;
@@ -707,6 +707,13 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 		sm[4][0] = 1.0f; sm[4][1] = 8.0f; sm[4][2] = 0.0f;
 		sm[5][0] = 1.0f; sm[5][1] = 2.0f; sm[5][2] = -0.2f;
 	}
+	
+	if(param_ind_scale == NULL)
+	{
+		param_ind_scale = (float*) calloc(nb_param, sizeof(float));
+		for(i = 0; i < nb_param; i++)
+			param_ind_scale[i] = 1.0f;
+	}
 
 	if(IoU_limits == NULL)
 	{
@@ -734,6 +741,7 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	//Priors table must be sent to GPU memory if C_CUDA
 	net->y_param->scale_tab = scale_tab;
 	net->y_param->slopes_and_maxes_tab = slopes_and_maxes_tab;
+	net->y_param->param_ind_scale = param_ind_scale;
 	net->y_param->IoU_limits = IoU_limits;
 	net->y_param->fit_parts = fit_parts;
 	

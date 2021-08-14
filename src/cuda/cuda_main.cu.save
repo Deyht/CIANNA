@@ -28,10 +28,10 @@
 static int cu_blocks;
 int cu_threads = CUDA_THREADS_PER_BLOCKS;
 float cu_alpha = 1.0f, cu_beta= 0.0f;
-float TC_scale_factor = 1.0f;
+float TC_scale_factor = 16.0f;
 cublasHandle_t cu_handle;
 cudaDataType cuda_data_type = CUDA_R_32F;
-cublasComputeType_t cuda_compute_type = CUBLAS_COMPUTE_32F;
+cudaDataType cuda_compute_type = CUDA_R_F;
 
 cudaEvent_t cu_event_start, cu_event_stop;
 
@@ -44,19 +44,10 @@ void init_cuda(network* net)
 {
 	cublasStatus_t stat = cublasCreate(&cu_handle);
 	
-	if(net->use_cuda_TC == 1)
+	if(net->use_cuda_TC)
 	{
 		cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
 		cuda_data_type = CUDA_R_16F;
-		//Default
-		TC_scale_factor = 16.0f;
-		//cuda_compute_type = CUBLAS_COMPUTE_16F;
-	}
-	else if(net->use_cuda_TC == 2)
-	{
-		cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
-		cuda_data_type = CUDA_R_16BF;
-		TC_scale_factor = 1.0f;
 	}
 	
 	if(stat != CUBLAS_STATUS_SUCCESS)
@@ -116,14 +107,17 @@ void cuda_free_table(void* tab)
 
 void copy_to_half(void* in_tab, void* out_tab, int out_offset, int size)
 {
+	/*printf("\n");
+	for(int i = 0; i < size; i++)
+		printf("%f ", *(((float*)in_tab + i)));
+	printf("\n");
+*/
 	for(int i = 0; i < size; i++)
 		*((half*)out_tab + out_offset + i) = __float2half_rz(*((float*)in_tab + i));
-}
-
-void copy_to_bfloat16(void* in_tab, void* out_tab, int out_offset, int size)
-{
-	for(int i = 0; i < size; i++)
-		*((nv_bfloat16*)out_tab + out_offset + i) = __float2bfloat16_rz(*((float*)in_tab + i));
+	
+	/*for(int i = 0; i < size; i++)
+		printf("%f ", (float)((half*)out_tab)[i]);
+	printf("\n");*/
 }
 
 
@@ -132,19 +126,13 @@ void cuda_create_host_table_FP16(network* net, void **tab, int size)
 	*tab = (half*) malloc(size*sizeof(half));
 }
 
-void cuda_create_host_table_BF16(network* net, void **tab, int size)
-{
-	*tab = (nv_bfloat16*) malloc(size*sizeof(nv_bfloat16));
-}
-
 long long int cuda_convert_table(network* net, void **tab, long long int size)
 {
 	void* temp_tab;
 	long long int l_vram = 0;
 	
 	temp_tab = *tab;
-	half *temp_half;
-	nv_bfloat16 *temp_bf16;
+	half* temp_half;
 
 	switch(net->use_cuda_TC)
 	{
@@ -163,15 +151,6 @@ long long int cuda_convert_table(network* net, void **tab, long long int size)
 			l_vram += size*sizeof(half);
 			cudaMemcpy(*tab, temp_half, size*sizeof(half),cudaMemcpyHostToDevice);
 			free(temp_half);
-			break;
-		case 2:
-			temp_bf16 = (nv_bfloat16*) malloc(size*sizeof(nv_bfloat16));
-			copy_to_bfloat16((float*)temp_tab, temp_bf16, 0, size);
-			free(temp_tab);
-			cudaMalloc(tab, size*sizeof(nv_bfloat16));
-			l_vram += size*sizeof(nv_bfloat16);
-			cudaMemcpy(*tab, temp_bf16, size*sizeof(nv_bfloat16),cudaMemcpyHostToDevice);
-			free(temp_bf16);
 			break;
 	}
 	return l_vram;
@@ -211,10 +190,6 @@ void cuda_create_table(network* net, void **tab, int size)
 			cudaMalloc(tab, size*sizeof(half));
 			cudaMemset(*tab, 0.0, size*sizeof(half));
 			break;
-		case 2:
-			cudaMalloc(tab, size*sizeof(nv_bfloat16));
-			cudaMemset(*tab, 0.0, size*sizeof(nv_bfloat16));
-			break;
 	}
 }
 
@@ -241,28 +216,6 @@ void cuda_get_table_FP16_to_FP32(void *cuda_table, void *table, int size, void* 
 
 }
 
-void cuda_get_table_BF16_to_FP32(void *cuda_table, void *table, int size, void* buffer)
-{
-	nv_bfloat16 *temp_half;
-	int mem = 0;
-	
-	if(buffer != NULL)
-		temp_half = (nv_bfloat16*) buffer;
-	else
-	{
-		temp_half = (nv_bfloat16*) malloc(size*sizeof(nv_bfloat16));
-		mem = 1;
-	}	
-	cudaMemcpy(temp_half, cuda_table, size*sizeof(nv_bfloat16), cudaMemcpyDeviceToHost);
-	
-	for(int i = 0; i < size; i++)
-		((float*)table)[i] = (float) temp_half[i];
-	
-	if(mem == 1)
-		free(temp_half);
-
-}
-
 void cuda_get_table_FP32(network* net, float *cuda_table, float *table, int size)
 {
 	cudaMemcpy(table, cuda_table, size*sizeof(float), cudaMemcpyDeviceToHost);
@@ -278,9 +231,6 @@ void cuda_get_table(network* net, void *cuda_table, void *table, int size)
 			break;
 		case 1:
 			cudaMemcpy(table, cuda_table, size*sizeof(half), cudaMemcpyDeviceToHost);
-			break;
-		case 2:
-			cudaMemcpy(table, cuda_table, size*sizeof(nv_bfloat16), cudaMemcpyDeviceToHost);
 			break;
 	}
 }
@@ -301,9 +251,6 @@ void cuda_put_table(network* net, void *cuda_table, void *table, int size)
 		case 1:
 			cudaMemcpy(cuda_table, table, size*sizeof(half), cudaMemcpyHostToDevice);
 			break;
-		case 2:
-			cudaMemcpy(cuda_table, table, size*sizeof(nv_bfloat16), cudaMemcpyHostToDevice);
-			break;
 	}
 }
 
@@ -313,8 +260,7 @@ void cuda_convert_batched_table(network* net, void **tab, int batch_size, int nb
 	void* temp_tab;
 	
 	temp_tab = *tab;
-	half *temp_half;
-	nv_bfloat16 *temp_bf16;
+	half* temp_half;
 
 	switch(net->use_cuda_TC)
 	{
@@ -340,18 +286,6 @@ void cuda_convert_batched_table(network* net, void **tab, int batch_size, int nb
 			}
 			free(temp_half);
 			break;
-		case 2:
-			temp_bf16 = (nv_bfloat16*) malloc(batch_size*size*sizeof(nv_bfloat16));
-			for(i = 0; i < nb_batch; i++)
-			{
-				temp_tab = tab[i];
-				copy_to_bfloat16((float*)temp_tab, temp_bf16, 0, batch_size*size);
-				free(temp_tab);
-				cudaMalloc(&(tab[i]), batch_size*size*sizeof(nv_bfloat16));
-				cudaMemcpy(tab[i], temp_bf16, batch_size*size*sizeof(nv_bfloat16),cudaMemcpyHostToDevice);
-			}
-			free(temp_bf16);
-			break;
 	}
 }
 
@@ -369,7 +303,7 @@ void cuda_convert_dataset(network *net, Dataset *data)
 }
 
 
-void cuda_convert_batched_host_table_FP32_to_FP16(network* net, void **tab, int batch_size, int nb_batch, int size)
+void cuda_convert_batched_host_table_FP32(network* net, void **tab, int batch_size, int nb_batch, int size)
 {
 	int i;
 	void* temp_tab;
@@ -386,36 +320,11 @@ void cuda_convert_batched_host_table_FP32_to_FP16(network* net, void **tab, int 
 	}
 }
 
-void cuda_convert_batched_host_table_FP32_to_BF16(network* net, void **tab, int batch_size, int nb_batch, int size)
-{
-	int i;
-	void* temp_tab;
-	
-	temp_tab = *tab;
-
-	
-	for(i = 0; i < nb_batch; i++)
-	{
-		temp_tab = tab[i];
-		tab[i] = (nv_bfloat16*) malloc(batch_size*size*sizeof(nv_bfloat16));
-		copy_to_half((float*)temp_tab, ((half*)tab[i]), 0, batch_size*size);
-		free(temp_tab);
-	}
-}
-
 
 void cuda_convert_host_dataset_FP32(network *net, Dataset *data)
 {
-	if(net->use_cuda_TC == 1)
-	{
-		cuda_convert_batched_host_table_FP32_to_FP16(net, data->input, net->batch_size, data->nb_batch, net->input_dim + 1);
-		cuda_convert_batched_host_table_FP32_to_FP16(net, data->target, net->batch_size, data->nb_batch, net->output_dim);
-	}
-	else if(net->use_cuda_TC == 2)
-	{
-		cuda_convert_batched_host_table_FP32_to_BF16(net, data->input, net->batch_size, data->nb_batch, net->input_dim + 1);
-		cuda_convert_batched_host_table_FP32_to_BF16(net, data->target, net->batch_size, data->nb_batch, net->output_dim);
-	}
+	cuda_convert_batched_host_table_FP32(net, data->input, net->batch_size, data->nb_batch, net->input_dim + 1);
+	cuda_convert_batched_host_table_FP32(net, data->target, net->batch_size, data->nb_batch, net->output_dim);
 	data->localization = HOST;
 }
 
@@ -449,36 +358,6 @@ Dataset create_dataset_FP16(network *net, int nb_elem)
 	return data;
 }
 
-
-Dataset create_dataset_BF16(network *net, int nb_elem)
-{
-	int i,j;
-	Dataset data;
-	
-	data.size = nb_elem;
-	data.nb_batch = (data.size - 1) / net->batch_size + 1;
-	data.input = (void**) malloc(data.nb_batch*sizeof(nv_bfloat16*));
-	data.target = (void**) malloc(data.nb_batch*sizeof(nv_bfloat16*));
-	data.localization = HOST;
-	data.cont_copy = copy_to_bfloat16;
-	
-	for(i = 0; i < data.nb_batch; i++)
-	{
-		((nv_bfloat16**)data.input)[i] = (nv_bfloat16*) calloc(net->batch_size * (net->input_dim + 1), sizeof(nv_bfloat16));
-		((nv_bfloat16**)data.target)[i] = (nv_bfloat16*) calloc(net->batch_size * net->output_dim, sizeof(nv_bfloat16));
-	}
-	
-	for(i = 0; i < data.nb_batch; i++)
-	{
-		for(j = 0; j < net->batch_size; j++)
-		{
-			((nv_bfloat16**)data.input)[i][j*(net->input_dim+1) + net->input_dim] = net->input_bias;
-		}
-	}
-	
-	return data;
-}
-
 void cuda_free_dataset(Dataset *data)
 {
 	int i;
@@ -502,50 +381,24 @@ __global__ void cuda_master_weight_FP32_to_FP16_kernel(float *master, half *copy
 	}
 }
 
-__global__ void cuda_master_weight_FP32_to_BF16_kernel(float *master, nv_bfloat16 *copy, int size)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	
-	if(i < size)
-	{
-		copy[i] = (nv_bfloat16)master[i];
-	}
-}
-
 void cuda_master_weight_FP32_to_FP16(float *master, half *copy, int size)
 {
 	cu_blocks = (size + cu_threads - 1) / cu_threads;
 	cuda_master_weight_FP32_to_FP16_kernel<<< cu_blocks, cu_threads >>>(master, copy, size);
 }
 
-void cuda_master_weight_FP32_to_BF16(float *master, nv_bfloat16 *copy, int size)
-{
-	cu_blocks = (size + cu_threads - 1) / cu_threads;
-	cuda_master_weight_FP32_to_BF16_kernel<<< cu_blocks, cu_threads >>>(master, copy, size);
-}
 
-
-__global__ void cuda_update_weights_FP32(float *weights, float* update, int size, float TC_scale_factor)
+__global__ void cuda_update_weights_FP32(float *weights, float* update, int size)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
 	if(i < size)
 	{
-		weights[i] -= update[i] / (TC_scale_factor);
+		weights[i] -= update[i];
 	}
 }
 
 __global__ void cuda_update_weights_FP16_mixed(float *weights, half* update, int size, float TC_scale_factor)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	
-	if(i < size)
-	{
-		weights[i] -= (float)update[i] / (TC_scale_factor);
-	}
-}
-
-__global__ void cuda_update_weights_BF16_mixed(float *weights, nv_bfloat16* update, int size, float TC_scale_factor)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	
@@ -563,13 +416,10 @@ void cuda_update_weights(network* net, void *weights, void* update, int size)
 	{
 		default:
 		case 0:
-			cuda_update_weights_FP32<<< cu_blocks, cu_threads >>>((float*)weights, (float*)update, size, TC_scale_factor);
+			cuda_update_weights_FP32<<< cu_blocks, cu_threads >>>((float*)weights, (float*)update, size);
 			break;
 		case 1:
 			cuda_update_weights_FP16_mixed<<< cu_blocks, cu_threads >>>((float*)weights, (half*)update, size, TC_scale_factor);
-			break;
-		case 2:
-			cuda_update_weights_BF16_mixed<<< cu_blocks, cu_threads >>>((float*)weights, (nv_bfloat16*)update, size, TC_scale_factor);
 			break;
 	}
 }
@@ -682,16 +532,6 @@ void cuda_print_table(network* net, void* tab, int size, int return_every)
 				printf("%5.4f ", (float)(((half*)temp)[i]));
 			}
 			break;
-		case 2:
-			temp = (void*) malloc(size*sizeof(nv_bfloat16));
-			cudaMemcpy(temp, tab, size*sizeof(nv_bfloat16), cudaMemcpyDeviceToHost);
-			for(i = 0; i < size; i ++)
-			{
-				if(i%return_every == 0)
-					printf("\n");
-				printf("%5.4f ", (float)(((nv_bfloat16*)temp)[i]));
-			}
-			break;
 	}
 	printf("\n");
 	
@@ -717,7 +557,7 @@ void cuda_print_table_int(network* net, int* tab, int size, int return_every)
 	free(temp);
 }
 
-void cuda_print_table_host_FP16(network* net, void* tab, int size, int return_every)
+void cuda_print_table_host_fp16(network* net, void* tab, int size, int return_every)
 {
 	int i;
 	for(i = 0; i < size; i ++)
@@ -725,17 +565,6 @@ void cuda_print_table_host_FP16(network* net, void* tab, int size, int return_ev
 		if(i%return_every == 0)
 			printf("\n");
 		printf("%g \t ", (float)(((half*)tab)[i]));
-	}
-}
-
-void cuda_print_table_host_BF16(network* net, void* tab, int size, int return_every)
-{
-	int i;
-	for(i = 0; i < size; i ++)
-	{
-		if(i%return_every == 0)
-			printf("\n");
-		printf("%g \t ", (float)(((nv_bfloat16*)tab)[i]));
 	}
 }
 
@@ -805,26 +634,6 @@ __device__ int cuda_argmax_FP16(half* tab, int dim_out)
 	return imax;
 }
 
-__device__ int cuda_argmax_BF16(nv_bfloat16* tab, int dim_out)
-{
-	int i;
-	nv_bfloat16 vmax;
-	int imax;
-
-	vmax = tab[0];
-	imax = 0;
-	for(i = 1; i < dim_out; i++)
-	{
-		if(tab[i] > vmax)
-		{
-			vmax = tab[i];
-			imax = i;
-		}
-	}
-	
-	return imax;
-}
-
 __global__ void add_confmat_FP32(float *out, float *targ, float *mat, int len, int o_dim)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
@@ -857,22 +666,6 @@ __global__ void add_confmat_FP16(half *out, half *targ, float *mat, int len, int
 	}
 }
 
-__global__ void add_confmat_BF16(nv_bfloat16 *out, nv_bfloat16 *targ, float *mat, int len, int o_dim)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int arg1, arg2;
-	if( i < len)
-	{
-		targ += i*o_dim;
-		out += i*(o_dim+1);
-		
-		arg1 = cuda_argmax_BF16(targ, o_dim);
-		arg2 = cuda_argmax_BF16(out, o_dim);
-		
-		atomicAdd(&(mat[arg2+o_dim*arg1]), 1);
-	}
-}
-
 void cuda_confmat(network *net, float* mat)
 {
 	cu_blocks = (net->length + cu_threads - 1) / cu_threads;
@@ -885,9 +678,6 @@ void cuda_confmat(network *net, float* mat)
 			break;
 		case 1:
 			add_confmat_FP16<<< cu_blocks, cu_threads>>>((half*)net->net_layers[net->nb_layers-1]->output, (half*)net->target, mat, net->length, net->output_dim);
-			break;
-		case 2:
-			add_confmat_BF16<<< cu_blocks, cu_threads>>>((nv_bfloat16*)net->net_layers[net->nb_layers-1]->output, (nv_bfloat16*)net->target, mat, net->length, net->output_dim);
 			break;
 	}
 }
@@ -955,27 +745,6 @@ __global__ void shfl_kern_FP16(half **in, half **targ, half** train_dupl, half**
 }
 
 
-__global__ void shfl_kern_BF16(nv_bfloat16 **in, nv_bfloat16 **targ, nv_bfloat16** train_dupl, nv_bfloat16** targ_dupl,
-									int* index, int in_size, int b_size, int d_in, int d_out)
-{
-	int j;
-	int batch, batch2, pos, pos2;
-	
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	if(i < in_size)
-	{
-		pos = i%b_size;
-		batch = i/b_size;
-		pos2 = (int)(index[i])%b_size;
-		batch2 = (int)(index[i])/b_size;
-		for(j = 0; j < d_in; j++)
-			train_dupl[batch2][pos2*d_in+j] = in[batch][pos*d_in + j];
-		for(j = 0; j < d_out; j++)
-			targ_dupl[batch2][pos2*d_out+j] = targ[batch][pos*d_out + j];
-	}
-}
-
-
 
 __global__ void get_back_shuffle_FP32(float **in, float **targ, float** train_dupl, float** targ_dupl,
 									int in_size, int b_size, int d_in, int d_out)
@@ -995,25 +764,7 @@ __global__ void get_back_shuffle_FP32(float **in, float **targ, float** train_du
 	}
 }
 
-__global__ void get_back_shuffle_FP16(half **in, half **targ, half **train_dupl, half **targ_dupl,
-									int in_size, int b_size, int d_in, int d_out)
-{	
-	int j;
-	int batch, pos;
-	
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	if(i < in_size)
-	{
-		pos = i%b_size;
-		batch = i/b_size;
-		for(j = 0; j < d_in; j++)
-			in[batch][pos*d_in + j] = train_dupl[batch][pos*d_in+j];
-		for(j = 0; j < d_out; j++)
-			targ[batch][pos*d_out + j] = targ_dupl[batch][pos*d_out+j];
-	}
-}
-
-__global__ void get_back_shuffle_BF16(nv_bfloat16 **in, nv_bfloat16 **targ, nv_bfloat16 **train_dupl, nv_bfloat16 **targ_dupl,
+__global__ void get_back_shuffle_FP16(half **in, half **targ, half** train_dupl, half** targ_dupl,
 									int in_size, int b_size, int d_in, int d_out)
 {	
 	int j;
@@ -1072,16 +823,6 @@ void cuda_shuffle(network *net, Dataset data, Dataset duplicate, int *index_shuf
 				(half**)duplicate.target_device, data.size, net->batch_size, 
 				net->input_dim+1, net->output_dim);
 			break;
-		case 2:
-			shfl_kern_BF16<<< cu_blocks, cu_threads>>>((nv_bfloat16**)data.input_device, 
-				(nv_bfloat16**)data.target_device, (nv_bfloat16**)duplicate.input_device, 
-				(nv_bfloat16**)duplicate.target_device, index_shuffle_device, 
-				data.size, net->batch_size, net->input_dim+1, net->output_dim);
-			get_back_shuffle_BF16<<< cu_blocks, cu_threads>>>((nv_bfloat16**)data.input_device,
-				(nv_bfloat16**)data.target_device, (nv_bfloat16**)duplicate.input_device, 
-				(nv_bfloat16**)duplicate.target_device, data.size, net->batch_size, 
-				net->input_dim+1, net->output_dim);
-			break;
 	}
 }
 
@@ -1090,12 +831,10 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 	int i, j, k;
 	float temp;
 	half temp_half;
-	nv_bfloat16 temp_bf16;
 	int pos, pos2, batch, batch2;
 
 	float *f_d_in_A, *f_d_in_B, *f_d_targ_A, *f_d_targ_B;
 	half *h_d_in_A, *h_d_in_B, *h_d_targ_A, *h_d_targ_B;
-	nv_bfloat16 *bf_d_in_A, *bf_d_in_B, *bf_d_targ_A, *bf_d_targ_B;
 
 	switch(net->use_cuda_TC)
 	{
@@ -1116,15 +855,6 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 					* (net->input_dim + 1)*sizeof(half), cudaMemcpyDeviceToHost);
 				cudaMemcpy(duplicate.target[i], data.target[i], net->batch_size 
 					* (net->output_dim)*sizeof(half), cudaMemcpyDeviceToHost);
-			}
-			break;
-		case 2:
-			for(i = 0; i < data.nb_batch; i++)
-			{
-				cudaMemcpy(duplicate.input[i], data.input[i], net->batch_size 
-					* (net->input_dim + 1)*sizeof(nv_bfloat16), cudaMemcpyDeviceToHost);
-				cudaMemcpy(duplicate.target[i], data.target[i], net->batch_size 
-					* (net->output_dim)*sizeof(nv_bfloat16), cudaMemcpyDeviceToHost);
 			}
 			break;
 	}
@@ -1180,26 +910,6 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 					h_d_targ_B[pos2*net->output_dim + k] = temp_half;
 				}
 				break;
-			case 2:
-				bf_d_in_A = ((nv_bfloat16*) duplicate.input[batch]);
-				bf_d_targ_A = ((nv_bfloat16*) duplicate.target[batch]);
-				bf_d_in_B = ((nv_bfloat16*) duplicate.input[batch2]);
-				bf_d_targ_B = ((nv_bfloat16*) duplicate.target[batch2]);
-		
-				for(k = 0; k < net->input_dim+1; k++)
-				{
-					temp_bf16 = bf_d_in_A[pos*(net->input_dim + 1) + k];
-					bf_d_in_A[pos*(net->input_dim + 1) + k] = bf_d_in_B[pos2*(net->input_dim + 1) + k];
-					bf_d_in_B[pos2*(net->input_dim + 1) + k] = temp_bf16;
-				}
-				
-				for(k = 0; k < net->output_dim; k++)
-				{
-					temp_bf16 = bf_d_targ_A[pos*net->output_dim + k];
-					bf_d_targ_A[pos*net->output_dim + k] = bf_d_targ_B[pos2*net->output_dim + k];
-					bf_d_targ_B[pos2*net->output_dim + k] = temp_bf16;
-				}
-				break;
 		}
 	}
 	
@@ -1222,15 +932,6 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 					* (net->input_dim + 1)*sizeof(half), cudaMemcpyHostToDevice);
 				cudaMemcpy(data.target[i], duplicate.target[i], net->batch_size 
 					* (net->output_dim)*sizeof(half), cudaMemcpyHostToDevice);
-			}
-			break;
-		case 2:
-			for(i = 0; i < data.nb_batch; i++)
-			{
-				cudaMemcpy(data.input[i], duplicate.input[i], net->batch_size 
-					* (net->input_dim + 1)*sizeof(nv_bfloat16), cudaMemcpyHostToDevice);
-				cudaMemcpy(data.target[i], duplicate.target[i], net->batch_size 
-					* (net->output_dim)*sizeof(nv_bfloat16), cudaMemcpyHostToDevice);
 			}
 			break;
 	}
@@ -1272,7 +973,6 @@ void cuda_host_only_shuffle(network *net, Dataset data)
 				}
 			}
 			break;
-			
 		case 1:
 			for(i = 0; i < data.size - 1; i++)
 			{
@@ -1295,32 +995,6 @@ void cuda_host_only_shuffle(network *net, Dataset data)
 					
 					((half**)data.target)[batch][pos*net->output_dim + k] = ((half**)data.target)[batch2][pos2*net->output_dim + k];
 					((half**)data.target)[batch2][pos2*net->output_dim + k] = temp;
-				}
-			}
-			break;
-			
-		case 2:
-			for(i = 0; i < data.size - 1; i++)
-			{
-				j = i + (int)((rand() / ((double)RAND_MAX) ) * (double)(data.size-i));
-				pos = i%net->batch_size;
-				batch = i/net->batch_size;
-				pos2 = j%net->batch_size;
-				batch2 = j/net->batch_size;
-				
-				for(k = 0; k < net->input_dim+1; k++)
-				{
-					temp = ((nv_bfloat16**)data.input)[batch][pos*(net->input_dim + 1) + k];
-					((nv_bfloat16**)data.input)[batch][pos*(net->input_dim + 1) + k] = ((nv_bfloat16**)data.input)[batch2][pos2*(net->input_dim + 1) + k];
-					((nv_bfloat16**)data.input)[batch2][pos2*(net->input_dim + 1) + k] = temp;
-				}
-				
-				for(k = 0; k < net->output_dim; k++)
-				{
-					temp = ((nv_bfloat16**)data.target)[batch][pos*net->output_dim + k];
-					
-					((nv_bfloat16**)data.target)[batch][pos*net->output_dim + k] = ((nv_bfloat16**)data.target)[batch2][pos2*net->output_dim + k];
-					((nv_bfloat16**)data.target)[batch2][pos2*net->output_dim + k] = temp;
 				}
 			}
 			break;
