@@ -213,7 +213,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 		current->input = previous->output;
 	}
 	
-	if(net->compute_method == C_CUDA && net->use_cuda_TC)
+	if(net->compute_method == C_CUDA && net->use_cuda_TC != FP32C_FP32A)
 		c_param->TC_padding = 8 - c_param->flat_f_size % 8;
 	else
 		c_param->TC_padding = 0;
@@ -339,7 +339,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 		c_param->padding[0], c_param->padding[1],  c_param->padding[2], c_param->dropout_rate,
 		nb_filters * c_param->flat_f_size, (int)(mem_approx/1000000));
 	
-	if(net->compute_method == C_CUDA && net->use_cuda_TC)
+	if(net->compute_method == C_CUDA && net->use_cuda_TC != FP32C_FP32A)
 	{
 	
 		if((c_param->flat_f_size + c_param->TC_padding) % 8 != 0 
@@ -382,15 +382,19 @@ void conv_save(FILE *f, layer *current)
 		switch(current->c_network->use_cuda_TC)
 		{
 			default:
-			case 0:
+			case FP32C_FP32A:
+			case TF32C_FP32A:
 				cuda_get_table_FP32(current->c_network, (float*)c_param->filters, (float*)host_filters, 
 					c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding));
 				break;
-			case 1:
+			
+			case FP16C_FP32A:
+			case FP16C_FP16A:
 				cuda_get_table_FP32(current->c_network, (float*)c_param->FP32_filters, (float*)host_filters, 
 					c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding));
 				break;
-			case 2:
+			
+			case BF16C_FP32A:
 				cuda_get_table_FP32(current->c_network, (float*)c_param->FP32_filters, (float*)host_filters, 
 					c_param->nb_filters*(c_param->flat_f_size + c_param->TC_padding));
 				break;

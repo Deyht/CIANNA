@@ -37,6 +37,7 @@ enum inference_modes{AVG_MODEL, MC_MODEL};
 enum batch_param{OFF, SGD, FULL};
 enum data_types{c_FP32, c_UINT16, c_UINT8};
 enum compute_method{C_NAIV, C_BLAS, C_CUDA};
+enum TC_comp_mode{FP32C_FP32A, TF32C_FP32A, FP16C_FP32A, FP16C_FP16A, BF16C_FP32A};
 enum memory_localization{HOST, DEVICE};
 enum IoU_types{IOU, GIOU, DIOU};
 

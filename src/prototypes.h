@@ -139,7 +139,7 @@ void cuda_update_weights(network* net, void *weights, void* update, int size);
 __device__ int cuda_argmax(void* tab, int dim_out);
 #endif
 void init_cuda(network* net);
-void cuda_set_TC_scale_factor(float val);
+void cuda_set_TC_scale_factor(network* net, float val);
 void cuda_sync(void);
 void cuda_free_table(void* tab);
 void cuda_create_host_table_FP16(network* net, void **tab, int size);

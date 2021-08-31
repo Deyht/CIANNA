@@ -42,14 +42,15 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	int i;
 	double bias = 0.1;
 	int dims[4] = {1,1,1,1}, out_dim, b_size, comp_int = C_CUDA, network_id = nb_networks;
-	int dynamic_load = 0, mixed_precision = 0;
+	int dynamic_load = 0, c_mixed_precision = 0;
 	char string_comp[10];
+	const char *py_mixed_precision = "off";
 	const char *comp_meth = "C_CUDA";
 	static char *kwlist[] = {"dims", "out_dim", "bias", "b_size", "comp_meth", "network_id", "dynamic_load", "mixed_precision", NULL};
 	
 	b_size = 10;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oid|isiii", kwlist, &py_dims, &out_dim, &bias, &b_size, &comp_meth, &network_id, &dynamic_load, &mixed_precision))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oid|isiis", kwlist, &py_dims, &out_dim, &bias, &b_size, &comp_meth, &network_id, &dynamic_load, &py_mixed_precision))
 	    return Py_None;
 	
 	for(i = 0; i < py_dims->dimensions[0]; i++)
@@ -73,7 +74,22 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 		sprintf(string_comp, "NAIV");
 	}
 	
-    init_network(network_id, dims, out_dim, bias, b_size, comp_int, dynamic_load, mixed_precision);
+	if(strcmp(py_mixed_precision,"off") == 0)
+		c_mixed_precision = FP32C_FP32A;
+	else if(strcmp(py_mixed_precision,"on") == 0)
+		c_mixed_precision = FP16C_FP32A;
+	else if(strcmp(py_mixed_precision,"FP32C_FP32A") == 0)
+		c_mixed_precision = FP32C_FP32A;
+	else if(strcmp(py_mixed_precision,"TF32C_FP32A") == 0)
+		c_mixed_precision = TF32C_FP32A;
+	else if(strcmp(py_mixed_precision,"FP16C_FP32A") == 0)
+		c_mixed_precision = FP16C_FP32A;
+	else if(strcmp(py_mixed_precision,"FP16C_FP16A") == 0)
+		c_mixed_precision = FP16C_FP16A;
+	else if(strcmp(py_mixed_precision,"BF16C_FP32A") == 0)
+		c_mixed_precision = BF16C_FP32A;
+	
+    init_network(network_id, dims, out_dim, bias, b_size, comp_int, dynamic_load, c_mixed_precision);
     
 	printf("Network have been initialized with : \nInput dimensions: %dx%dx%dx%d \nOutput dimension: %d \nBatch size: %d \nUsing %s compute methode\n\n", dims[0], dims[1], dims[2], dims[3], out_dim, b_size, string_comp);
 	if(dynamic_load)
@@ -202,12 +218,6 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 		if(silent == 0)
 			printf("Converting dataset to GPU device (CUDA)\n");
 		cuda_convert_dataset(networks[network_id], data);
-	}
-	else if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 1 && networks[network_id]->use_cuda_TC)
-	{
-		if(silent == 0)
-			printf("Converting dataset into host stored FP16\n");
-		//cuda_convert_host_dataset_FP32(networks[network_id], data);
 	}
 	//printf("Time convert data for CUDA %f\n", ellapsed_time(time));
 	
@@ -628,9 +638,9 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 	
 	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 0)
 		cuda_convert_dataset(networks[network_id], &data);
-	else if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 1 
+	/*else if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 1 
 					&& networks[network_id]->use_cuda_TC)
-		cuda_convert_host_dataset_FP32(networks[network_id], &data);
+		cuda_convert_host_dataset_FP32(networks[network_id], &data);*/
 	
 	if(strcmp(dataset_type,"TRAIN") == 0)
 	{

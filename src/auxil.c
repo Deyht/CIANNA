@@ -58,7 +58,7 @@ CIANNA V-0.9.2.6 EXPERIMENTAL BUILD (08/2021), by D.Cornu\n\
 	//Additional security, but all statements should be safe on its own
 	//note that FP32/FP32 Tensore Core operation exist (different than TF32)
 	if(u_compute_method != C_CUDA)
-		networks[network_number]->use_cuda_TC = 0;
+		networks[network_number]->use_cuda_TC = FP32C_FP32A;
 	
 	nb_networks++;
 	
@@ -190,15 +190,19 @@ Dataset create_dataset(network *net, int nb_elem)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			return create_dataset_FP32(net, nb_elem);
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			#ifdef CUDA
 			return create_dataset_FP16(net, nb_elem);
 			#endif
 			break;
-		case 2:
+			
+		case BF16C_FP32A:
 			#ifdef CUDA
 			return create_dataset_BF16(net, nb_elem);
 			#endif
@@ -264,6 +268,12 @@ void free_dataset(Dataset data)
 void write_formated_dataset(network *net, const char *filename, Dataset *data, int input_data_type, int output_data_type)
 {
 	// Create and load a dataset from a format specific file
+	
+	printf("Write formated dataset function from the pure C interface using CIANNA internal dataset type is not supported anymore.\n Try using the Python interface if realy neaded or write directly a file in the appropriate format.\n");
+	exit(EXIT_FAILURE);
+
+	//must be significantly modified to handle mixed precision types
+	//Or only allow use for FP32 datasets ? Tricky to use without losing precision anyway
 
 	FILE *f = NULL;
 	f = fopen(filename, "wb"); 
@@ -278,7 +288,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 	fwrite(&net->output_dim, sizeof(int), 1, f);
 	
 	// Should rework this function to avoid repetions, try to use a void pointer that is 
-	// properly converted and try to get function pointer to type cast 
+	// properly converted and try to get function pointer to type cast // or templates
 	
 	switch(input_data_type)
 	{
@@ -424,7 +434,7 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 
 	FILE *f = NULL;
 	f = fopen(filename, "rb"); 
-	int size, width, height, depth, channels, out_dim;
+	int size, width, height, depth, channels, out_dim, c_array_offset;
 	int i, j, k;
 	int datasize;
 	
@@ -452,14 +462,15 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 	
 	data = create_dataset(net, size);
 	
-	
 	switch(input_data_type)
 	{
 		case c_UINT8:
 		{
 			unsigned char *temp_input;
+			float *temp_input_float;
 			datasize = sizeof(unsigned char);
 			temp_input = (unsigned char *) calloc(net->input_dim, datasize);
+			temp_input_float = (float *) calloc(net->input_dim, sizeof(float));
 			
 			for(i = 0; i < data.nb_batch; i++)
 			{
@@ -467,32 +478,42 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 				{
 					if(i*net->batch_size + j >= size)
 						continue;
+					c_array_offset = j*(net->input_dim + 1);
 					fread(temp_input, datasize, net->input_dim, f);
 					for(k = 0; k < net->input_dim; k++)
-						((float**)data.input)[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
+						temp_input_float[k] = (float) temp_input[k];
+					data.cont_copy(temp_input_float, data.input[i], c_array_offset, net->input_dim);
+					
 				}	
 			}
 			free(temp_input);
+			free(temp_input_float);
 			break;
 		}
 			
 		case c_UINT16:
 		{
 			unsigned short *temp_input;
+			float *temp_input_float;
 			datasize = sizeof(unsigned short);
 			temp_input = (unsigned short *) calloc(net->input_dim, datasize);
+			temp_input_float = (float *) calloc(net->input_dim, sizeof(float));
+			
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				for(j = 0; j < net->batch_size; j++)
 				{
 					if(i*net->batch_size + j >= size)
 						continue;
+					c_array_offset = j*(net->input_dim + 1);
 					fread(temp_input, datasize, net->input_dim, f);
 					for(k = 0; k < net->input_dim; k++)
-						((float**)data.input)[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
+						temp_input_float[k] = (float) temp_input[k];
+					data.cont_copy(temp_input_float, data.input[i], c_array_offset, net->input_dim);
 				}	
 			}
 			free(temp_input);
+			free(temp_input_float);
 			break;
 		}
 			
@@ -502,15 +523,16 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 			float *temp_input;
 			datasize = sizeof(float);
 			temp_input = (float *) calloc(net->input_dim, datasize);
+			
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				for(j = 0; j < net->batch_size; j++)
 				{
 					if(i*net->batch_size + j >= size)
 						continue;
+					c_array_offset = j*(net->input_dim + 1);
 					fread(temp_input, datasize, net->input_dim, f);
-					for(k = 0; k < net->input_dim; k++)
-						((float**)data.input)[i][j*(net->input_dim+1) + k] = (float) temp_input[k];
+					data.cont_copy(temp_input, data.input[i], c_array_offset, net->input_dim);
 				}	
 			}
 			free(temp_input);
@@ -524,8 +546,11 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 		case c_UINT8:
 		{
 			unsigned char *temp_output;
+			float *temp_output_float;
 			datasize = sizeof(unsigned char);
 			temp_output = (unsigned char *) calloc(net->output_dim, datasize);
+			temp_output_float = (float *) calloc(net->output_dim, sizeof(float));
+			
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				for(j = 0; j < net->batch_size; j++)
@@ -534,18 +559,23 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 						continue;
 					fread(temp_output, datasize, net->output_dim, f);
 					for(k = 0; k < net->output_dim; k++)
-						((float**)data.target)[i][j*(net->output_dim) + k] = (float) temp_output[k];
+						temp_output_float[k] = (float) temp_output[k];
+					data.cont_copy(temp_output_float, data.target[i], j*net->output_dim, net->output_dim);
 				}
 			}
 			free(temp_output);
+			free(temp_output_float);
 			break;
 		}
 			
 		case c_UINT16:
 		{
 			unsigned short *temp_output;
+			float *temp_output_float;
 			datasize = sizeof(unsigned short);
 			temp_output = (unsigned short *) calloc(net->output_dim, datasize);
+			temp_output_float = (float *) calloc(net->output_dim, sizeof(float));
+			
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				for(j = 0; j < net->batch_size; j++)
@@ -554,10 +584,12 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 						continue;
 					fread(temp_output, datasize, net->output_dim, f);
 					for(k = 0; k < net->output_dim; k++)
-						((float**)data.target)[i][j*(net->output_dim) + k] = (float) temp_output[k];
+						temp_output_float[k] = (float) temp_output[k];
+					data.cont_copy(temp_output_float, data.target[i], j*net->output_dim, net->output_dim);
 				}
 			}
 			free(temp_output);
+			free(temp_output_float);
 			break;
 		}
 			
@@ -567,6 +599,7 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 			float *temp_output;
 			datasize = sizeof(float);
 			temp_output = (float *) calloc(net->output_dim, datasize);
+			
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				for(j = 0; j < net->batch_size; j++)
@@ -574,8 +607,7 @@ Dataset load_formated_dataset(network *net, const char *filename, int input_data
 					if(i*net->batch_size + j >= size)
 						continue;
 					fread(temp_output, datasize, net->output_dim, f);
-					for(k = 0; k < net->output_dim; k++)
-						((float**)data.target)[i][j*(net->output_dim) + k] = (float) temp_output[k];
+					data.cont_copy(temp_output, data.target[i], j*net->output_dim, net->output_dim);
 				}
 			}
 			free(temp_output);
@@ -955,10 +987,17 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			switch(net->use_cuda_TC)
 			{
 				default:
-				case 1:
+				case FP32C_FP32A:
+				case TF32C_FP32A:
+					//nothing to do
+					break;
+				
+				case FP16C_FP32A:
+				case FP16C_FP16A:
 					cuda_create_host_table_FP16(net, &output_buffer, net->batch_size*net->out_size);
 					break;
-				case 2:
+				
+				case BF16C_FP32A:
 					cuda_create_host_table_BF16(net, &output_buffer, net->batch_size*net->out_size);
 					break;
 			}
@@ -1047,15 +1086,19 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					switch(net->use_cuda_TC)
 					{
 						default:
-						case 0:
+						case FP32C_FP32A:
+						case TF32C_FP32A:
 							cuda_get_table(net, net->net_layers[net->nb_layers-1]->output,
 								output_save, net->batch_size*net->out_size);
 							break;
-						case 1:
+						
+						case FP16C_FP32A:
+						case FP16C_FP16A:
 							cuda_get_table_FP16_to_FP32(net->net_layers[net->nb_layers-1]->output,
 								output_save, net->batch_size*net->out_size, output_buffer);
 							break;
-						case 2:
+						
+						case BF16C_FP32A:
 							cuda_get_table_BF16_to_FP32(net->net_layers[net->nb_layers-1]->output,
 								output_save, net->batch_size*net->out_size, output_buffer);
 							break;
@@ -1339,7 +1382,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	void* temp_error = NULL;
 	int *index_shuffle = NULL, *index_shuffle_device = NULL;
 	
-	cuda_set_TC_scale_factor(c_TC_scale_factor);
+	cuda_set_TC_scale_factor(net, c_TC_scale_factor);
 	
 	if(net->compute_method == C_CUDA)
 	{

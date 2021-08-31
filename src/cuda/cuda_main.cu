@@ -44,19 +44,43 @@ void init_cuda(network* net)
 {
 	cublasStatus_t stat = cublasCreate(&cu_handle);
 	
-	if(net->use_cuda_TC == 1)
+	switch(net->use_cuda_TC)
 	{
-		cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
-		cuda_data_type = CUDA_R_16F;
-		//Default
-		TC_scale_factor = 16.0f;
-		//cuda_compute_type = CUBLAS_COMPUTE_16F;
-	}
-	else if(net->use_cuda_TC == 2)
-	{
-		cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
-		cuda_data_type = CUDA_R_16BF;
-		TC_scale_factor = 1.0f;
+		default:
+		case FP32C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_PEDANTIC_MATH);
+			cuda_data_type = CUDA_R_32F;
+			cuda_compute_type = CUBLAS_COMPUTE_32F_PEDANTIC;
+			TC_scale_factor = 1.0f;
+			break;
+	
+		case TF32C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_TF32_TENSOR_OP_MATH);
+			cuda_data_type = CUDA_R_32F;
+			cuda_compute_type = CUBLAS_COMPUTE_32F;
+			TC_scale_factor = 1.0f;
+			break;
+			
+		case FP16C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+			cuda_data_type = CUDA_R_16F;
+			cuda_compute_type = CUBLAS_COMPUTE_32F;
+			TC_scale_factor = 8.0f;
+			break;
+			
+		case FP16C_FP16A:
+			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+			cuda_data_type = CUDA_R_16F;
+			cuda_compute_type = CUBLAS_COMPUTE_16F;
+			TC_scale_factor = 8.0f;
+			break;
+			
+		case BF16C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+			cuda_data_type = CUDA_R_16BF;
+			cuda_compute_type = CUBLAS_COMPUTE_32F;
+			TC_scale_factor = 1.0f;
+			break;
 	}
 	
 	if(stat != CUBLAS_STATUS_SUCCESS)
@@ -99,9 +123,18 @@ void init_cuda(network* net)
 	//place holder for device selection
 }
 
-void cuda_set_TC_scale_factor(float val)
+void cuda_set_TC_scale_factor(network* net, float val)
 {
-	TC_scale_factor = val;
+	if(net->use_cuda_TC == FP16C_FP32A || net->use_cuda_TC == FP16C_FP16A)
+	{
+		TC_scale_factor = val;
+	}
+	else
+	{
+		if(val != 1.0f)
+			printf("\nWARNING: Tried to set TC_scale_factor but the compute mode is incompatible.\nScale kept to 1.\n");
+		TC_scale_factor = 1.0f;
+	}
 }
 
 void cuda_sync(void)
@@ -149,13 +182,16 @@ long long int cuda_convert_table(network* net, void **tab, long long int size)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			cudaMalloc(tab, size*sizeof(float));
 			l_vram += size*sizeof(float);
 			cudaMemcpy(*tab, temp_tab, size*sizeof(float),cudaMemcpyHostToDevice);
 			free(temp_tab);
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			temp_half = (half*) malloc(size*sizeof(half));
 			copy_to_half((float*)temp_tab, temp_half, 0, size);
 			free(temp_tab);
@@ -164,7 +200,8 @@ long long int cuda_convert_table(network* net, void **tab, long long int size)
 			cudaMemcpy(*tab, temp_half, size*sizeof(half),cudaMemcpyHostToDevice);
 			free(temp_half);
 			break;
-		case 2:
+			
+		case BF16C_FP32A:
 			temp_bf16 = (nv_bfloat16*) malloc(size*sizeof(nv_bfloat16));
 			copy_to_bfloat16((float*)temp_tab, temp_bf16, 0, size);
 			free(temp_tab);
@@ -203,15 +240,19 @@ void cuda_create_table(network* net, void **tab, int size)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			cudaMalloc(tab, size*sizeof(float));
 			cudaMemset(*tab, 0.0, size*sizeof(float));
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			cudaMalloc(tab, size*sizeof(half));
 			cudaMemset(*tab, 0.0, size*sizeof(half));
 			break;
-		case 2:
+			
+		case BF16C_FP32A:
 			cudaMalloc(tab, size*sizeof(nv_bfloat16));
 			cudaMemset(*tab, 0.0, size*sizeof(nv_bfloat16));
 			break;
@@ -273,13 +314,15 @@ void cuda_get_table(network* net, void *cuda_table, void *table, int size)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			cudaMemcpy(table, cuda_table, size*sizeof(float), cudaMemcpyDeviceToHost);
 			break;
-		case 1:
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			cudaMemcpy(table, cuda_table, size*sizeof(half), cudaMemcpyDeviceToHost);
 			break;
-		case 2:
+		case BF16C_FP32A:
 			cudaMemcpy(table, cuda_table, size*sizeof(nv_bfloat16), cudaMemcpyDeviceToHost);
 			break;
 	}
@@ -295,13 +338,15 @@ void cuda_put_table(network* net, void *cuda_table, void *table, int size)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			cudaMemcpy(cuda_table, table, size*sizeof(float), cudaMemcpyHostToDevice);
 			break;
-		case 1:
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			cudaMemcpy(cuda_table, table, size*sizeof(half), cudaMemcpyHostToDevice);
 			break;
-		case 2:
+		case BF16C_FP32A:
 			cudaMemcpy(cuda_table, table, size*sizeof(nv_bfloat16), cudaMemcpyHostToDevice);
 			break;
 	}
@@ -319,7 +364,8 @@ void cuda_convert_batched_table(network* net, void **tab, int batch_size, int nb
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			for(i = 0; i < nb_batch; i++)
 			{
 				temp_tab = tab[i];
@@ -328,7 +374,9 @@ void cuda_convert_batched_table(network* net, void **tab, int batch_size, int nb
 				free(temp_tab);
 			}
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			temp_half = (half*) malloc(batch_size*size*sizeof(half));
 			for(i = 0; i < nb_batch; i++)
 			{
@@ -340,7 +388,8 @@ void cuda_convert_batched_table(network* net, void **tab, int batch_size, int nb
 			}
 			free(temp_half);
 			break;
-		case 2:
+			
+		case BF16C_FP32A:
 			temp_bf16 = (nv_bfloat16*) malloc(batch_size*size*sizeof(nv_bfloat16));
 			for(i = 0; i < nb_batch; i++)
 			{
@@ -406,15 +455,24 @@ void cuda_convert_batched_host_table_FP32_to_BF16(network* net, void **tab, int 
 
 void cuda_convert_host_dataset_FP32(network *net, Dataset *data)
 {
-	if(net->use_cuda_TC == 1)
+	switch(net->use_cuda_TC)
 	{
-		cuda_convert_batched_host_table_FP32_to_FP16(net, data->input, net->batch_size, data->nb_batch, net->input_dim + 1);
-		cuda_convert_batched_host_table_FP32_to_FP16(net, data->target, net->batch_size, data->nb_batch, net->output_dim);
-	}
-	else if(net->use_cuda_TC == 2)
-	{
-		cuda_convert_batched_host_table_FP32_to_BF16(net, data->input, net->batch_size, data->nb_batch, net->input_dim + 1);
-		cuda_convert_batched_host_table_FP32_to_BF16(net, data->target, net->batch_size, data->nb_batch, net->output_dim);
+		default:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
+			//nothing to do
+			break;
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
+			cuda_convert_batched_host_table_FP32_to_FP16(net, data->input, net->batch_size, data->nb_batch, net->input_dim + 1);
+			cuda_convert_batched_host_table_FP32_to_FP16(net, data->target, net->batch_size, data->nb_batch, net->output_dim);
+			break;
+		
+		case BF16C_FP32A:
+			cuda_convert_batched_host_table_FP32_to_BF16(net, data->input, net->batch_size, data->nb_batch, net->input_dim + 1);
+			cuda_convert_batched_host_table_FP32_to_BF16(net, data->target, net->batch_size, data->nb_batch, net->output_dim);
+			break;
 	}
 	data->localization = HOST;
 }
@@ -562,13 +620,17 @@ void cuda_update_weights(network* net, void *weights, void* update, int size)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			cuda_update_weights_FP32<<< cu_blocks, cu_threads >>>((float*)weights, (float*)update, size, TC_scale_factor);
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			cuda_update_weights_FP16_mixed<<< cu_blocks, cu_threads >>>((float*)weights, (half*)update, size, TC_scale_factor);
 			break;
-		case 2:
+			
+		case BF16C_FP32A:
 			cuda_update_weights_BF16_mixed<<< cu_blocks, cu_threads >>>((float*)weights, (nv_bfloat16*)update, size, TC_scale_factor);
 			break;
 	}
@@ -606,7 +668,8 @@ void cuda_print_table_4d(network* net, void* tab, int w_size, int h_size, int d_
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			for(i = 0; i < last_dim; i++)
 			{
 				printf("Cube %d\n", i);
@@ -627,7 +690,9 @@ void cuda_print_table_4d(network* net, void* tab, int w_size, int h_size, int d_
 				free(temp);
 			}
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			for(i = 0; i < last_dim; i++)
 			{
 				printf("Cube %d\n", i);
@@ -648,6 +713,9 @@ void cuda_print_table_4d(network* net, void* tab, int w_size, int h_size, int d_
 				free(temp);
 			}
 			break;
+		case BF16C_FP32A:
+			printf("BF16 print4D unsuported ATM ...\n");
+			break;
 	}
 	printf("\n");
 }
@@ -662,7 +730,8 @@ void cuda_print_table(network* net, void* tab, int size, int return_every)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			temp = (void*) malloc(size*sizeof(float));
 			cudaMemcpy(temp, tab, size*sizeof(float), cudaMemcpyDeviceToHost);
 			for(i = 0; i < size; i ++)
@@ -672,7 +741,9 @@ void cuda_print_table(network* net, void* tab, int size, int return_every)
 				printf("%5.4f ", ((float*)temp)[i]);
 			}
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			temp = (void*) malloc(size*sizeof(half));
 			cudaMemcpy(temp, tab, size*sizeof(half), cudaMemcpyDeviceToHost);
 			for(i = 0; i < size; i ++)
@@ -682,7 +753,8 @@ void cuda_print_table(network* net, void* tab, int size, int return_every)
 				printf("%5.4f ", (float)(((half*)temp)[i]));
 			}
 			break;
-		case 2:
+			
+		case BF16C_FP32A:
 			temp = (void*) malloc(size*sizeof(nv_bfloat16));
 			cudaMemcpy(temp, tab, size*sizeof(nv_bfloat16), cudaMemcpyDeviceToHost);
 			for(i = 0; i < size; i ++)
@@ -880,13 +952,15 @@ void cuda_confmat(network *net, float* mat)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			add_confmat_FP32<<< cu_blocks, cu_threads>>>((float*)net->net_layers[net->nb_layers-1]->output, (float*)net->target, mat, net->length, net->output_dim);
 			break;
-		case 1:
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			add_confmat_FP16<<< cu_blocks, cu_threads>>>((half*)net->net_layers[net->nb_layers-1]->output, (half*)net->target, mat, net->length, net->output_dim);
 			break;
-		case 2:
+		case BF16C_FP32A:
 			add_confmat_BF16<<< cu_blocks, cu_threads>>>((nv_bfloat16*)net->net_layers[net->nb_layers-1]->output, (nv_bfloat16*)net->target, mat, net->length, net->output_dim);
 			break;
 	}
@@ -1052,7 +1126,8 @@ void cuda_shuffle(network *net, Dataset data, Dataset duplicate, int *index_shuf
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			shfl_kern_FP32<<< cu_blocks, cu_threads>>>((float**)data.input_device,
 				(float**)data.target_device, (float**)duplicate.input_device,
 				(float**)duplicate.target_device, index_shuffle_device, 
@@ -1062,7 +1137,9 @@ void cuda_shuffle(network *net, Dataset data, Dataset duplicate, int *index_shuf
 				(float**)duplicate.target_device, data.size, net->batch_size, 
 				net->input_dim+1, net->output_dim);
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			shfl_kern_FP16<<< cu_blocks, cu_threads>>>((half**)data.input_device, 
 				(half**)data.target_device, (half**)duplicate.input_device, 
 				(half**)duplicate.target_device, index_shuffle_device, 
@@ -1072,7 +1149,8 @@ void cuda_shuffle(network *net, Dataset data, Dataset duplicate, int *index_shuf
 				(half**)duplicate.target_device, data.size, net->batch_size, 
 				net->input_dim+1, net->output_dim);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			shfl_kern_BF16<<< cu_blocks, cu_threads>>>((nv_bfloat16**)data.input_device, 
 				(nv_bfloat16**)data.target_device, (nv_bfloat16**)duplicate.input_device, 
 				(nv_bfloat16**)duplicate.target_device, index_shuffle_device, 
@@ -1100,7 +1178,8 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				cudaMemcpy(duplicate.input[i], data.input[i], net->batch_size 
@@ -1109,7 +1188,9 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 					* (net->output_dim)*sizeof(float), cudaMemcpyDeviceToHost);
 			}
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				cudaMemcpy(duplicate.input[i], data.input[i], net->batch_size 
@@ -1118,7 +1199,8 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 					* (net->output_dim)*sizeof(half), cudaMemcpyDeviceToHost);
 			}
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				cudaMemcpy(duplicate.input[i], data.input[i], net->batch_size 
@@ -1141,7 +1223,8 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 		switch(net->use_cuda_TC)
 		{
 			default:
-			case 0:
+			case FP32C_FP32A:
+			case TF32C_FP32A:
 				f_d_in_A = ((float*) duplicate.input[batch]);
 				f_d_targ_A = ((float*) duplicate.target[batch]);
 				f_d_in_B = ((float*) duplicate.input[batch2]);
@@ -1160,7 +1243,9 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 					f_d_targ_B[pos2*net->output_dim + k] = temp;
 				}
 				break;
-			case 1:
+				
+			case FP16C_FP32A:
+			case FP16C_FP16A:
 				h_d_in_A = ((half*) duplicate.input[batch]);
 				h_d_targ_A = ((half*) duplicate.target[batch]);
 				h_d_in_B = ((half*) duplicate.input[batch2]);
@@ -1180,7 +1265,8 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 					h_d_targ_B[pos2*net->output_dim + k] = temp_half;
 				}
 				break;
-			case 2:
+			
+			case BF16C_FP32A:
 				bf_d_in_A = ((nv_bfloat16*) duplicate.input[batch]);
 				bf_d_targ_A = ((nv_bfloat16*) duplicate.target[batch]);
 				bf_d_in_B = ((nv_bfloat16*) duplicate.input[batch2]);
@@ -1206,7 +1292,8 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				cudaMemcpy(data.input[i], duplicate.input[i], net->batch_size 
@@ -1215,7 +1302,9 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 					* (net->output_dim)*sizeof(float), cudaMemcpyHostToDevice);
 			}
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				cudaMemcpy(data.input[i], duplicate.input[i], net->batch_size 
@@ -1224,7 +1313,8 @@ void host_shuffle(network *net, Dataset data, Dataset duplicate)
 					* (net->output_dim)*sizeof(half), cudaMemcpyHostToDevice);
 			}
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			for(i = 0; i < data.nb_batch; i++)
 			{
 				cudaMemcpy(data.input[i], duplicate.input[i], net->batch_size 
@@ -1247,7 +1337,8 @@ void cuda_host_only_shuffle(network *net, Dataset data)
 	switch(net->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			for(i = 0; i < data.size - 1; i++)
 			{
 				j = i + (int)((rand() / ((double)RAND_MAX) ) * (double)(data.size-i));
@@ -1273,7 +1364,8 @@ void cuda_host_only_shuffle(network *net, Dataset data)
 			}
 			break;
 			
-		case 1:
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			for(i = 0; i < data.size - 1; i++)
 			{
 				j = i + (int)((rand() / ((double)RAND_MAX) ) * (double)(data.size-i));
@@ -1299,7 +1391,7 @@ void cuda_host_only_shuffle(network *net, Dataset data)
 			}
 			break;
 			
-		case 2:
+		case BF16C_FP32A:
 			for(i = 0; i < data.size - 1; i++)
 			{
 				j = i + (int)((rand() / ((double)RAND_MAX) ) * (double)(data.size-i));

@@ -340,17 +340,21 @@ void cuda_linear_deriv_output_error(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			quadratic_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
 				(param->biased_dim)*current->c_network->length, param->dim, param->size, TC_scale_factor);
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
 				(param->biased_dim)*current->c_network->length, param->dim, param->size, TC_scale_factor);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			quadratic_deriv_output_error_kernel_BF16<<< cu_blocks, cu_threads >>>(
 				(nv_bfloat16*)current->delta_o, (nv_bfloat16*)current->output, (nv_bfloat16*)current->c_network->target,
 				(param->biased_dim)*current->c_network->length, param->dim, param->size, TC_scale_factor);
@@ -366,19 +370,23 @@ void cuda_linear_output_error(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			quadratic_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output,
 				(float*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
 				param->dim, param->size);
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			quadratic_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output,
 				(half*)current->c_network->target, (param->biased_dim)*current->c_network->length,
 				param->dim, param->size);
 			break;
-		case 2:
+			
+		case BF16C_FP32A:
 			quadratic_output_error_kernel_BF16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (nv_bfloat16*)current->output,
 				(nv_bfloat16*)current->c_network->target, (param->biased_dim)*current->c_network->length,
@@ -406,15 +414,19 @@ void cuda_ReLU_activation(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			ReLU_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output, 
 				param->size, param->dim, param->saturation, param->leaking_factor);
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			ReLU_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output, 
 				param->size, param->dim, param->saturation, param->leaking_factor);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			ReLU_activation_kernel_BF16<<< cu_blocks, cu_threads >>>((nv_bfloat16*)current->output, 
 				param->size, param->dim, param->saturation, param->leaking_factor);
 			break;
@@ -473,15 +485,19 @@ void cuda_ReLU_deriv(layer *previous)
 	switch(previous->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			ReLU_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)previous->delta_o, 
 				(float*)previous->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			ReLU_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)previous->delta_o, 
 				(half*)previous->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			ReLU_deriv_kernel_BF16<<< cu_blocks, cu_threads >>>((nv_bfloat16*)previous->delta_o, 
 				(nv_bfloat16*)previous->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
 			break;
@@ -553,21 +569,25 @@ void cuda_ReLU_deriv_output_error(layer* current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			quadratic_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
 				(param->biased_dim) * current->c_network->length, param->dim, param->size, TC_scale_factor);
 			ReLU_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->delta_o, 
 				(float*)current->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
 				(param->biased_dim) * current->c_network->length, param->dim, param->size, TC_scale_factor);
 			ReLU_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o,
 				(half*)current->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			quadratic_deriv_output_error_kernel_BF16<<< cu_blocks, cu_threads >>>(
 				(nv_bfloat16*)current->delta_o, (nv_bfloat16*)current->output, (nv_bfloat16*)current->c_network->target,
 				(param->biased_dim) * current->c_network->length, param->dim, param->size, TC_scale_factor);
@@ -585,19 +605,23 @@ void cuda_ReLU_output_error(layer* current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			quadratic_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output, 
 				(float*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
 				param->dim, param->size);
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			quadratic_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output, 
 				(half*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
 				param->dim, param->size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			quadratic_output_error_kernel_BF16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (nv_bfloat16*)current->output, 
 				(nv_bfloat16*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
@@ -732,15 +756,19 @@ void cuda_logistic_activation(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:	
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			logistic_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output,
 				param->beta, param->saturation, (param->biased_dim)*current->c_network->length, param->dim, param->size);
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			logistic_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output, 
 				param->beta, param->saturation, (param->biased_dim)*current->c_network->length, param->dim, param->size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			logistic_activation_kernel_BF16<<< cu_blocks, cu_threads >>>((nv_bfloat16*)current->output, 
 				param->beta, param->saturation, (param->biased_dim)*current->c_network->length, param->dim, param->size);
 			break;
@@ -834,15 +862,19 @@ void cuda_logistic_deriv(layer *previous)
 	switch(previous->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:	
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			logistic_deriv_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)previous->delta_o, 
 				(float*)previous->output, param->beta, (param->biased_dim)*previous->c_network->length, param->dim, param->size);
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			logistic_deriv_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)previous->delta_o,
 				(half*)previous->output, param->beta, (param->biased_dim)*previous->c_network->length, param->dim, param->size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			logistic_deriv_kernel_BF16<<< cu_blocks, cu_threads >>>((nv_bfloat16*)previous->delta_o,
 				(nv_bfloat16*)previous->output, param->beta, (param->biased_dim)*previous->c_network->length, param->dim, param->size);
 			break;
@@ -910,7 +942,8 @@ void cuda_logistic_deriv_output_error(layer* current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:	
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			quadratic_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
 				(param->biased_dim)*current->c_network->length, param->dim, param->size, TC_scale_factor);
@@ -918,7 +951,9 @@ void cuda_logistic_deriv_output_error(layer* current)
 			 	(float*)current->output, param->beta, (param->biased_dim)*current->c_network->length,
 			 	param->dim, param->size);
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			quadratic_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
 				(param->biased_dim)*current->c_network->length, param->dim, param->size, TC_scale_factor);
@@ -926,7 +961,8 @@ void cuda_logistic_deriv_output_error(layer* current)
 				(half*)current->output, param->beta, (param->biased_dim)*current->c_network->length,
 				param->dim, param->size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			quadratic_deriv_output_error_kernel_BF16<<< cu_blocks, cu_threads >>>(
 				(nv_bfloat16*)current->delta_o, (nv_bfloat16*)current->output, (nv_bfloat16*)current->c_network->target,
 				(param->biased_dim)*current->c_network->length, param->dim, param->size, TC_scale_factor);
@@ -946,19 +982,23 @@ void cuda_logistic_output_error(layer* current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:	
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			quadratic_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output,
 				(float*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
 				param->dim, param->size);
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			quadratic_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output, 
 				(half*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
 				param->dim, param->size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			quadratic_output_error_kernel_BF16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (nv_bfloat16*)current->output, 
 				(nv_bfloat16*)current->c_network->target, (param->biased_dim)*current->c_network->length, 
@@ -984,15 +1024,20 @@ void cuda_softmax_activation(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:	
+		case FP32C_FP32A:
+		case TF32C_FP32A:
+
 			softmax_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output,
 				current->c_network->length, param->dim, current->c_network->batch_size);
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			softmax_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output,
 				current->c_network->length, param->dim, current->c_network->batch_size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			softmax_activation_kernel_BF16<<< cu_blocks, cu_threads >>>((nv_bfloat16*)current->output,
 				current->c_network->length, param->dim, current->c_network->batch_size);
 			break;
@@ -1142,19 +1187,23 @@ void cuda_softmax_deriv_output_error(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			cross_entropy_deriv_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, (float*)current->c_network->target,
 				(param->biased_dim)*current->c_network->length, param->dim, 
 				(param->biased_dim) * current->c_network->batch_size, TC_scale_factor);
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			cross_entropy_deriv_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, (half*)current->c_network->target,
 				(param->biased_dim)*current->c_network->length, param->dim, 
 				(param->biased_dim)*current->c_network->batch_size, TC_scale_factor);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			cross_entropy_deriv_output_error_kernel_BF16<<< cu_blocks, cu_threads >>>(
 				(nv_bfloat16*)current->delta_o, (nv_bfloat16*)current->output, (nv_bfloat16*)current->c_network->target,
 				(param->biased_dim)*current->c_network->length, param->dim, 
@@ -1172,19 +1221,23 @@ void cuda_softmax_output_error(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			cross_entropy_output_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output, 
 				(float*)current->c_network->target, (param->dim+1)*current->c_network->length,
 				param->dim, (param->biased_dim)*current->c_network->batch_size);
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			cross_entropy_output_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output, 
 				(half*)current->c_network->target, (param->dim+1)*current->c_network->length,
 				param->dim, (param->biased_dim)*current->c_network->batch_size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			cross_entropy_output_error_kernel_BF16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (nv_bfloat16*)current->output, 
 				(nv_bfloat16*)current->c_network->target, (param->dim+1)*current->c_network->length,
@@ -1329,19 +1382,23 @@ void cuda_YOLO_activation(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			YOLO_activation_kernel_FP32<<< cu_blocks, cu_threads >>>((float*)current->output,
 				c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]*current->c_network->batch_size,
 				a_param->biased_dim*current->c_network->length,
 				*a_param, a_param->size);
 			break;
-		case 1:
+			
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			YOLO_activation_kernel_FP16<<< cu_blocks, cu_threads >>>((half*)current->output, 
 				c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]*current->c_network->batch_size,
 				a_param->biased_dim*current->c_network->length,
 				*a_param, a_param->size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			YOLO_activation_kernel_BF16<<< cu_blocks, cu_threads >>>((nv_bfloat16*)current->output, 
 				c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]*current->c_network->batch_size,
 				a_param->biased_dim*current->c_network->length,
@@ -1353,12 +1410,80 @@ void cuda_YOLO_activation(layer *current)
 
 __global__ void YOLO_activation_kernel_FP32(float *tab, int flat_offset, int len, yolo_param y_param, int size)
 {
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	
+	int i = blockIdx.x*blockDim.x + threadIdx.x;	
 	if(i >= size)
 		return;
 
-	//int col,  in_col;
+	int nb_class = y_param.nb_class, nb_param = y_param.nb_param;
+	//Default values are in activ_function.c (set_yolo_params)
+	float **sm_tab = y_param.slopes_and_maxes_tab;
+	
+	int col, in_col;
+
+	col = i / flat_offset;
+	in_col = col%(8+nb_class+nb_param);
+
+	//Position
+	if(in_col >= 0 && in_col < 3)
+	{
+		tab[i] = -(float)sm_tab[0][0]*tab[i];
+		if(tab[i] > (float)sm_tab[0][1])
+			tab[i] = (float)sm_tab[0][1];
+		tab[i] = (float)1.0f/((float)1.0f + expf(tab[i]));
+		return;
+	}
+	
+	//Box size
+	if(in_col >= 3 && in_col < 6)
+	{
+		tab[i] = (float)sm_tab[1][0]*tab[i];
+		if(tab[i] > (float)sm_tab[1][1])
+			tab[i] = (float)sm_tab[1][1];
+		else if(tab[i] < (float)(sm_tab[1][2]))
+			tab[i] = (float)(sm_tab[1][2]);
+		return;
+	}
+	
+	//Object probability
+	if(in_col == 6)
+	{
+		tab[i] = -(float)sm_tab[2][0]*tab[i];
+		if(tab[i] > (float)sm_tab[2][1])
+			tab[i] = (float)sm_tab[2][1];
+		tab[i] = (float)1.0f/((float)1.0f + expf(tab[i]));
+		return;
+	}
+	
+	//Objectness (Obj. quality => based on IoU)
+	if(in_col == 7)
+	{
+		tab[i] = -(float)sm_tab[3][0]*tab[i];
+		if(tab[i] > (float)sm_tab[3][1])
+			tab[i] = (float)sm_tab[3][1];
+		tab[i] = (float)1.0f/((float)1.0f + expf(tab[i]));
+		return;
+	}
+
+	//Classes
+	if(in_col >= 8 && in_col < 8+nb_class)
+	{
+		tab[i] = -(float)sm_tab[4][0]*tab[i];
+		if(tab[i] > (float)sm_tab[4][1])
+			tab[i] = (float)sm_tab[4][1];
+		tab[i] = (float)1.0f/((float)1.0f + expf(tab[i]));
+		return;
+	}
+
+	//Additional parameters (regression)
+	if(in_col >= 8+nb_class)
+	{
+		tab[i] = (float)sm_tab[5][0]*tab[i];
+		if(tab[i] > (float)sm_tab[5][1])
+			tab[i] = (float)sm_tab[5][1];
+		else if(tab[i] < (float)(sm_tab[5][2]))
+			tab[i] = (float)(sm_tab[5][2]);
+		return;
+	}
 }
 
 
@@ -1438,7 +1563,6 @@ __global__ void YOLO_activation_kernel_FP16(half *tab, int flat_offset, int len,
 			tab[i] = (half)(sm_tab[5][2]);
 		return;
 	}
-	
 }
 
 
@@ -1518,7 +1642,6 @@ __global__ void YOLO_activation_kernel_BF16(nv_bfloat16 *tab, int flat_offset, i
 			tab[i] = (nv_bfloat16)(sm_tab[5][2]);
 		return;
 	}
-
 }
 
 
@@ -1532,21 +1655,25 @@ void cuda_YOLO_deriv_output_error(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			YOLO_deriv_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->delta_o, (float*)current->output, 
 				(float*)current->c_network->target, current->c_network->output_dim, 
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], *a_param,
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, TC_scale_factor);
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			YOLO_deriv_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(half*)current->delta_o, (half*)current->output, 
 				(half*)current->c_network->target, current->c_network->output_dim, 
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], *a_param,
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, TC_scale_factor);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			YOLO_deriv_error_kernel_BF16<<< cu_blocks, cu_threads >>>(
 				(nv_bfloat16*)current->delta_o, (nv_bfloat16*)current->output, 
 				(nv_bfloat16*)current->c_network->target, current->c_network->output_dim, 
@@ -1567,21 +1694,25 @@ void cuda_YOLO_output_error(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			YOLO_error_kernel_FP32<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (float*)current->output, 
 				(float*)current->c_network->target, current->c_network->output_dim, 
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], *a_param,
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			YOLO_error_kernel_FP16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (half*)current->output, 
 				(half*)current->c_network->target, current->c_network->output_dim, 
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], *a_param,
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			YOLO_error_kernel_BF16<<< cu_blocks, cu_threads >>>(
 				(float*)current->c_network->output_error, (nv_bfloat16*)current->output, 
 				(nv_bfloat16*)current->c_network->target, current->c_network->output_dim, 

@@ -71,11 +71,14 @@ long long int cuda_convert_conv_layer(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			vram_approx += cuda_convert_table(current->c_network, &(c_param->filters), c_param->nb_filters 
 				* (c_param->flat_f_size + c_param->TC_padding));
 			break;
-		case 1:
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			temp_tab = (float*)c_param->filters;
 			cudaMalloc(&(c_param->FP32_filters), c_param->nb_filters 
 				* (c_param->flat_f_size + c_param->TC_padding)*sizeof(float));
@@ -89,7 +92,8 @@ long long int cuda_convert_conv_layer(layer *current)
 			vram_approx += c_param->nb_filters 
 				* (c_param->flat_f_size + c_param->TC_padding)*sizeof(half);
 			break;
-		case 2:
+		
+		case BF16C_FP32A:
 			temp_tab = (float*)c_param->filters;
 			cudaMalloc(&(c_param->FP32_filters), c_param->nb_filters 
 				* (c_param->flat_f_size + c_param->TC_padding)*sizeof(float));
@@ -175,12 +179,25 @@ void cuda_forward_conv_layer(layer *current)
 		cuda_print_table_4d(current->c_network, current->input, c_param->prev_size[0], c_param->prev_size[1], c_param->prev_depth * current->c_network->batch_size, c_param->prev_size[1], im2col_prev_bias);
 	}
 	
-	if(current->c_network->use_cuda_TC == 1)
-		cuda_master_weight_FP32_to_FP16((float*)c_param->FP32_filters, (half*)c_param->filters, 
-			c_param->nb_filters * (c_param->flat_f_size + c_param->TC_padding));
-	else if(current->c_network->use_cuda_TC == 2)
-		cuda_master_weight_FP32_to_BF16((float*)c_param->FP32_filters, (nv_bfloat16*)c_param->filters, 
-			c_param->nb_filters * (c_param->flat_f_size + c_param->TC_padding));
+	switch(current->c_network->use_cuda_TC)
+	{
+		default:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
+			//nothing to do
+			break;
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
+			cuda_master_weight_FP32_to_FP16((float*)c_param->FP32_filters, (half*)c_param->filters, 
+				c_param->nb_filters * (c_param->flat_f_size + c_param->TC_padding));
+			break;
+				
+		case BF16C_FP32A:
+			cuda_master_weight_FP32_to_BF16((float*)c_param->FP32_filters, (nv_bfloat16*)c_param->filters, 
+				c_param->nb_filters * (c_param->flat_f_size + c_param->TC_padding));
+			break;
+	}
 	
 	if(current->c_network->batch_size <= 2)
 		dim_c = 1;
@@ -210,7 +227,8 @@ void cuda_forward_conv_layer(layer *current)
 	switch(current->c_network->use_cuda_TC)
 	{
 		default:
-		case 0:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
 			im2col_kernel_v4_FP32<<< numBlocks2, threadsPerBlock2 >>>((float*)c_param->im2col_input,
 				(float*)current->input, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * 
@@ -222,7 +240,8 @@ void cuda_forward_conv_layer(layer *current)
 				c_param->nb_area[0], c_param->nb_area[1], im2col_prev_bias, 1);
 			break;
 			
-		case 1:
+		case FP16C_FP32A:
+		case FP16C_FP16A:
 			im2col_kernel_v4_FP16<<< numBlocks2, threadsPerBlock2 >>>((half*)c_param->im2col_input,
 				(half*)current->input, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * 
@@ -234,7 +253,7 @@ void cuda_forward_conv_layer(layer *current)
 				c_param->nb_area[0], c_param->nb_area[1], im2col_prev_bias, 1);
 			break;
 			
-		case 2:
+		case BF16C_FP32A:
 			im2col_kernel_v4_BF16<<< numBlocks2, threadsPerBlock2 >>>((nv_bfloat16*)c_param->im2col_input,
 				(nv_bfloat16*)current->input, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] *
@@ -295,19 +314,23 @@ void cuda_forward_conv_layer(layer *current)
 		switch(current->c_network->use_cuda_TC)
 		{
 			default:
-			case 0:
+			case FP32C_FP32A:
+			case TF32C_FP32A:
 				cuda_dropout_apply_conv_FP32<<<numBlocks, threadsPerBlock>>>((float*)current->output, 
 					current->c_network->batch_size, (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]),
 					c_param->dropout_mask, c_param->nb_filters 
 					* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
 				break;
-			case 1:
+				
+			case FP16C_FP32A:
+			case FP16C_FP16A:
 				cuda_dropout_apply_conv_FP16<<<numBlocks, threadsPerBlock>>>((half*)current->output, 
 					current->c_network->batch_size, (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]),
 					c_param->dropout_mask, c_param->nb_filters 
 					* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
 				break;
-			case 2:
+			
+			case BF16C_FP32A:
 				cuda_dropout_apply_conv_BF16<<<numBlocks, threadsPerBlock>>>((nv_bfloat16*)current->output, 
 					current->c_network->batch_size, (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]),
 					c_param->dropout_mask, c_param->nb_filters 
@@ -342,19 +365,23 @@ void cuda_backward_conv_layer(layer *current)
 		switch(current->c_network->use_cuda_TC)
 		{
 			default:
-			case 0:
+			case FP32C_FP32A:
+			case TF32C_FP32A:
 				cuda_dropout_apply_conv_FP32<<<numBlocks, threadsPerBlock>>>((float*)current->delta_o, 
 					current->c_network->batch_size, (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), 
 					c_param->dropout_mask, c_param->nb_filters 
 					* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
 				break;
-			case 1:
+				
+			case FP16C_FP32A:
+			case FP16C_FP16A:
 				cuda_dropout_apply_conv_FP16<<<numBlocks, threadsPerBlock>>>((half*)current->delta_o, 
 					current->c_network->batch_size, (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), 
 					c_param->dropout_mask, c_param->nb_filters 
 					* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
 				break;
-			case 2:
+			
+			case BF16C_FP32A:
 				cuda_dropout_apply_conv_BF16<<<numBlocks, threadsPerBlock>>>((nv_bfloat16*)current->delta_o, 
 					current->c_network->batch_size, (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), 
 					c_param->dropout_mask, c_param->nb_filters 
@@ -375,19 +402,23 @@ void cuda_backward_conv_layer(layer *current)
 		switch(current->c_network->use_cuda_TC)
 		{
 			default:
-			case 0:
+			case FP32C_FP32A:
+			case TF32C_FP32A:
 				cuda_rotate_filter_matrix_FP32<<< cu_blocks, cu_threads >>>((float*)c_param->filters, 
 					(float*)c_param->rotated_filters, (c_param->flat_f_size+c_param->TC_padding), 
 					c_param->TC_padding, c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2],
 					c_param->nb_filters, c_param->nb_filters*(c_param->flat_f_size+c_param->TC_padding));
 				break;
-			case 1:
+				
+			case FP16C_FP32A:
+			case FP16C_FP16A:
 				cuda_rotate_filter_matrix_FP16<<< cu_blocks, cu_threads >>>((half*)c_param->filters,
 					(half*)c_param->rotated_filters, (c_param->flat_f_size+c_param->TC_padding),
 					c_param->TC_padding, c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2],
 					 c_param->nb_filters, c_param->nb_filters*(c_param->flat_f_size+c_param->TC_padding));
 				break;
-			case 2:
+				
+			case BF16C_FP32A:
 				cuda_rotate_filter_matrix_BF16<<< cu_blocks, cu_threads >>>((nv_bfloat16*)c_param->filters,
 					(nv_bfloat16*)c_param->rotated_filters, (c_param->flat_f_size+c_param->TC_padding),
 					c_param->TC_padding, c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2],
@@ -439,7 +470,8 @@ void cuda_backward_conv_layer(layer *current)
 		switch(current->c_network->use_cuda_TC)
 		{
 			default:
-			case 0:
+			case FP32C_FP32A:
+			case TF32C_FP32A:
 				im2col_kernel_v4_FP32<<< numBlocks2, threadsPerBlock2>>>((float*)c_param->im2col_delta_o,
 					(float*)current->delta_o, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], 
 					(c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * flat_f_size, 
@@ -451,7 +483,8 @@ void cuda_backward_conv_layer(layer *current)
 					c_param->prev_size[0], c_param->prev_size[1], 0, 0);
 				break;
 				
-			case 1:
+			case FP16C_FP32A:
+			case FP16C_FP16A:
 				im2col_kernel_v4_FP16<<< numBlocks2, threadsPerBlock2>>>((half*)c_param->im2col_delta_o,
 					(half*)current->delta_o, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], 
 					(c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * flat_f_size, 
@@ -463,7 +496,7 @@ void cuda_backward_conv_layer(layer *current)
 					c_param->prev_size[0], c_param->prev_size[1], 0, 0);
 				break;
 				
-			case 2:
+			case BF16C_FP32A:
 				im2col_kernel_v4_BF16<<< numBlocks2, threadsPerBlock2>>>((nv_bfloat16*)c_param->im2col_delta_o,
 					(nv_bfloat16*)current->delta_o, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], 
 					(c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * flat_f_size, 
@@ -507,15 +540,19 @@ void cuda_backward_conv_layer(layer *current)
 		
 		switch(current->c_network->use_cuda_TC)
 		{
-			case 0:
+			case FP32C_FP32A:
+			case TF32C_FP32A:
 				cuda_update_weights(current->c_network, c_param->filters, c_param->update, 
 					(c_param->flat_f_size + c_param->TC_padding) * c_param->nb_filters);
 				break;
-			case 1:
+			
+			case FP16C_FP32A:
+			case FP16C_FP16A:
 				cuda_update_weights(current->c_network, c_param->FP32_filters, c_param->update, 
 					(c_param->flat_f_size + c_param->TC_padding) * c_param->nb_filters);
 				break;
-			case 2:
+			
+			case BF16C_FP32A:
 				cuda_update_weights(current->c_network, c_param->FP32_filters, c_param->update, 
 					(c_param->flat_f_size + c_param->TC_padding) * c_param->nb_filters);
 				break;
@@ -575,7 +612,8 @@ __global__ void im2col_kernel_v4_FP32(float* output, float* input, int image_siz
 							pos_h_filter = h-y*stride_h;
 							if((pos_h_filter + padding_h < 0) || (pos_h_filter > h_size*(1 + internal_padding_h) + 2*padding_h - f_size_h))
 								continue;
-							loc = z*nb_area_w*nb_area_h*(flat_f_size+TC_padding) + y*nb_area_w*(flat_f_size+TC_padding) + x*(flat_f_size+TC_padding) + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;
+							loc = z*nb_area_w*nb_area_h*(flat_f_size+TC_padding) + y*nb_area_w*(flat_f_size+TC_padding) 
+								+ x*(flat_f_size+TC_padding) + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;
 							if((bias_out && (loc)%(flat_f_size+TC_padding) >= flat_f_size - 1))
 								continue;
 							if(loc >= 0 && loc < flat_image_size)
@@ -632,7 +670,8 @@ __global__ void im2col_kernel_v4_FP16(half* output, half* input, int image_size,
 							pos_h_filter = h-y*stride_h;
 							if((pos_h_filter + padding_h < 0) || (pos_h_filter > h_size*(1 + internal_padding_h) + 2*padding_h - f_size_h))
 								continue;
-							loc = z*nb_area_w*nb_area_h*(flat_f_size+TC_padding) + y*nb_area_w*(flat_f_size+TC_padding) + x*(flat_f_size+TC_padding) + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;
+							loc = z*nb_area_w*nb_area_h*(flat_f_size+TC_padding) + y*nb_area_w*(flat_f_size+TC_padding) 
+								+ x*(flat_f_size+TC_padding) + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;
 							if((bias_out && (loc)%(flat_f_size+TC_padding) >= flat_f_size - 1))
 								continue;
 							if(loc >= 0 && loc < flat_image_size)
