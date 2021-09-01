@@ -152,7 +152,6 @@ void cuda_forward_conv_layer(layer *current)
 		return;
 	c_param = (conv_param*) current->param;
 	
-	
 	if(current->previous == NULL)
 	{
 		//if previous layer is input layer then remove the added bias on the image
@@ -171,12 +170,6 @@ void cuda_forward_conv_layer(layer *current)
 		image_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2];
 		im2col_prev_bias = 0;
 		current->input = current->previous->output;
-	}
-	
-	if(c_param->stride == 0)
-	{
-		printf("Conv input\n");
-		cuda_print_table_4d(current->c_network, current->input, c_param->prev_size[0], c_param->prev_size[1], c_param->prev_depth * current->c_network->batch_size, c_param->prev_size[1], im2col_prev_bias);
 	}
 	
 	switch(current->c_network->use_cuda_TC)
@@ -339,8 +332,6 @@ void cuda_forward_conv_layer(layer *current)
 		}
 	}
 }
-
-
 
 
 void cuda_backward_conv_layer(layer *current)
@@ -520,7 +511,6 @@ void cuda_backward_conv_layer(layer *current)
 		//update gradiant regarding the previous layer activation function
 		//WARNING : ONLY WORK IF PREVIOUS LAYER IS A CONV AS OUTPUT AND DELTA_O SHARE THE SAME DATA ORDER
 		current->previous->deriv_activation(current->previous);
-
 	}
 	
 	//########################  WEIGHTS UPDATE   ########################
@@ -561,7 +551,6 @@ void cuda_backward_conv_layer(layer *current)
 	
 	free(back_padding);
 }
-
 
 
 //One of the most important function, aims to convert an image into a table that contains all the

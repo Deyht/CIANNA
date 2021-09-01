@@ -78,7 +78,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 void conv_save(FILE *f, layer *current);
 void conv_load(network *net, FILE *f);
 
-void pool_create(network *net, layer* previous, int *pool_size, float drop_rate);
+void pool_create(network *net, layer* previous, int *pool_size, int pool_type, float drop_rate);
 void pool_save(FILE *f, layer *current);
 void pool_load(network *net, FILE *f);
 
@@ -194,7 +194,7 @@ long long int cuda_convert_conv_layer(layer *current);
 
 //cuda_pool_layer.cu
 void cuda_pool_define(layer *current);
-void cuda_convert_pool_layer(layer *current);
+long long int cuda_convert_pool_layer(layer *current);
 
 	
 //######################################

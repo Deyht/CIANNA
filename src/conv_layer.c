@@ -199,7 +199,6 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 					c_param->prev_size[k] = ((pool_param*)previous->param)->nb_area[k];
 				c_param->prev_depth =  ((pool_param*)previous->param)->nb_maps;
 				c_param->flat_f_size = (f_size[0] * f_size[1] * f_size[2] * ((pool_param*)previous->param)->nb_maps + 1);
-				((pool_param*)previous->param)->next_layer_type = current->type;
 				break;
 		
 			case CONV:

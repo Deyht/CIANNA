@@ -795,7 +795,7 @@ static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs
 
 	if(strcmp(activation, "RELU") == 0)
 		i_activ = RELU;
-	if(strcmp(activation, "RELU_6") == 0)
+	else if(strcmp(activation, "RELU_6") == 0)
 		i_activ = RELU_6;
 	else if(strcmp(activation, "LINEAR") == 0)
 		i_activ = LINEAR;
@@ -820,14 +820,15 @@ static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs
 static PyObject* py_pool_create(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	int i;
-	int prev_layer = -1, network_id = nb_networks-1;
+	int prev_layer = -1, network_id = nb_networks-1, C_pool_type = MAX_pool;
 	PyArrayObject *py_pool_size;
+	const char *s_pool_type = "MAX";
 	int C_pool_size[3];
 	double drop_rate = 0.0;
-	static char *kwlist[] = {"pool_size", "prev_layer", "drop_rate", "network", NULL};
+	static char *kwlist[] = {"p_size", "prev_layer", "drop_rate", "p_type", "network", NULL};
 	layer* prev;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|Oidi", kwlist, &py_pool_size, &prev_layer, &drop_rate, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|Oidsi", kwlist, &py_pool_size, &prev_layer, &drop_rate, &s_pool_type, &network_id))
 	    return Py_None;
 	    
 	if(prev_layer == -1)
@@ -838,12 +839,25 @@ static PyObject* py_pool_create(PyObject* self, PyObject *args, PyObject *kwargs
 		C_pool_size[i]  = *(int *)(py_pool_size->data  + i*py_pool_size->strides[0]);
 	}
 
+	if(strcmp(s_pool_type, "MAX") == 0)
+	{
+		C_pool_type = MAX_pool;
+	}
+	else if(strcmp(s_pool_type, "AVG") == 0)
+	{
+		C_pool_type = AVG_pool;
+	}
+	else
+	{
+		C_pool_type = MAX_pool;
+	}
+	
 	if(prev_layer < 0)
 		prev = NULL;
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	pool_create(networks[network_id], prev, C_pool_size, drop_rate);
+	pool_create(networks[network_id], prev, C_pool_size, C_pool_type, drop_rate);
 	
 	return Py_None;
 }

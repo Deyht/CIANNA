@@ -40,6 +40,7 @@ enum compute_method{C_NAIV, C_BLAS, C_CUDA};
 enum TC_comp_mode{FP32C_FP32A, TF32C_FP32A, FP16C_FP32A, FP16C_FP16A, BF16C_FP32A};
 enum memory_localization{HOST, DEVICE};
 enum IoU_types{IOU, GIOU, DIOU};
+enum pool_types{MAX_pool, AVG_pool};
 
 typedef struct Dataset Dataset;
 typedef struct layer layer;
@@ -214,6 +215,7 @@ struct pool_param
 	int nb_maps;
 	int *prev_size;
 	int prev_depth;
+	int pool_type;
 	
 	int* dropout_mask;
 	void* block_state;

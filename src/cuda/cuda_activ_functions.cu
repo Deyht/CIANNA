@@ -116,13 +116,11 @@ __global__ void YOLO_error_kernel_BF16(float *output_error, nv_bfloat16 *output,
 
 
 
-
 void cuda_define_activation(layer *current)
 {
 	void *a_param;
 	float *temp_tab, *temp_tab2, **temp_tab3;
 	int *temp_int;
-	
 	
 	switch(current->activation_type)
 	{
@@ -250,13 +248,13 @@ void cuda_define_activation(layer *current)
 			break;
 			
 		case LINEAR:
-			default:
+		default:
 			current->activation = cuda_linear_activation;
 			current->deriv_activation = cuda_linear_deriv;
 			break;
 	}
-
 }
+
 
 void cuda_deriv_output_error(layer *current)
 {
