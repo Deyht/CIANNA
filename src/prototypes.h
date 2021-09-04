@@ -186,7 +186,7 @@ void cuda_deriv_output_error(layer *current);
 
 //cuda_dense_layer.cu
 void cuda_dense_define(layer *current);
-void cuda_convert_dense_layer(layer *current);
+long long int cuda_convert_dense_layer(layer *current);
 
 //cuda_conv_layer.cu
 void cuda_conv_define(layer *current);

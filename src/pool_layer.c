@@ -72,6 +72,7 @@ int load_pool_type(char *type)
 void pool_create(network *net, layer* previous, int *pool_size, int pool_type, float drop_rate)
 {
 	int k;
+	long long int mem_approx = 0;
 	layer* current;
 	
 	current = (layer*) malloc(sizeof(layer));
@@ -139,14 +140,23 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 	
 	p_param->pool_map = (int*) malloc(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
 		* net->batch_size * sizeof(int));
+	mem_approx += p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
+		* net->batch_size * sizeof(int);
 	current->output = (float*) malloc(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
 		* net->batch_size * sizeof(float));
+	mem_approx += p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
+		* net->batch_size * sizeof(float);
 		
 	if(drop_rate > 0.01)
+	{
 		p_param->dropout_mask = (int*) calloc(p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), sizeof(int));
+		mem_approx += p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * sizeof(int);
+	}
 	
 	current->delta_o = (float*) malloc(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
 		* net->batch_size * sizeof(float));
+	mem_approx += p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
+		* net->batch_size * sizeof(float);
 	/*p_param->temp_delta_o = (float*) malloc(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]
 		* p_param->nb_maps * net->batch_size * sizeof(float));*/
 	
@@ -164,7 +174,7 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 			#ifdef CUDA
 			cuda_pool_define(current);
 			cuda_define_activation(current);
-			cuda_convert_pool_layer(current);
+			mem_approx = cuda_convert_pool_layer(current);
 			#endif
 			break;
 		case C_BLAS:
@@ -178,11 +188,13 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 	char s_pool_type[10];
 	get_string_pool_type(s_pool_type, pool_type);
 	
-	printf("L:%d - Pooling layer layer created, type %s:\n \
-Input: %dx%dx%dx%d, Output: %dx%dx%dx%d, P. size: %dx%dx%d, dropout rate: %f\n",
+	printf("L:%d - Pooling layer layer created, type %s:\n\
+\t Input: %dx%dx%dx%d, Output: %dx%dx%dx%d, P. size: %dx%dx%d, dropout rate: %f\n\
+\t Approx layer RAM/VRAM requirement: %d MB\n",
 		net->nb_layers, s_pool_type, p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
 		p_param->prev_depth, p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
-		p_param->nb_maps, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->dropout_rate);
+		p_param->nb_maps, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->dropout_rate,
+		(int)(mem_approx/1000000));
 	
 }
 

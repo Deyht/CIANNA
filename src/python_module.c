@@ -107,12 +107,12 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	float *py_cont_array;
 	int c_array_offset = 0;
 	PyArrayObject *py_data = NULL, *py_target = NULL;
-	int size, flat = 0, silent = 0;
+	int size, silent = 0;
 	int flat_image_size = 0;
 	int network_id = nb_networks-1;
-	static char *kwlist[] = {"dataset", "size", "input", "target", "flat", "network_id", "silent", NULL};
+	static char *kwlist[] = {"dataset", "size", "input", "target", "network_id", "silent", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOO|iii", kwlist, &dataset_type, &size, &py_data, &py_target, &flat, &network_id, &silent))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOO|ii", kwlist, &dataset_type, &size, &py_data, &py_target, &network_id, &silent))
 	    return Py_None;
 	
 	Py_BEGIN_ALLOW_THREADS

@@ -146,7 +146,7 @@ void conv_define_activation_param(layer *current)
 void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, int activation, float drop_rate, FILE *f_load)
 {
 	int i, j, k;
-	long long int mem_approx = 0.0f;
+	long long int mem_approx = 0;
 	layer *current;
 	
 	current = (layer*) malloc(sizeof(layer));
@@ -330,7 +330,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	printf("L:%d - Convolutional layer created:\n\
 \t Input: %dx%dx%dx%d, Filters: %dx%dx%dx%d, Output: %dx%dx%dx%d \n\
 \t Activation: %s, Stride: %dx%dx%d, padding: %dx%dx%d, dropout rate: %0.2f\n\
-\t Nb. weights: %d, Approx layer Ram/VRam requirement: %d MB\n",
+\t Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",
 		net->nb_layers, c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
 		c_param->prev_depth, c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], c_param->nb_filters,
 		c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], c_param->nb_filters,
@@ -345,19 +345,16 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 				|| current->c_network->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]) % 8 != 0 
 				|| c_param->nb_filters % 8 != 0)
 			printf("Warning : Forward gemm TC data misalignement due to layer size mismatch\n");
-			
 		if(current->previous != NULL &&
 				( c_param->prev_depth % 8 != 0 
 				|| c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * current->c_network->batch_size % 8 != 0 
 				|| c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters % 8 != 0))
 			printf("Warning : Backprop gemm TC data misalignment due to layer size mismatch\n");
-
 		if( (c_param->flat_f_size + c_param->TC_padding) % 8 != 0 
 				|| c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size % 8 != 0 
 				|| c_param->nb_filters % 8 != 0)
 			printf("Warning : Weights update gemm TC data misalignment due to layer size mismatch\n");
 	}
-	
 }
 
 

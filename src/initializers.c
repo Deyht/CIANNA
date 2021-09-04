@@ -64,13 +64,11 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 	for(i = 0; i < limit; i++)
 	{
 		if(((i) % (dim_in+zero_padding+bias_padding) >= (dim_in + bias_padding)) 
-			|| (bias_padding && (i+1) % (dim_in + bias_padding + zero_padding) == (dim_in + bias_padding)))
+			|| (bias_padding && (i+1) % (dim_in + bias_padding) == 0))
 			f_tab[i] = 0.0;
 		else
 		{	
-			//f_tab[i] = random_normal()*sqrt(1.0f/(dim_in+dim_out)); //real He normal
 			f_tab[i] = random_normal()*sqrt(2.0f/(dim_in+dim_out)); //real Xavier normal
-			//f_tab[i] = random_normal()*sqrt(3.0f/(dim_in+dim_out)); //custom init
 		}
 	}
 	
