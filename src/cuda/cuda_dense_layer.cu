@@ -143,8 +143,16 @@ void cuda_forward_dense_layer(layer *current)
 {
 	int nb_area_w, nb_area_h, nb_area_d, depth;
 	
-	void* ref_input;
-	float w_alpha;
+	void *ref_input;
+	void *w_alpha;
+	
+	float w_f_alpha;
+	half w_h_alpha;
+	
+	if(current->c_network->use_cuda_TC == FP16C_FP16A)
+		w_alpha = &w_h_alpha;	
+	else
+		w_alpha = &w_f_alpha;
 	
 	if(current->c_network->length == 0)
 		return;
@@ -229,20 +237,25 @@ void cuda_forward_dense_layer(layer *current)
 		ref_input = d_param->flat_input;
 	}
 	
-	if(current->c_network->is_inference && current->c_network->inference_drop_mode == AVG_MODEL)
+	if(current->c_network->is_inference && current->c_network->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
-		if(current->previous != NULL)
-			//w_alpha = (1.0f - ((conv_param*)current->previous->param)->dropout_rate);
-			w_alpha = (1.0f/(1.0f+ (((conv_param*)current->previous->param)->dropout_rate) )); //bias weight is included in drop, should change this behavior ?
-		else																				   //If so add a scaling like for conv layers
-			w_alpha = 1.0f;
+		if(current->c_network->use_cuda_TC == FP16C_FP16A)
+			*((half*)w_alpha) = (1.0f/(1.0f+ (((conv_param*)current->previous->param)->dropout_rate)));	
+		else
+			*((float*)w_alpha)  = (1.0f/(1.0f+ (((conv_param*)current->previous->param)->dropout_rate)));
+		 //bias weight is included in drop, should change this behavior ?
 	}
 	else
-		w_alpha = 1.0f;
+	{
+		if(current->c_network->use_cuda_TC == FP16C_FP16A)
+			*((half*)w_alpha) = 1.0f;	
+		else
+			*((float*)w_alpha) = 1.0f;
+	}
 	
 	cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, d_param->nb_neurons+1, 
-		current->c_network->batch_size, d_param->in_size, &w_alpha, d_param->weights, cuda_data_type, 
-		d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, &cu_beta, 
+		current->c_network->batch_size, d_param->in_size, w_alpha, d_param->weights, cuda_data_type, 
+		d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, cu_beta, 
 		current->output, cuda_data_type, d_param->nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 	
 	current->activation(current);
@@ -329,8 +342,8 @@ void cuda_backward_dense_layer(layer* current)
 	if(current->previous != NULL)
 	{
 		cublasGemmEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, d_param->in_size, 
-			current->c_network->batch_size, d_param->nb_neurons+1, &cu_alpha, d_param->weights, cuda_data_type, 
-			d_param->nb_neurons+1, current->delta_o, cuda_data_type, d_param->nb_neurons+1, &cu_beta, 
+			current->c_network->batch_size, d_param->nb_neurons+1, cu_alpha, d_param->weights, cuda_data_type, 
+			d_param->nb_neurons+1, current->delta_o, cuda_data_type, d_param->nb_neurons+1, cu_beta, 
 			d_param->flat_delta_o, cuda_data_type, d_param->in_size, cuda_compute_type,
 			CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 		//if previous layer is dense then flat_delta_o = previous->delta_o
@@ -396,10 +409,12 @@ void cuda_backward_dense_layer(layer* current)
 	
 	if(current->previous != NULL && current->previous->type != DENSE)
 		ref_input = d_param->flat_input;
-		
+	
+	set_cu_learning_rate_and_momentum(current->c_network);
+	
 	cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_T, d_param->nb_neurons+1, d_param->in_size,
-		current->c_network->batch_size, &current->c_network->learning_rate,	current->delta_o, cuda_data_type, 
-		d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, &current->c_network->momentum, 
+		current->c_network->batch_size, cu_learning_rate, current->delta_o, cuda_data_type, 
+		d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, cu_momentum,
 		d_param->update, cuda_data_type, d_param->nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 	
 	switch(current->c_network->use_cuda_TC)

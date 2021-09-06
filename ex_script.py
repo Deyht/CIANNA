@@ -45,7 +45,7 @@ print ("Done !", flush=True)
 #Details about the functions and parameters are given in the GitHub Wiki
 
 cnn.init_network(dims=i_ar([28,28,1,1]), out_dim=10, \
-		bias=0.1, b_size=32, comp_meth="C_CUDA", dynamic_load=1, mixed_precision="BF16C_FP32A") #Change to C_BLAS or C_NAIV
+		bias=0.1, b_size=32, comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP16C_FP32A") #Change to C_BLAS or C_NAIV
 
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
@@ -55,7 +55,6 @@ cnn.create_dataset("TEST", size=10000, input=data_test, target=target_test)
 del (data_train, target_train, data_valid, target_valid, data_test, target_test)
 
 #cnn.load_network("net_save/net0_s0010.dat", 10)
-
 
 cnn.conv_create(f_size=i_ar([5,5,1]), nb_filters=8, stride=i_ar([1,1,1]), padding=i_ar([2,2,0]), activation="RELU")
 cnn.pool_create(p_size=i_ar([2,2,1]), p_type="MAX")
@@ -67,7 +66,8 @@ cnn.dense_create(nb_neurons=256, activation="RELU", drop_rate=0.2)
 #cnn.conv_create(f_size=i_ar([1,1,1]), nb_filters=64, stride=i_ar([1,1,1]), padding=i_ar([0,0,0]), activation="RELU", drop_rate = 0.2)
 cnn.dense_create(nb_neurons=10, activation="SOFTMAX")
 
-cnn.train_network(nb_epoch=20, learning_rate=0.0004, momentum=0.8, confmat=1, save_each=40)
+
+cnn.train_network(nb_epoch=10, learning_rate=0.0004, momentum=0.8, confmat=1, save_each=10)
 #Change save_each in previous function to save network weights
 
 

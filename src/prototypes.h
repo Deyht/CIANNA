@@ -126,7 +126,9 @@ extern "C"
 //only make since sources compiles with nvcc
 //cuda_main.cu
 extern int cu_threads;
-extern float cu_alpha, cu_beta;
+extern void *cu_alpha, *cu_beta;
+extern void *cu_learning_rate, *cu_momentum;
+void set_cu_learning_rate_and_momentum(network* net);
 extern float TC_scale_factor;
 extern cublasHandle_t cu_handle;
 extern cudaDataType cuda_data_type;

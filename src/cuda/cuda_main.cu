@@ -27,7 +27,12 @@
 
 static int cu_blocks;
 int cu_threads = CUDA_THREADS_PER_BLOCKS;
-float cu_alpha = 1.0f, cu_beta= 0.0f;
+void *cu_alpha, *cu_beta;
+void *cu_learning_rate, *cu_momentum;
+float cu_f_alpha = 1.0f, cu_f_beta = 0.0f;
+half cu_h_alpha = 1.0f, cu_h_beta = 0.0f;
+float cu_f_learning_rate = 1.0f, cu_f_momentum = 0.0f;
+half cu_h_learning_rate = 1.0f, cu_h_momentum = 0.0f;
 float TC_scale_factor = 1.0f;
 cublasHandle_t cu_handle;
 cudaDataType cuda_data_type = CUDA_R_32F;
@@ -52,6 +57,8 @@ void init_cuda(network* net)
 			cuda_data_type = CUDA_R_32F;
 			cuda_compute_type = CUBLAS_COMPUTE_32F_PEDANTIC;
 			TC_scale_factor = 1.0f;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
 			break;
 	
 		case TF32C_FP32A:
@@ -59,6 +66,8 @@ void init_cuda(network* net)
 			cuda_data_type = CUDA_R_32F;
 			cuda_compute_type = CUBLAS_COMPUTE_32F;
 			TC_scale_factor = 1.0f;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
 			break;
 			
 		case FP16C_FP32A:
@@ -66,6 +75,8 @@ void init_cuda(network* net)
 			cuda_data_type = CUDA_R_16F;
 			cuda_compute_type = CUBLAS_COMPUTE_32F;
 			TC_scale_factor = 8.0f;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
 			break;
 			
 		case FP16C_FP16A:
@@ -73,6 +84,8 @@ void init_cuda(network* net)
 			cuda_data_type = CUDA_R_16F;
 			cuda_compute_type = CUBLAS_COMPUTE_16F;
 			TC_scale_factor = 8.0f;
+			cu_alpha = &cu_h_alpha; cu_beta = &cu_h_beta;
+			cu_learning_rate = &cu_h_learning_rate; cu_momentum = &cu_h_momentum;
 			break;
 			
 		case BF16C_FP32A:
@@ -80,6 +93,8 @@ void init_cuda(network* net)
 			cuda_data_type = CUDA_R_16BF;
 			cuda_compute_type = CUBLAS_COMPUTE_32F;
 			TC_scale_factor = 1.0f;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
 			break;
 	}
 	
@@ -121,6 +136,20 @@ void init_cuda(network* net)
 	}
 	
 	//place holder for device selection
+}
+
+void set_cu_learning_rate_and_momentum(network* net)
+{
+	if(net->use_cuda_TC == FP16C_FP16A)
+	{
+		cu_h_learning_rate = net->learning_rate;
+		cu_h_momentum = net->momentum;
+	}
+	else
+	{
+		cu_f_learning_rate = net->learning_rate;
+		cu_h_momentum = net->momentum;
+	}
 }
 
 void cuda_set_TC_scale_factor(network* net, float val)

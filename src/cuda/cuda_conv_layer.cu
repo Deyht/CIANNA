@@ -146,7 +146,16 @@ void cuda_forward_conv_layer(layer *current)
 	int image_padding;
 	int im2col_prev_bias;
 	int dim_a, dim_b, dim_c;
-	float w_alpha, c_dr;
+	
+	void *w_alpha;
+	float w_f_alpha;
+	half w_h_alpha;
+	
+	if(current->c_network->use_cuda_TC == FP16C_FP16A)
+		w_alpha = &w_h_alpha;
+	else
+		w_alpha = &w_f_alpha;
+	float c_dr;
 
 	if(current->c_network->length == 0)
 		return;
@@ -259,33 +268,36 @@ void cuda_forward_conv_layer(layer *current)
 			break;
 	}
 
-	if(current->c_network->is_inference && current->c_network->inference_drop_mode == AVG_MODEL)
+	if(current->c_network->is_inference && current->c_network->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
-		if(current->previous != NULL)
-		{
-			if(current->previous->type == CONV)
-				c_dr = ((conv_param*)current->previous->param)->dropout_rate;
-			else if(current->previous->type == POOL)
-				c_dr = ((pool_param*)current->previous->param)->dropout_rate;
-			else
-				c_dr = 0.0f;
-			c_dr = 1.0f - (((c_param->flat_f_size-1)*(1.0f-c_dr) + 1)/c_param->flat_f_size);
-			//w_alpha = (1.0f - c_dr);       //account for the bias node that is never dropped
-			//bias_fact = (float)(c_param->flat_f_size)/(float)(c_param->flat_f_size-1);
-			w_alpha = (1.0f/(1.0 + c_dr));
-		}
+		if(current->previous->type == CONV)
+			c_dr = ((conv_param*)current->previous->param)->dropout_rate;
+		else if(current->previous->type == POOL)
+			c_dr = ((pool_param*)current->previous->param)->dropout_rate;
 		else
-			w_alpha = 1.0f;
+			c_dr = 0.0f;
+		c_dr = 1.0f - (((c_param->flat_f_size-1)*(1.0f-c_dr) + 1)/c_param->flat_f_size);
+		//w_alpha = (1.0f - c_dr);       //account for the bias node that is never dropped
+		//bias_fact = (float)(c_param->flat_f_size)/(float)(c_param->flat_f_size-1);
+		if(current->c_network->use_cuda_TC == FP16C_FP16A)
+			*((half*)w_alpha) = (1.0f/(1.0 + c_dr));	
+		else
+			*((float*)w_alpha) = (1.0f/(1.0 + c_dr));
 	}
 	else
-		w_alpha = 1.0f;
+	{
+		if(current->c_network->use_cuda_TC == FP16C_FP16A)
+			*((half*)w_alpha) = 1.0f;	
+		else
+			*((float*)w_alpha) = 1.0f;
+	}
 
 	//Input X filters matrix multiplication for the all batch
 	cublasGemmEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, current->c_network->batch_size 
 		* (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]), c_param->nb_filters,
-		(c_param->flat_f_size + c_param->TC_padding), &w_alpha, c_param->im2col_input, cuda_data_type,
+		(c_param->flat_f_size + c_param->TC_padding), w_alpha, c_param->im2col_input, cuda_data_type,
 		(c_param->flat_f_size + c_param->TC_padding), c_param->filters, cuda_data_type,  
-		(c_param->flat_f_size + c_param->TC_padding), &cu_beta, current->output, cuda_data_type,
+		(c_param->flat_f_size + c_param->TC_padding), cu_beta, current->output, cuda_data_type,
 		current->c_network->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]),
 		cuda_compute_type, CUBLAS_GEMM_DEFAULT);
 	
@@ -502,9 +514,9 @@ void cuda_backward_conv_layer(layer *current)
 
 		cublasGemmEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] 
 			*current->c_network->batch_size, c_param->prev_depth, c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2] 
-			*c_param->nb_filters, &cu_alpha, c_param->im2col_delta_o, cuda_data_type, c_param->f_size[0] 
+			*c_param->nb_filters, cu_alpha, c_param->im2col_delta_o, cuda_data_type, c_param->f_size[0] 
 			*c_param->f_size[1]*c_param->f_size[2]*c_param->nb_filters, c_param->rotated_filters, cuda_data_type, 
-			c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2]*c_param->nb_filters, &cu_beta, 
+			c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2]*c_param->nb_filters, cu_beta, 
 			current->previous->delta_o, cuda_data_type, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]
 			*current->c_network->batch_size, cuda_compute_type, CUBLAS_GEMM_DEFAULT);
 
@@ -520,12 +532,14 @@ void cuda_backward_conv_layer(layer *current)
 		//based on the recovered delta_o provided by the next layer propagation
 		//CUBLAS_OP_N ,in this case, is a transpose of regular input (see forward function)
 		
+		set_cu_learning_rate_and_momentum(current->c_network);
+		
 		cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, (c_param->flat_f_size+c_param->TC_padding), c_param->nb_filters, 
 			c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, 
-			&current->c_network->learning_rate, c_param->im2col_input, cuda_data_type, 
+			cu_learning_rate, c_param->im2col_input, cuda_data_type, 
 			(c_param->flat_f_size + c_param->TC_padding), current->delta_o, cuda_data_type, 
 			c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size,
-			&current->c_network->momentum, c_param->update, cuda_data_type, 
+			cu_momentum, c_param->update, cuda_data_type, 
 			(c_param->flat_f_size + c_param->TC_padding), cuda_compute_type, CUBLAS_GEMM_DEFAULT);
 		
 		switch(current->c_network->use_cuda_TC)
