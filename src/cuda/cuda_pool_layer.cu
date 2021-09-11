@@ -31,612 +31,132 @@ static pool_param *p_param;
 void cuda_forward_pool_layer(layer* current);
 void cuda_backward_pool_layer(layer* current);
 
-__global__ void max_pooling_kernel_FP32(float* input, float* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length);
-__global__ void max_pooling_kernel_FP16(half* input, half* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length);
-__global__ void max_pooling_kernel_BF16(nv_bfloat16* input, nv_bfloat16* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length);
-__global__ void avg_pooling_kernel_FP32(float* input, float* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length);
-__global__ void avg_pooling_kernel_FP16(half* input, half* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length);
-__global__ void avg_pooling_kernel_BF16(nv_bfloat16* input, nv_bfloat16* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length);
 
-__global__ void deltah_max_pool_cont_FP32(float* delta_o, float* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size);
-__global__ void deltah_max_pool_cont_FP16(half* delta_o, half* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size);
-__global__ void deltah_max_pool_cont_BF16(nv_bfloat16* delta_o, nv_bfloat16* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size);
-__global__ void deltah_avg_pool_cont_FP32(float* delta_o, float* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size);
-__global__ void deltah_avg_pool_cont_FP16(half* delta_o, half* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size);
-__global__ void deltah_avg_pool_cont_BF16(nv_bfloat16* delta_o, nv_bfloat16* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size);
-
-__global__ void init_block_state_pool(unsigned int seed, curandState_t* states);
-__global__ void cuda_dropout_select_pool(int* mask, int size, float drop_rate, curandState_t* states);
-__global__ void cuda_dropout_apply_pool_FP32(float* table, int batch_size, int dim, int* mask, int size);
-__global__ void cuda_dropout_apply_pool_FP16(half* table, int batch_size, int dim, int* mask, int size);
-__global__ void cuda_dropout_apply_pool_BF16(nv_bfloat16* table, int batch_size, int dim, int* mask, int size);
-
-void cuda_pool_define(layer *current)
-{
-	current->forward = cuda_forward_pool_layer;
-	current->backprop = cuda_backward_pool_layer;
-}
-
-long long int cuda_convert_pool_layer(layer *current)
-{
-	p_param = (pool_param*)current->param;
-	long long int vram_approx = 0;
-
-	vram_approx += cuda_convert_table_int(current->c_network, &(p_param->pool_map), p_param->nb_area[0] 
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * current->c_network->batch_size);
-	vram_approx += cuda_convert_table(current->c_network, &(current->output), p_param->nb_area[0] 
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * current->c_network->batch_size);
-	
-	vram_approx += cuda_convert_table(current->c_network, &(current->delta_o), p_param->nb_area[0] 
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * current->c_network->batch_size);
-	
-	/*vram_approx += cuda_convert_table(current->c_network, &(p_param->temp_delta_o), p_param->nb_area[0] 
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * current->c_network->batch_size);*/
-		
-	if(p_param->dropout_rate > 0.01)
-	{
-		vram_approx += cuda_convert_table_int(current->c_network, &(p_param->dropout_mask), p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-		cudaMalloc((void**) &p_param->block_state, (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])) * sizeof(curandState_t));
-		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-		init_block_state_pool<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)p_param->block_state);
-	}
-	
-	return vram_approx;
+#define max_pooling_kernel(name, type)																				\
+__global__ void max_pooling_kernel_##name																			\
+	(void* i_input, void* i_output, int* pool_map,																	\
+	int pool_size_w, int pool_size_h, int pool_size_d, 																\
+	int w_size, int h_size, int d_size, 																			\
+	int w_size_out, int h_size_out, int d_size_out, int length)														\
+{																													\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
+	int k = blockIdx.y*blockDim.y + threadIdx.y;																	\
+	int x, y, z, x_max, y_max, z_max, pos, pos_x, pos_y, pos_z, pos_out;											\
+																													\
+	type* input  = (type*) i_input;																					\
+	type* output = (type*) i_output;																				\
+																													\
+	pos_z = i / (w_size_out*h_size_out); 																			\
+	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;																\
+	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;																\
+																													\
+	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);		\
+																													\
+	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;	\
+																													\
+	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)								\
+	{																												\
+		x_max = 0; y_max = 0; z_max = 0;																			\
+		for(x = 0; x < pool_size_d; x++)																			\
+			for(y = 0; y < pool_size_h; y++)																		\
+				for(z = 0; z < pool_size_w; z++)																	\
+					if(input[pos + x_max*w_size*h_size + y_max*w_size + z_max] 										\
+						< input[pos + x*w_size*h_size + y*w_size + z])												\
+					{																								\
+						x_max = x; y_max = y; z_max = z;															\
+					}																								\
+		pool_map[pos_out] = (x_max*pool_size_w*pool_size_h + y_max*pool_size_w + z_max);							\
+		output[pos_out] = input[pos + x_max*w_size*h_size + y_max*w_size + z_max];									\
+	}																												\
 }
 
 
-void cuda_forward_pool_layer(layer* current)
-{
-	if(current->c_network->length == 0)
-		return;
-		
-	p_param = (pool_param*) current->param;
-	
-	//late declaration of CUDA kernel sizes
-	dim3 threadsPerBlock(8, 8);
-	//create numBlocks regarding the layer dimensions
-    dim3 numBlocks((p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] + threadsPerBlock.x - 1) / threadsPerBlock.x,
-    	(current->c_network->batch_size * p_param->nb_maps + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    
-    switch(current->c_network->use_cuda_TC)
-	{
-		default:
-		case FP32C_FP32A:
-		case TF32C_FP32A:
-			switch(p_param->pool_type)
-			{
-				default:
-				case MAX_pool:
-					max_pooling_kernel_FP32<<< numBlocks , threadsPerBlock >>>((float*)current->input, 
-						(float*)current->output, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->prev_size[0],
-						p_param->prev_size[1], p_param->prev_size[2], p_param->nb_area[0], p_param->nb_area[1],
-						p_param->nb_area[2], p_param->nb_maps * current->c_network->batch_size);
-					break;
-				case AVG_pool:
-					avg_pooling_kernel_FP32<<< numBlocks , threadsPerBlock >>>((float*)current->input, 
-						(float*)current->output, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->prev_size[0],
-						p_param->prev_size[1], p_param->prev_size[2], p_param->nb_area[0], p_param->nb_area[1],
-						p_param->nb_area[2], p_param->nb_maps * current->c_network->batch_size);
-					break;
-			}
-			break;
-		
-		case FP16C_FP32A:
-		case FP16C_FP16A:
-			switch(p_param->pool_type)
-			{
-				default:
-				case MAX_pool:
-					max_pooling_kernel_FP16<<< numBlocks , threadsPerBlock >>>((half*)current->input, 
-						(half*)current->output, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->prev_size[0],
-						p_param->prev_size[1], p_param->prev_size[2], p_param->nb_area[0], p_param->nb_area[1],
-						p_param->nb_area[2], p_param->nb_maps * current->c_network->batch_size);
-					break;
-				case AVG_pool:
-					avg_pooling_kernel_FP16<<< numBlocks , threadsPerBlock >>>((half*)current->input, 
-						(half*)current->output, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->prev_size[0],
-						p_param->prev_size[1], p_param->prev_size[2], p_param->nb_area[0], p_param->nb_area[1],
-						p_param->nb_area[2], p_param->nb_maps * current->c_network->batch_size);
-					break;
-			}
-			break;
-			
-		case BF16C_FP32A:
-			switch(p_param->pool_type)
-			{
-				default:
-				case MAX_pool:
-					max_pooling_kernel_BF16<<< numBlocks , threadsPerBlock >>>((nv_bfloat16*)current->input, 
-						(nv_bfloat16*)current->output, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->prev_size[0],
-						p_param->prev_size[1], p_param->prev_size[2], p_param->nb_area[0], p_param->nb_area[1],
-						p_param->nb_area[2], p_param->nb_maps * current->c_network->batch_size);
-					break;
-				case AVG_pool:
-					avg_pooling_kernel_BF16<<< numBlocks , threadsPerBlock >>>((nv_bfloat16*)current->input, 
-						(nv_bfloat16*)current->output, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->prev_size[0],
-						p_param->prev_size[1], p_param->prev_size[2], p_param->nb_area[0], p_param->nb_area[1],
-						p_param->nb_area[2], p_param->nb_maps * current->c_network->batch_size);
-					break;
-			}
-			break;
-	}
+#define avg_pooling_kernel(name, type)																				\
+__global__ void avg_pooling_kernel_##name																			\
+	(void* i_input, void* i_output, int* pool_map, 																	\
+	int pool_size_w, int pool_size_h, int pool_size_d,																\
+	int w_size, int h_size, int d_size, 																			\
+	int w_size_out, int h_size_out, int d_size_out, int length)														\
+{																													\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
+	int k = blockIdx.y*blockDim.y + threadIdx.y;																	\
+	int x, y, z, pos, pos_x, pos_y, pos_z, pos_out;																	\
+	float r_avg = 0.0f;																								\
+																													\
+	type* input  = (type*) i_input;																					\
+	type* output = (type*) i_output;																				\
+																													\
+	pos_z = i / (w_size_out*h_size_out); 																			\
+	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;																\
+	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;																\
+																													\
+	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);		\
+																													\
+	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;	\
+																													\
+	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)								\
+	{																												\
+		for(x = 0; x < pool_size_d; x++)																			\
+			for(y = 0; y < pool_size_h; y++)																		\
+				for(z = 0; z < pool_size_w; z++)																	\
+					r_avg += (float) input[pos + x*w_size*h_size + y*w_size + z];									\
+																													\
+		output[pos_out] = (type) (r_avg/(pool_size_w*pool_size_h*pool_size_d));										\
+	}																												\
+}
 
-	if(p_param->dropout_rate > 0.01 && (!current->c_network->is_inference || current->c_network->inference_drop_mode == MC_MODEL))
-	{
-		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-		cuda_dropout_select_pool<<<cu_blocks, 1>>>(p_param->dropout_mask, p_param->nb_maps 
-			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), p_param->dropout_rate, (curandState_t*) p_param->block_state);	
-		
-		dim3 threadsPerBlock(32, 8);
-		dim3 numBlocks((p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
-			(current->c_network->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
-		
-		switch(current->c_network->use_cuda_TC)
-		{
-			default:
-			case FP32C_FP32A:
-			case TF32C_FP32A:
-				cuda_dropout_apply_pool_FP32<<<numBlocks, threadsPerBlock>>>((float*)current->output, 
-					current->c_network->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]),
-					p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-				break;
-				
-			case FP16C_FP32A:
-			case FP16C_FP16A:
-				cuda_dropout_apply_pool_FP16<<<numBlocks, threadsPerBlock>>>((half*)current->output, 
-					current->c_network->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), 
-					p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-				break;
-				
-			case BF16C_FP32A:
-				cuda_dropout_apply_pool_BF16<<<numBlocks, threadsPerBlock>>>((nv_bfloat16*)current->output, 
-					current->c_network->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), 
-					p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-				break;
-		}
-	}
+#define deltah_max_pool_cont(name, type)																			\
+__global__ void deltah_max_pool_cont_##name																			\
+	(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 														\
+	int pool_size_w, int pool_size_h, int pool_size_d, 																\
+	int len, int batch_size, int image_size, int w_size, int h_size)												\
+{																													\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
+																													\
+	type* delta_o = (type*) i_delta_o;																				\
+	type* delta_o_unpool = (type*) i_delta_o_unpool;																\
+																													\
+	if(i < len*image_size)																							\
+	{																												\
+		/*add mask of locations*/																					\
+		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d			\
+			+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h										\
+			+ ((i%(w_size*h_size))%w_size) * pool_size_w +															\
+			+ (int(pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 				\
+			+ ((int(pool_map[i])%(pool_size_w*pool_size_h))/pool_size_h) * w_size * pool_size_w						\
+			+ ((int(pool_map[i])%(pool_size_w*pool_size_h))%pool_size_h);											\
+																													\
+		*delta_o_unpool = delta_o[i];																				\
+	}																												\
 }
 
 
-void cuda_backward_pool_layer(layer* current)
-{	
-	p_param = (pool_param*) current->param;
-	
-	if(p_param->dropout_rate > 0.01)
-	{
-		dim3 threadsPerBlock(32, 8);
-		dim3 numBlocks((p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
-			(current->c_network->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
-		
-		switch(current->c_network->use_cuda_TC)
-		{
-			default:
-			case FP32C_FP32A:
-			case TF32C_FP32A:
-				cuda_dropout_apply_pool_FP32<<<numBlocks, threadsPerBlock>>>((float*)current->delta_o, 
-					current->c_network->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), 
-					p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-				break;
-				
-			case FP16C_FP32A:
-			case FP16C_FP16A:
-				cuda_dropout_apply_pool_FP16<<<numBlocks, threadsPerBlock>>>((half*)current->delta_o, 
-					current->c_network->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), 
-					p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-				break;
-				
-			case BF16C_FP32A:
-				cuda_dropout_apply_pool_BF16<<<numBlocks, threadsPerBlock>>>((nv_bfloat16*)current->delta_o, 
-					current->c_network->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), 
-					p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-				break;
-		}
-	}
-
-	if(current->previous != NULL)
-	{
-		if(current->previous->type == CONV)
-		{
-			switch(current->c_network->use_cuda_TC)
-			{
-				default:
-				case FP32C_FP32A:
-				case TF32C_FP32A:
-					//array must be set to 0 as deltah_pool do not erase previous values
-					cudaMemset(current->previous->delta_o, 0.0f, p_param->nb_maps 
-						* p_param->prev_size[0] * p_param->prev_size[1] * p_param->prev_size[2]
-						* current->c_network->batch_size*sizeof(float));
-				
-					cu_blocks = (current->c_network->batch_size*(p_param->nb_maps * p_param->nb_area[0] 
-						* p_param->nb_area[1] * p_param->nb_area[2]) + cu_threads - 1) / cu_threads;
-					
-					switch(p_param->pool_type)
-					{
-						default:
-						case MAX_pool:
-							deltah_max_pool_cont_FP32<<< cu_blocks, cu_threads >>>((float*)current->delta_o, 
-								(float*)current->previous->delta_o, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], 
-								current->c_network->length, current->c_network->batch_size, p_param->nb_maps 
-								* p_param->nb_area[0] * p_param->nb_area[1], p_param->nb_area[0], p_param->nb_area[1]);
-							break;
-						case AVG_pool:
-							deltah_avg_pool_cont_FP32<<< cu_blocks, cu_threads >>>((float*)current->delta_o, 
-								(float*)current->previous->delta_o, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], 
-								current->c_network->length, current->c_network->batch_size, p_param->nb_maps 
-								* p_param->nb_area[0] * p_param->nb_area[1], p_param->nb_area[0], p_param->nb_area[1]);
-							break;
-					}
-					break;
-				
-				case FP16C_FP32A:
-				case FP16C_FP16A:
-					//array must be set to 0 as deltah_pool do not erase previous values
-					cudaMemset(current->previous->delta_o, 0.0f, p_param->nb_maps 
-						* p_param->prev_size[0] * p_param->prev_size[1] *p_param->prev_size[2]
-						* current->c_network->batch_size*sizeof(half));
-				
-					cu_blocks = (current->c_network->batch_size*(p_param->nb_maps * p_param->nb_area[0] 
-						* p_param->nb_area[1] * p_param->nb_area[2]) + cu_threads - 1) / cu_threads;
-					switch(p_param->pool_type)
-					{
-						default:
-						case MAX_pool:
-							deltah_max_pool_cont_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o, 
-								(half*)current->previous->delta_o, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
-								current->c_network->length, current->c_network->batch_size, p_param->nb_maps 
-								* p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2], p_param->nb_area[0], p_param->nb_area[1]);
-							break;
-						case AVG_pool:
-							deltah_avg_pool_cont_FP16<<< cu_blocks, cu_threads >>>((half*)current->delta_o, 
-								(half*)current->previous->delta_o, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
-								current->c_network->length, current->c_network->batch_size, p_param->nb_maps 
-								* p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2], p_param->nb_area[0], p_param->nb_area[1]);
-							break;
-					}
-					break;
-					
-				case BF16C_FP32A:
-					//array must be set to 0 as deltah_pool do not erase previous values
-					cudaMemset(current->previous->delta_o, 0.0f, p_param->nb_maps 
-						* p_param->prev_size[0] * p_param->prev_size[1] *p_param->prev_size[2]
-						* current->c_network->batch_size*sizeof(nv_bfloat16));
-				
-					cu_blocks = (current->c_network->batch_size*(p_param->nb_maps * p_param->nb_area[0] 
-						* p_param->nb_area[1] * p_param->nb_area[2]) + cu_threads - 1) / cu_threads;
-					switch(p_param->pool_type)
-					{
-						default:
-						case MAX_pool:
-							deltah_max_pool_cont_BF16<<< cu_blocks, cu_threads >>>((nv_bfloat16*)current->delta_o,
-								(nv_bfloat16*)current->previous->delta_o, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
-								current->c_network->length, current->c_network->batch_size, p_param->nb_maps 
-								* p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2], p_param->nb_area[0], p_param->nb_area[1]);
-							break;
-						case AVG_pool:
-							deltah_avg_pool_cont_BF16<<< cu_blocks, cu_threads >>>((nv_bfloat16*)current->delta_o,
-								(nv_bfloat16*)current->previous->delta_o, p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
-								current->c_network->length, current->c_network->batch_size, p_param->nb_maps 
-								* p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2], p_param->nb_area[0], p_param->nb_area[1]);
-							break;
-					}
-					break;
-			}
-		}
-	}
-}
-
-
-__global__ void max_pooling_kernel_FP32(float* input, float* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int k = blockIdx.y*blockDim.y + threadIdx.y;
-	int x, y, z, x_max, y_max, z_max, pos, pos_x, pos_y, pos_z, pos_out;
-	
-	pos_z = i / (w_size_out*h_size_out); 
-	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;
-	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;
-	
-	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);
-	
-	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;
-	
-	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)
-	{
-		x_max = 0;
-		y_max = 0;
-		z_max = 0;
-		for(x = 0; x < pool_size_d; x++)
-			for(y = 0; y < pool_size_h; y++)
-				for(z = 0; z < pool_size_w; z++)
-					if(input[pos + x_max*w_size*h_size + y_max*w_size + z_max] < input[pos + x*w_size*h_size + y*w_size + z])
-					{
-						x_max = x;
-						y_max = y;
-						z_max = z;
-					}
-		pool_map[pos_out] = (x_max*pool_size_w*pool_size_h + y_max*pool_size_w + z_max);
-		output[pos_out] = input[pos + x_max*w_size*h_size + y_max*w_size + z_max];
-	}
-}
-
-__global__ void max_pooling_kernel_FP16(half* input, half* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int k = blockIdx.y*blockDim.y + threadIdx.y;
-	int x, y, z, x_max, y_max, z_max, pos, pos_x, pos_y, pos_z, pos_out;
-	
-	pos_z = i / (w_size_out*h_size_out); 
-	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;
-	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;
-	
-	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);
-	
-	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;
-	
-	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)
-	{
-		x_max = 0;
-		y_max = 0;
-		z_max = 0;
-		for(x = 0; x < pool_size_d; x++)
-			for(y = 0; y < pool_size_h; y++)
-				for(z = 0; z < pool_size_w; z++)
-					if(input[pos + x_max*w_size*h_size + y_max*w_size + z_max] < input[pos + x*w_size*h_size + y*w_size + z])
-					{
-						x_max = x;
-						y_max = y;
-						z_max = z;
-					}
-		pool_map[pos_out] = (x_max*pool_size_w*pool_size_h + y_max*pool_size_w + z_max);
-		output[pos_out] = input[pos + x_max*w_size*h_size + y_max*w_size + z_max];
-	}
-}
-
-__global__ void max_pooling_kernel_BF16(nv_bfloat16* input, nv_bfloat16* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int k = blockIdx.y*blockDim.y + threadIdx.y;
-	int x, y, z, x_max, y_max, z_max, pos, pos_x, pos_y, pos_z, pos_out;
-	
-	pos_z = i / (w_size_out*h_size_out); 
-	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;
-	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;
-	
-	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);
-	
-	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;
-	
-	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)
-	{
-		x_max = 0;
-		y_max = 0;
-		z_max = 0;
-		for(x = 0; x < pool_size_d; x++)
-			for(y = 0; y < pool_size_h; y++)
-				for(z = 0; z < pool_size_w; z++)
-					if(input[pos + x_max*w_size*h_size + y_max*w_size + z_max] < input[pos + x*w_size*h_size + y*w_size + z])
-					{
-						x_max = x;
-						y_max = y;
-						z_max = z;
-					}
-		pool_map[pos_out] = (x_max*pool_size_w*pool_size_h + y_max*pool_size_w + z_max);
-		output[pos_out] = input[pos + x_max*w_size*h_size + y_max*w_size + z_max];
-	}
-}
-
-
-__global__ void avg_pooling_kernel_FP32(float* input, float* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int k = blockIdx.y*blockDim.y + threadIdx.y;
-	int x, y, z, pos, pos_x, pos_y, pos_z, pos_out;
-	float r_avg = 0.0f;
-	
-	pos_z = i / (w_size_out*h_size_out); 
-	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;
-	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;
-	
-	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);
-	
-	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;
-	
-	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)
-	{
-		for(x = 0; x < pool_size_d; x++)
-			for(y = 0; y < pool_size_h; y++)
-				for(z = 0; z < pool_size_w; z++)
-					r_avg += (float) input[pos + x*w_size*h_size + y*w_size + z];
-					
-		output[pos_out] = (float) (r_avg/(pool_size_w*pool_size_h*pool_size_d));
-	}
-}
-
-__global__ void avg_pooling_kernel_FP16(half* input, half* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int k = blockIdx.y*blockDim.y + threadIdx.y;
-	int x, y, z, pos, pos_x, pos_y, pos_z, pos_out;
-	float r_avg = 0.0f;
-	
-	pos_z = i / (w_size_out*h_size_out); 
-	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;
-	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;
-	
-	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);
-	
-	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;
-	
-	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)
-	{
-		for(x = 0; x < pool_size_d; x++)
-			for(y = 0; y < pool_size_h; y++)
-				for(z = 0; z < pool_size_w; z++)
-					r_avg += (float) input[pos + x*w_size*h_size + y*w_size + z];
-					
-		output[pos_out] = (half) (r_avg/(pool_size_w*pool_size_h*pool_size_d));
-	}
-}
-
-__global__ void avg_pooling_kernel_BF16(nv_bfloat16* input, nv_bfloat16* output, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, int length)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int k = blockIdx.y*blockDim.y + threadIdx.y;
-	int x, y, z, pos, pos_x, pos_y, pos_z, pos_out;
-	float r_avg = 0.0f;
-	
-	pos_z = i / (w_size_out*h_size_out); 
-	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;
-	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;
-	
-	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);
-	
-	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;
-	
-	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)
-	{
-		for(x = 0; x < pool_size_d; x++)
-			for(y = 0; y < pool_size_h; y++)
-				for(z = 0; z < pool_size_w; z++)
-					r_avg += (float) input[pos + x*w_size*h_size + y*w_size + z];
-					
-		output[pos_out] = (nv_bfloat16) (r_avg/(pool_size_w*pool_size_h*pool_size_d));
-	}
-}
-
-__global__ void deltah_max_pool_cont_FP32(float* delta_o, float* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int pos;
-
-	pos = i;
-	
-	if(i < len*image_size)
-	{
-		//add mask of locations
-		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d
-			+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h
-			+ ((i%(w_size*h_size))%w_size) * pool_size_w +
-			+ (int(pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 
-			+ ((int(pool_map[i])%(pool_size_w*pool_size_h))/pool_size_h) * w_size * pool_size_w
-			+ ((int(pool_map[i])%(pool_size_w*pool_size_h))%pool_size_h);
-		
-		*delta_o_unpool = delta_o[pos];
-	}
-	
-}
-
-__global__ void deltah_max_pool_cont_FP16(half* delta_o, half* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int pos;
-
-	pos = i;
-	
-	if(i < len*image_size)
-	{
-		//add mask of locations
-		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d
-			+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h
-			+ ((i%(w_size*h_size))%w_size) * pool_size_w +
-			+ (int(pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 
-			+ ((int(pool_map[i])%(pool_size_w*pool_size_h))/pool_size_h) * w_size * pool_size_w
-			+ ((int(pool_map[i])%(pool_size_w*pool_size_h))%pool_size_h);
-		
-		*delta_o_unpool = delta_o[pos];
-	}
-	
-}
-
-__global__ void deltah_max_pool_cont_BF16(nv_bfloat16* delta_o, nv_bfloat16* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int pos;
-
-	pos = i;
-	
-	if(i < len*image_size)
-	{
-		//add mask of locations
-		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d
-			+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h
-			+ ((i%(w_size*h_size))%w_size) * pool_size_w +
-			+ (int(pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 
-			+ ((int(pool_map[i])%(pool_size_w*pool_size_h))/pool_size_h) * w_size * pool_size_w
-			+ ((int(pool_map[i])%(pool_size_w*pool_size_h))%pool_size_h);
-		
-		*delta_o_unpool = delta_o[pos];
-	}
-	
-}
-
-__global__ void deltah_avg_pool_cont_FP32(float* delta_o, float* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int pos, x, y, z;
-
-	pos = i;
-	
-	if(i < len*image_size)
-	{
-		//add mask of locations
-		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d
-						+ ((i%(w_size*h_size))/h_size) * h_size * pool_size_w * pool_size_h
-						+ ((i%(w_size*h_size))%h_size) * pool_size_w;
-		
-		for(x = 0; x < pool_size_d; x++)
-			for(y = 0; y < pool_size_h; y++)
-				for(z = 0; z < pool_size_w; z++)
-					 delta_o_unpool[(x) * w_size * h_size * pool_size_w * pool_size_h 
-						+ (y) * w_size * pool_size_w + (z)] = ((float)delta_o[pos]/(pool_size_w*pool_size_h*pool_size_d));
-	}
-	
-}
-
-__global__ void deltah_avg_pool_cont_FP16(half* delta_o, half* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int pos, x, y, z;
-
-	pos = i;
-	
-	if(i < len*image_size)
-	{
-		//add mask of locations
-		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d
-						+ ((i%(w_size*h_size))/h_size) * h_size * pool_size_w * pool_size_h
-						+ ((i%(w_size*h_size))%h_size) * pool_size_w;
-		
-		for(x = 0; x < pool_size_d; x++)
-			for(y = 0; y < pool_size_h; y++)
-				for(z = 0; z < pool_size_w; z++)
-					 delta_o_unpool[(x) * w_size * h_size * pool_size_w * pool_size_h 
-						+ (y) * w_size * pool_size_w + (z)] = (half)((float)delta_o[pos]/(pool_size_w*pool_size_h*pool_size_d));
-	}
-	
-}
-
-__global__ void deltah_avg_pool_cont_BF16(nv_bfloat16* delta_o, nv_bfloat16* delta_o_unpool, int* pool_map, int pool_size_w, int pool_size_h, int pool_size_d, int len, int batch_size, int image_size, int w_size, int h_size)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	int pos, x, y, z;
-
-	pos = i;
-	
-	if(i < len*image_size)
-	{
-		//add mask of locations
-		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d
-						+ ((i%(w_size*h_size))/h_size) * h_size * pool_size_w * pool_size_h
-						+ ((i%(w_size*h_size))%h_size) * pool_size_w;
-		
-		for(x = 0; x < pool_size_d; x++)
-			for(y = 0; y < pool_size_h; y++)
-				for(z = 0; z < pool_size_w; z++)
-					 delta_o_unpool[(x) * w_size * h_size * pool_size_w * pool_size_h 
-						+ (y) * w_size * pool_size_w + (z)] = (nv_bfloat16)((float)delta_o[pos]/(pool_size_w*pool_size_h*pool_size_d));
-	}
-	
+#define deltah_avg_pool_cont(name, type)																			\
+__global__ void deltah_avg_pool_cont_##name																			\
+	(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 														\
+	int pool_size_w, int pool_size_h, int pool_size_d,																\
+	int len, int batch_size, int image_size, int w_size, int h_size)												\
+{																													\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
+	int x, y, z;																									\
+																													\
+	type* delta_o = (type*) i_delta_o;																				\
+	type* delta_o_unpool = (type*) i_delta_o_unpool;																\
+																													\
+	if(i < len*image_size)																							\
+	{																												\
+		/*add mask of locations*/																					\
+		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d			\
+						+ ((i%(w_size*h_size))/h_size) * h_size * pool_size_w * pool_size_h							\
+						+ ((i%(w_size*h_size))%h_size) * pool_size_w;												\
+																													\
+		for(x = 0; x < pool_size_d; x++)																			\
+			for(y = 0; y < pool_size_h; y++)																		\
+				for(z = 0; z < pool_size_w; z++)																	\
+					 delta_o_unpool[(x) * w_size * h_size * pool_size_w * pool_size_h 								\
+						+ (y) * w_size * pool_size_w + (z)] 														\
+						= (type)((float)delta_o[i]/(pool_size_w*pool_size_h*pool_size_d));							\
+	}																												\
 }
 
 __global__ void init_block_state_pool(unsigned int seed,  curandState_t* states)
@@ -665,51 +185,239 @@ __global__ void cuda_dropout_select_pool(int* mask, int size, float drop_rate, c
 	}
 }
 
-__global__ void cuda_dropout_apply_pool_FP32(float* table, int batch_size, int dim, int* mask, int size)
-{
-	int j = blockIdx.x*blockDim.x + threadIdx.x;
-	int i = blockIdx.y*blockDim.y + threadIdx.y;
-	
-	int c_depth = j / dim;
-	int current_id = j % dim;
-	int offset = dim*batch_size;
+#define cuda_dropout_apply_pool(name, type) 																\
+__global__ void cuda_dropout_apply_pool_##name(void* i_table, int batch_size, int dim, int* mask, int size)	\
+{																											\
+	int j = blockIdx.x*blockDim.x + threadIdx.x;															\
+	int i = blockIdx.y*blockDim.y + threadIdx.y;															\
+																											\
+	int c_depth = j / dim;																					\
+	int current_id = j % dim;																				\
+	int offset = dim*batch_size;																			\
+																											\
+	type* table = (type*) i_table;																			\
+																											\
+	if(i < batch_size && j < size)																			\
+		table[i*dim + c_depth*offset + current_id] *= mask[j];												\
+}
 
-	if(i < batch_size && j < size)
+#define cuda_typed_memset(name, type)																		\
+void cuda_typed_memset_##name(void* i_table, float value, int size)											\
+{																											\
+	type* table = (type*) i_table;																			\
+																											\
+	cudaMemset(table, (type) value, size * sizeof(type));													\
+}
+
+
+
+max_pooling_kernel(FP32, float);
+avg_pooling_kernel(FP32, float);
+deltah_max_pool_cont(FP32, float);
+deltah_avg_pool_cont(FP32, float);
+cuda_dropout_apply_pool(FP32, float);
+cuda_typed_memset(FP32, float);
+
+#if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
+max_pooling_kernel(FP16, half);
+avg_pooling_kernel(FP16, half);
+deltah_max_pool_cont(FP16, half);
+deltah_avg_pool_cont(FP16, half);
+cuda_dropout_apply_pool(FP16, half);
+cuda_typed_memset(FP16, half);
+#endif
+
+#if defined (GEN_AMPERE)
+max_pooling_kernel(BF16, nv_bfloat16);
+avg_pooling_kernel(BF16, nv_bfloat16);
+deltah_max_pool_cont(BF16, nv_bfloat16);
+deltah_avg_pool_cont(BF16, nv_bfloat16);
+cuda_dropout_apply_pool(BF16, nv_bfloat16);
+cuda_typed_memset(BF16, nv_bfloat16);
+#endif
+
+
+void cuda_pool_init(network* net)
+{
+	switch(net->cu_inst.use_cuda_TC)
 	{
-		table[i*dim + c_depth*offset + current_id] *= mask[j];
+		default:
+		case FP32C_FP32A:
+		case TF32C_FP32A:
+			net->cu_inst.cu_pool_fcts.max_pool_fct = max_pooling_kernel_FP32;
+			net->cu_inst.cu_pool_fcts.max_deltah_pool_fct = deltah_max_pool_cont_FP32;
+			net->cu_inst.cu_pool_fcts.avg_pool_fct = avg_pooling_kernel_FP32;
+			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_FP32;
+			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_FP32;
+			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_FP32;
+			break;
+		
+		case FP16C_FP32A:
+		case FP16C_FP16A:
+			#if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
+			net->cu_inst.cu_pool_fcts.max_pool_fct = max_pooling_kernel_FP16;
+			net->cu_inst.cu_pool_fcts.max_deltah_pool_fct = deltah_max_pool_cont_FP16;
+			net->cu_inst.cu_pool_fcts.avg_pool_fct = avg_pooling_kernel_FP16;
+			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_FP16;
+			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_FP16;
+			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_FP16;
+			break;
+			#else
+			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
+			exit(EXIT_FAILURE);
+			#endif
+			break;
+
+		case BF16C_FP32A:
+			#if defined (GEN_AMPERE)
+			net->cu_inst.cu_pool_fcts.max_pool_fct = max_pooling_kernel_BF16;
+			net->cu_inst.cu_pool_fcts.max_deltah_pool_fct = deltah_max_pool_cont_BF16;
+			net->cu_inst.cu_pool_fcts.avg_pool_fct = avg_pooling_kernel_BF16;
+			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_BF16;
+			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_BF16;
+			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_BF16;
+			break;
+			#else
+			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
+			exit(EXIT_FAILURE);
+			#endif
+			break;
 	}
 }
 
-__global__ void cuda_dropout_apply_pool_FP16(half* table, int batch_size, int dim, int* mask, int size)
+void cuda_pool_define(layer *current)
 {
-	int j = blockIdx.x*blockDim.x + threadIdx.x;
-	int i = blockIdx.y*blockDim.y + threadIdx.y;
-
-	int c_depth = j / dim;
-    int current_id = j % dim;
-    int offset = dim*batch_size;
-
-    if(i < batch_size && j < size)
-    {
-            table[i*dim + c_depth*offset + current_id] *= mask[j];
-    }
+	current->forward = cuda_forward_pool_layer;
+	current->backprop = cuda_backward_pool_layer;
 }
 
-__global__ void cuda_dropout_apply_pool_BF16(nv_bfloat16* table, int batch_size, int dim, int* mask, int size)
+size_t cuda_convert_pool_layer(layer *current)
 {
-	int j = blockIdx.x*blockDim.x + threadIdx.x;
-	int i = blockIdx.y*blockDim.y + threadIdx.y;
+	p_param = (pool_param*)current->param;
+	size_t vram_approx = 0;
+	
+	network* net = current->c_network;
 
-	int c_depth = j / dim;
-    int current_id = j % dim;
-    int offset = dim*batch_size;
-
-    if(i < batch_size && j < size)
-    {
-            table[i*dim + c_depth*offset + current_id] *= mask[j];
-    }
+	vram_approx += cuda_convert_table_int(&(p_param->pool_map), p_param->nb_area[0] 
+		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size);
+	vram_approx += cuda_convert_table(net, &(current->output), p_param->nb_area[0] 
+		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size);
+	
+	vram_approx += cuda_convert_table(net, &(current->delta_o), p_param->nb_area[0] 
+		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size);
+		
+	if(p_param->dropout_rate > 0.01)
+	{
+		vram_approx += cuda_convert_table_int(&(p_param->dropout_mask), p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+		cudaMalloc((void**) &p_param->block_state, (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])) * sizeof(curandState_t));
+		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+		init_block_state_pool<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)p_param->block_state);
+	}
+	
+	return vram_approx;
 }
 
+
+void cuda_forward_pool_layer(layer* current)
+{
+	network* net = current->c_network;
+	
+	if(net->length == 0)
+		return;
+		
+	p_param = (pool_param*) current->param;
+	
+	//late declaration of CUDA kernel sizes
+	dim3 threadsPerBlock(8, 8);
+	//create numBlocks regarding the layer dimensions
+    dim3 numBlocks((p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] + threadsPerBlock.x - 1) / threadsPerBlock.x,
+    	(net->batch_size * p_param->nb_maps + threadsPerBlock.y - 1) / threadsPerBlock.y);
+	
+	switch(p_param->pool_type)
+	{
+		default:
+		case MAX_pool:
+			net->cu_inst.cu_pool_fcts.max_pool_fct<<< numBlocks , threadsPerBlock >>>(current->input, current->output, 
+				p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
+				p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
+				p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
+				p_param->nb_maps * net->batch_size);
+			break;
+		case AVG_pool:
+			net->cu_inst.cu_pool_fcts.avg_pool_fct<<< numBlocks , threadsPerBlock >>>(current->input, current->output, 
+				p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
+				p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
+				p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
+				p_param->nb_maps * net->batch_size);
+			break;
+	}
+
+	if(p_param->dropout_rate > 0.01 && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	{
+		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+		cuda_dropout_select_pool<<<cu_blocks, 1>>>(p_param->dropout_mask, p_param->nb_maps 
+			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), p_param->dropout_rate, (curandState_t*) p_param->block_state);	
+		
+		dim3 threadsPerBlock(32, 8);
+		dim3 numBlocks((p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
+			(net->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
+		
+		
+		net->cu_inst.cu_pool_fcts.drop_apply_fct<<<numBlocks, threadsPerBlock>>>(current->output, 
+			net->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]),
+			p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+
+	}
+}
+
+
+void cuda_backward_pool_layer(layer* current)
+{	
+	p_param = (pool_param*) current->param;
+	
+	network* net = current->c_network;
+	
+	if(p_param->dropout_rate > 0.01)
+	{
+		dim3 threadsPerBlock(32, 8);
+		dim3 numBlocks((p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
+			(net->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
+		
+		net->cu_inst.cu_pool_fcts.drop_apply_fct<<<numBlocks, threadsPerBlock>>>(current->delta_o, 
+			net->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), 
+			p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+	}
+
+	if(current->previous != NULL)
+	{
+		if(current->previous->type == CONV)
+		{		
+			net->cu_inst.cu_pool_fcts.typed_memset_fct(current->previous->delta_o, 0.0f, p_param->nb_maps 
+				* p_param->prev_size[0] * p_param->prev_size[1] *p_param->prev_size[2]
+				* net->batch_size);
+				
+			cu_blocks = (net->batch_size*(p_param->nb_maps * p_param->nb_area[0] 
+				* p_param->nb_area[1] * p_param->nb_area[2]) + cu_threads - 1) / cu_threads;
+			switch(p_param->pool_type)
+			{
+				default:
+				case MAX_pool:
+					net->cu_inst.cu_pool_fcts.max_deltah_pool_fct<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, 
+						p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
+						net->length, net->batch_size, p_param->nb_maps 
+						* p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2], p_param->nb_area[0], p_param->nb_area[1]);
+					break;
+				
+				case AVG_pool:
+					net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, 
+						p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
+						net->length, net->batch_size, p_param->nb_maps 
+						* p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2], p_param->nb_area[0], p_param->nb_area[1]);
+					break;
+			}
+		}
+	}
+}
 
 
 

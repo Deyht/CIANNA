@@ -42,7 +42,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
 {
 
 	printf("############################################################\n\
-CIANNA V-0.9.2.6 EXPERIMENTAL BUILD (08/2021), by D.Cornu\n\
+CIANNA V-0.9.2.7 EXPERIMENTAL BUILD (09/2021), by D.Cornu\n\
 ############################################################\n\n");
 
 
@@ -52,13 +52,15 @@ CIANNA V-0.9.2.6 EXPERIMENTAL BUILD (08/2021), by D.Cornu\n\
 	networks[network_number] = net;
 	
 	net->id = network_number;
-	net->dynamic_load = u_dynamic_load;
-	net->use_cuda_TC = u_use_cuda_TC;
 	
-	//Additional security, but all statements should be safe on its own
-	//note that FP32/FP32 Tensore Core operation exist (different than TF32)
+	#ifdef CUDA
+	net->cu_inst.dynamic_load = u_dynamic_load;
+	net->cu_inst.use_cuda_TC= u_use_cuda_TC;
+	
+	//Additional security, but all call to use_cuda_TC should be safe on its own
 	if(u_compute_method != C_CUDA)
-		networks[network_number]->use_cuda_TC = FP32C_FP32A;
+		networks[network_number]->cu_inst.use_cuda_TC = FP32C_FP32A;
+	#endif
 	
 	nb_networks++;
 	
@@ -149,13 +151,8 @@ CIANNA V-0.9.2.6 EXPERIMENTAL BUILD (08/2021), by D.Cornu\n\
 
 }
 
-void copy_to_float(void* in_tab, void* out_tab, int out_offset, int size)
-{
-	for(int i = 0; i < size; i++)
-		((float*)out_tab + out_offset)[i] = *((float*)in_tab + i);
-}
 
-Dataset create_dataset_FP32(network *net, int nb_elem)
+Dataset create_dataset_host(network *net, int nb_elem)
 {
 	int i,j;
 	Dataset data;
@@ -165,7 +162,7 @@ Dataset create_dataset_FP32(network *net, int nb_elem)
 	data.input = (void**) malloc(data.nb_batch*sizeof(float*));
 	data.target = (void**) malloc(data.nb_batch*sizeof(float*));
 	data.localization = HOST;
-	data.cont_copy = copy_to_float;
+	data.cont_copy = NULL;
 	
 	for(i = 0; i < data.nb_batch; i++)
 	{
@@ -187,26 +184,15 @@ Dataset create_dataset_FP32(network *net, int nb_elem)
 
 Dataset create_dataset(network *net, int nb_elem)
 {
-	switch(net->use_cuda_TC)
+	#ifdef CUDA
+	if(net->compute_method == C_CUDA)
 	{
-		default:
-		case FP32C_FP32A:
-		case TF32C_FP32A:
-			return create_dataset_FP32(net, nb_elem);
-			break;
-			
-		case FP16C_FP32A:
-		case FP16C_FP16A:
-			#ifdef CUDA
-			return create_dataset_FP16(net, nb_elem);
-			#endif
-			break;
-			
-		case BF16C_FP32A:
-			#ifdef CUDA
-			return create_dataset_BF16(net, nb_elem);
-			#endif
-			break;
+		return cuda_create_dataset(net, nb_elem);
+	}
+	else
+	#endif
+	{
+		return create_dataset_host(net, nb_elem);
 	}
 }
 
@@ -911,7 +897,6 @@ void perf_eval_display(network *net)
 			printf("Warning: some layers were not benchmarked\n");
 	}
 	
-	
 	printf("\n   Layer         Forward            Backprop           Cumulated\n");
 	printf("       N       [ms] / [%%]          [ms] / [%%]         [ms] / [%%]\n");	
 	printf("  -------------------------------------------------------------------\n");
@@ -972,7 +957,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		#ifdef CUDA
 		if(net->compute_method == C_CUDA)
 		{
-			cuda_create_table_FP32(net, &cuda_mat, o*o);
+			cuda_create_table_FP32((void**) &cuda_mat, o*o);
 		}
 		#endif
 	}	
@@ -981,27 +966,9 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	{
 		#ifdef CUDA
 		if(net->compute_method == C_CUDA)
-			output_save = (float*) calloc(net->batch_size*net->out_size, sizeof(float));
-		if(net->compute_method == C_CUDA)
 		{
-			switch(net->use_cuda_TC)
-			{
-				default:
-				case FP32C_FP32A:
-				case TF32C_FP32A:
-					//nothing to do
-					break;
-				
-				case FP16C_FP32A:
-				case FP16C_FP16A:
-					cuda_create_host_table_FP16(net, &output_buffer, net->batch_size*net->out_size);
-					break;
-				
-				case BF16C_FP32A:
-					cuda_create_host_table_BF16(net, &output_buffer, net->batch_size*net->out_size);
-					break;
-			}
-				
+			output_save = (float*) calloc(net->batch_size*net->out_size, sizeof(float));
+			cuda_create_host_table(net, &output_buffer, net->batch_size*net->out_size);		
 		}
 		#endif
 		sprintf(f_save_name, "fwd_res/net%d_%04d.dat", net->id, net->epoch);
@@ -1037,7 +1004,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			{
 				#ifdef CUDA
 				temp_error = net->output_error;
-				net->output_error = net->output_error_cuda;
+				net->output_error = net->cu_inst.output_error_cuda;
 				#endif
 			}
 			
@@ -1050,11 +1017,19 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			else
 				net->length = net->batch_size;
 			
-			if(net->compute_method == C_CUDA && net->dynamic_load)
+			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
-				cuda_put_table(net, net->input, data.input[j], net->batch_size*(net->input_dim+1));
-				cuda_put_table(net, net->target, data.target[j], net->batch_size*(net->output_dim));
+				if(net->cu_inst.dynamic_load)
+				{
+					cuda_put_table(net, net->input, data.input[j], net->batch_size*(net->input_dim+1));
+					cuda_put_table(net, net->target, data.target[j], net->batch_size*(net->output_dim));
+				}
+				else
+				{
+					net->input = data.input[j];
+					net->target = data.target[j];
+				}
 				#endif
 			}
 			else
@@ -1079,30 +1054,13 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
-				cuda_get_table_FP32(net, net->output_error, temp_error, net->batch_size*net->out_size);
+				cuda_get_table_FP32(net->output_error, temp_error, net->batch_size*net->out_size);
 				net->output_error = temp_error;	
 				if(saving > 0)
 				{
-					switch(net->use_cuda_TC)
-					{
-						default:
-						case FP32C_FP32A:
-						case TF32C_FP32A:
-							cuda_get_table(net, net->net_layers[net->nb_layers-1]->output,
-								output_save, net->batch_size*net->out_size);
-							break;
-						
-						case FP16C_FP32A:
-						case FP16C_FP16A:
-							cuda_get_table_FP16_to_FP32(net->net_layers[net->nb_layers-1]->output,
-								output_save, net->batch_size*net->out_size, output_buffer);
-							break;
-						
-						case BF16C_FP32A:
-							cuda_get_table_BF16_to_FP32(net->net_layers[net->nb_layers-1]->output,
-								output_save, net->batch_size*net->out_size, output_buffer);
-							break;
-					}
+
+					cuda_get_table_to_FP32(net, net->net_layers[net->nb_layers-1]->output,
+						output_save, net->batch_size*net->out_size, output_buffer);
 					
 					switch(net->net_layers[net->nb_layers-1]->type)
 					{
@@ -1232,17 +1190,26 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 								}
 							}
 						}
-						//cuda_print_table_FP32(net, a_param->IoU_monitor, 2*a_param->nb_box*batch_offset*net->batch_size,  2*a_param->nb_box);
+						
 						//move the alloc and free to avoid having them at each batch
-						host_IoU_monitor = (float*) calloc(2*a_param->nb_box*batch_offset*net->batch_size, sizeof(float));
-						cuda_get_table_FP32(net, a_param->IoU_monitor, host_IoU_monitor, 2*a_param->nb_box*batch_offset*net->batch_size);
+						#ifdef CUDA
+						if(net->compute_method == C_CUDA)
+						{
+							host_IoU_monitor = (float*) calloc(2*a_param->nb_box*batch_offset*net->batch_size, sizeof(float));
+							cuda_get_table_FP32(a_param->IoU_monitor, host_IoU_monitor, 2*a_param->nb_box*batch_offset*net->batch_size);
+						}
+						else
+						#endif
+						{
+							host_IoU_monitor = a_param->IoU_monitor;
+						}
 						for(k = 0; k < 2*a_param->nb_box*batch_offset*net->batch_size; k += 2)
 						{
 							nb_IoU += host_IoU_monitor[k];
 							sum_IoU += host_IoU_monitor[k]*host_IoU_monitor[k+1];
 						}
-						free(host_IoU_monitor);
-						//printf("%d %f %f\n", 2*a_param->nb_box*batch_offset*net->batch_size, nb_IoU, sum_IoU);
+						if(host_IoU_monitor != NULL)
+							free(host_IoU_monitor);
 					}
 					break;
 			}
@@ -1306,7 +1273,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	if(confusion_matrix && net->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		cuda_get_table_FP32(net, (float*)cuda_mat, *mat, o*o);
+		cuda_get_table_FP32((float*)cuda_mat, *mat, o*o);
 		cuda_free_table(cuda_mat);
 		#endif
 	}
@@ -1386,7 +1353,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	
 	if(net->compute_method == C_CUDA)
 	{
-		if(net->dynamic_load)
+		if(net->cu_inst.dynamic_load)
 		{
 			cuda_create_table(net, &(net->input), net->batch_size*(net->input_dim+1));
 			cuda_create_table(net, &(net->target), net->batch_size*(net->output_dim));
@@ -1401,8 +1368,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				for(i = 0; i < net->train.size; i++)
 					index_shuffle[i] = i;
 				index_shuffle_device = (void*)  calloc(net->train.size,sizeof(int));
-				cuda_convert_dataset(net, &shuffle_duplicate);
-				cuda_convert_table_int(net, &index_shuffle_device, net->train.size);
+				cuda_get_batched_dataset(net, &shuffle_duplicate);
+				cuda_convert_table_int(&index_shuffle_device, net->train.size);
 			}
 		}
 		
@@ -1441,7 +1408,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	if(net->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		cuda_create_table_FP32(net, (float**)&net->output_error_cuda, net->batch_size * net->out_size);
+		cuda_create_table_FP32(&net->cu_inst.output_error_cuda, net->batch_size * net->out_size);
 		#endif
 	}
 	
@@ -1457,14 +1424,14 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
-				if(net->dynamic_load)
+				if(net->cu_inst.dynamic_load)
 					cuda_host_only_shuffle(net, net->train);
 				else
 				{
 					if(shuffle_gpu)
 						cuda_shuffle(net, net->train, shuffle_duplicate, index_shuffle, index_shuffle_device);
 					else
-						host_shuffle(net, net->train, shuffle_duplicate);
+						cuda_host_shuffle(net, net->train, shuffle_duplicate);
 				}
 				#endif
 			}
@@ -1491,12 +1458,20 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				batch_loc = j;
 			else
 				batch_loc = random_uniform() * net->train.size;
-				
-			if(net->dynamic_load && net->compute_method == C_CUDA)
+			
+			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
-				cuda_put_table(net, net->input, net->train.input[batch_loc], net->batch_size*(net->input_dim+1));
-				cuda_put_table(net, net->target, net->train.target[batch_loc], net->batch_size*(net->output_dim));
+				if(net->cu_inst.dynamic_load)
+				{
+					cuda_put_table(net, net->input, net->train.input[batch_loc], net->batch_size*(net->input_dim+1));
+					cuda_put_table(net, net->target, net->train.target[batch_loc], net->batch_size*(net->output_dim));	
+				}
+				else
+				{
+					net->input = net->train.input[batch_loc];
+					net->target = net->train.target[batch_loc];
+				}
 				#endif
 			}
 			else
@@ -1529,7 +1504,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			{
 				#ifdef CUDA
 				temp_error = net->output_error;
-				net->output_error = net->output_error_cuda;
+				net->output_error = net->cu_inst.output_error_cuda;
 				#endif
 			}
 
@@ -1538,7 +1513,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
-				cuda_get_table_FP32(net, net->output_error, temp_error, net->batch_size*net->out_size);
+				cuda_get_table_FP32(net->output_error, temp_error, net->batch_size*net->out_size);
 				net->output_error = temp_error;	
 				#endif
 			}
@@ -1601,8 +1576,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	#ifdef CUDA
 	if(net->compute_method == C_CUDA)
 	{
-		cuda_free_table(net->output_error_cuda);
-		if(net->dynamic_load)
+		cuda_free_table(net->cu_inst.output_error_cuda);
+		if(net->cu_inst.dynamic_load)
 		{
 			cuda_free_table(net->input);
 			cuda_free_table(net->target);
@@ -1655,18 +1630,17 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 	if(net->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		cuda_create_table_FP32(net, (float**)&net->output_error_cuda, net->batch_size * net->out_size);
+		cuda_create_table_FP32(&net->cu_inst.output_error_cuda, net->batch_size * net->out_size);
 		#endif
 	}
 	
-	
-	if(net->dynamic_load)
+	#ifdef CUDA
+	if(net->cu_inst.dynamic_load)
 	{
-		#ifdef CUDA
 		cuda_create_table(net, &(net->input), net->batch_size*(net->input_dim+1));
 		cuda_create_table(net, &(net->target), net->batch_size*(net->output_dim));
-		#endif
 	}
+	#endif
 	
 	if(train_step <= 0)
 	{
@@ -1686,17 +1660,17 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 	if(net->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		cuda_free_table(net->output_error_cuda);
+		cuda_free_table(net->cu_inst.output_error_cuda);
 		#endif	
 	}
 	
-	if(net->dynamic_load)
+	#ifdef CUDA
+	if(net->cu_inst.dynamic_load)
 	{
-		#ifdef CUDA
 		cuda_free_table(net->input);
 		cuda_free_table(net->target);
-		#endif
 	}
+	#endif
 }
 
 

@@ -28,6 +28,7 @@
 #include <string.h>
 #include "prototypes.h"
 
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
 // Structures or object related
 //############################################################
@@ -74,6 +75,7 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 		sprintf(string_comp, "NAIV");
 	}
 	
+	#ifdef CUDA
 	if(strcmp(py_mixed_precision,"off") == 0)
 		c_mixed_precision = FP32C_FP32A;
 	else if(strcmp(py_mixed_precision,"on") == 0)
@@ -88,6 +90,7 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 		c_mixed_precision = FP16C_FP16A;
 	else if(strcmp(py_mixed_precision,"BF16C_FP32A") == 0)
 		c_mixed_precision = BF16C_FP32A;
+	#endif
 	
     init_network(network_id, dims, out_dim, bias, b_size, comp_int, dynamic_load, c_mixed_precision);
     
@@ -213,11 +216,12 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	
 	init_timing(&time);
 	#ifdef CUDA
-	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 0)
+	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->cu_inst.dynamic_load == 0)
 	{
 		if(silent == 0)
 			printf("Converting dataset to GPU device (CUDA)\n");
-		cuda_convert_dataset(networks[network_id], data);
+		//cuda_convert_dataset(networks[network_id], data);
+		cuda_get_batched_dataset(networks[network_id], data);
 	}
 	//printf("Time convert data for CUDA %f\n", ellapsed_time(time));
 	
@@ -330,7 +334,7 @@ static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObj
 	int i, j, k, l, m;
 	const char *filename;
 	const char *input_data_type, *output_data_type;
-	int input_data_type_C = FP32, output_data_type_C = FP32;
+	int input_data_type_C = c_FP32, output_data_type_C = c_FP32;
 	PyArrayObject *py_data = NULL, *py_target = NULL;
 	int size, flat = 0;
 	int network_id = nb_networks-1;
@@ -590,7 +594,7 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 	const char *dataset_type;
 	const char *filename;
 	const char *input_data_type, *output_data_type;
-	int input_data_type_C = FP32, output_data_type_C = FP32;
+	int input_data_type_C = c_FP32, output_data_type_C = c_FP32;
 	int network_id = nb_networks-1, silent = 0;
 	static char *kwlist[] = {"dataset", "filename", "input_dtype", "output_dtype", "network_id", "silent", NULL};
 
@@ -636,8 +640,13 @@ static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObje
 	if(silent == 0)
 		printf("Time normalise %f\n",ellapsed_time(time));
 	
-	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 0)
-		cuda_convert_dataset(networks[network_id], &data);
+	if(networks[network_id]->compute_method == C_CUDA)
+	{
+		#ifdef CUDA
+		if(networks[network_id]->cu_inst.dynamic_load == 0)
+			cuda_convert_dataset(networks[network_id], &data);
+		#endif
+	}
 	/*else if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 1 
 					&& networks[network_id]->use_cuda_TC)
 		cuda_convert_host_dataset_FP32(networks[network_id], &data);*/
@@ -992,7 +1001,7 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 {
 	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_net = 0, network_id = nb_networks-1;
 	int shuffle_gpu = 1, shuffle_every = 1, silent = 0;
-	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 4.0;
+	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 1.0;
 	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "decay", "confmat", "save_each", "network", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "silent", NULL};
 	
 	
@@ -1048,7 +1057,7 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 //############################################################
 
 static PyMethodDef CIANNAMethods[] = {
-    { "init_network", (PyCFunction)py_init_network, METH_VARARGS | METH_KEYWORDS, "Initialize network basic sahpes and properties" },
+    { "init_network", (PyCFunction)py_init_network, METH_VARARGS | METH_KEYWORDS, "Initialize network basic shapes and properties" },
     { "create_dataset", (PyCFunction)py_create_dataset, METH_VARARGS | METH_KEYWORDS, "Allocate dataset structure" },
     { "delete_dataset", (PyCFunction)py_delete_dataset, METH_VARARGS | METH_KEYWORDS, "Free dataset structure" },
     { "swap_data_buffers", py_swap_data_buffers, METH_VARARGS, "Put the selected buffered dataset as current dataset for training"},

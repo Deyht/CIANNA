@@ -434,9 +434,6 @@ void quadratic_output_error(void *output_error, void *output, void *target, int 
 //#####################################################
 
 
-
-
-
 //#####################################################
 //          Logistic activation related functions
 //#####################################################

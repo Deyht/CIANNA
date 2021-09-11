@@ -161,7 +161,7 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 		* p_param->nb_maps * net->batch_size * sizeof(float));*/
 	
 	//No activation for this layer for now
-	current->activ_param = NULL;
+	current->activ_param = (linear_param*) malloc(sizeof(ReLU_param));
 	
 	current->param = p_param;
 	
@@ -173,8 +173,8 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 		case C_CUDA:
 			#ifdef CUDA
 			cuda_pool_define(current);
-			cuda_define_activation(current);
 			mem_approx = cuda_convert_pool_layer(current);
+			cuda_define_activation(current);
 			#endif
 			break;
 		case C_BLAS:

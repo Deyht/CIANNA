@@ -33,7 +33,6 @@ static dense_param *d_param;
 
 
 //private
-
 void dense_define_activation_param(layer *current);
 
 
@@ -108,8 +107,10 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	long long int mem_approx = 0;
 	layer* current;
 	
-	if(net->compute_method == C_CUDA && net->use_cuda_TC != FP32C_FP32A && nb_neurons % 8 == 0)
+	#ifdef CUDA
+	if(net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC != FP32C_FP32A && nb_neurons % 8 == 0)
 		nb_neurons -= 1;
+	#endif
 	
 	current = (layer*) malloc(sizeof(layer));
 	net->net_layers[net->nb_layers] = current;
@@ -242,8 +243,9 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 		net->nb_layers, d_param->in_size,  d_param->nb_neurons+1, 
 		activ, d_param->dropout_rate,
 		(d_param->nb_neurons+1)*d_param->in_size, (int)(mem_approx/1000000));
-		
-	if(net->compute_method == C_CUDA && net->use_cuda_TC)
+	
+	#ifdef CUDA
+	if(net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC)
 	{
 		if(d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
 				|| (d_param->nb_neurons+1) % 8 != 0)
@@ -255,7 +257,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 				|| (d_param->nb_neurons+1) % 8 != 0)
 			printf("Warning : Weights update gemm TC data misalignment due to layer size mismatch\n");
 	}
-	
+	#endif
 }
 
 
@@ -275,23 +277,23 @@ void dense_save(FILE *f, layer *current)
 	{
 		#ifdef CUDA
 		host_weights = (float*) malloc(d_param->in_size * (d_param->nb_neurons+1) * sizeof(float));
-		switch(current->c_network->use_cuda_TC)
+		switch(current->c_network->cu_inst.use_cuda_TC)
 		{
 			default:
 			case FP32C_FP32A:
 			case TF32C_FP32A:
-				cuda_get_table_FP32(current->c_network, (float*)d_param->weights, (float*)host_weights,
+				cuda_get_table_FP32((float*)d_param->weights, (float*)host_weights,
 					d_param->in_size * (d_param->nb_neurons+1));
 				break;
 			
 			case FP16C_FP32A:
 			case FP16C_FP16A:
-				cuda_get_table_FP32(current->c_network, (float*)d_param->FP32_weights, (float*)host_weights,
+				cuda_get_table_FP32((float*)d_param->FP32_weights, (float*)host_weights,
 					d_param->in_size * (d_param->nb_neurons+1));
 				break;
 				
 			case BF16C_FP32A:
-				cuda_get_table_FP32(current->c_network, (float*)d_param->FP32_weights, (float*)host_weights,
+				cuda_get_table_FP32((float*)d_param->FP32_weights, (float*)host_weights,
 					d_param->in_size * (d_param->nb_neurons+1));
 				break;
 		}

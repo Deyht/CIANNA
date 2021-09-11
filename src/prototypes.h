@@ -133,8 +133,9 @@ extern float TC_scale_factor;
 extern cublasHandle_t cu_handle;
 extern cudaDataType cuda_data_type;
 extern cublasComputeType_t cuda_compute_type;
-void cuda_master_weight_FP32_to_FP16(float *master, half *copy, int size);
-void cuda_master_weight_FP32_to_BF16(float *master, nv_bfloat16 *copy, int size);
+void cuda_master_weight_FP32_to_FP32(float *master, void *copy, int size);
+void cuda_master_weight_FP32_to_FP16(float *master, void *copy, int size);
+void cuda_master_weight_FP32_to_BF16(float *master, void *copy, int size);
 void cuda_update_weights(network* net, void *weights, void* update, int size);
 
 //__global__ void cuda_update_weights_dropout(void *weights, void* update, int size, int *drop_mask, int dim);
@@ -144,25 +145,24 @@ void init_cuda(network* net);
 void cuda_set_TC_scale_factor(network* net, float val);
 void cuda_sync(void);
 void cuda_free_table(void* tab);
-void cuda_create_host_table_FP16(network* net, void **tab, int size);
-void cuda_create_host_table_BF16(network* net, void **tab, int size);
-long long int cuda_convert_table(network* net, void **tab, long long int size);
-long long int cuda_convert_table_int(network* net, int **tab, int size);
+void cuda_create_host_table(network* net, void **tab, int size);
+size_t cuda_convert_table(network* net, void **tab, size_t size);
+size_t cuda_convert_table_int(int **tab, int size);
 void cuda_convert_dataset(network *net, Dataset *data);
-void cuda_convert_host_dataset_FP32(network *net, Dataset *data);
-Dataset create_dataset_FP16(network *net, int nb_elem);
-Dataset create_dataset_BF16(network *net, int nb_elem);
+void cuda_get_batched_dataset(network *net, Dataset *data);
+void cuda_convert_host_dataset(network *net, Dataset *data);
+Dataset cuda_create_dataset(network *net, int nb_elem);
 void cuda_free_dataset(Dataset *data);
-void cuda_create_table_FP32(network* net, float **tab, float size);
+void cuda_create_table_FP32(void **tab, int size);
 void cuda_create_table(network* net, void **tab, int size);
-void cuda_get_table_FP32(network* net, float *cuda_table, float *table, int size);
-void cuda_get_table_FP16_to_FP32(void *cuda_table, void *table, int size, void* buffer);
-void cuda_get_table_BF16_to_FP32(void *cuda_table, void *table, int size, void* buffer);
+void cuda_master_weight_copy(network* net, float *master, void *copy, int size);
+void cuda_get_table_FP32(void *cuda_table, void *table, int size);
+void cuda_get_table_to_FP32(network* net, void *cuda_table, float *table, int size, void* buffer);
 void cuda_get_table(network* net, void *cuda_table, void *table, int size);
 void cuda_put_table_FP32(network* net, float *cuda_table, float *table, int size);
 void cuda_put_table(network* net, void *cuda_table, void *table, int size);
 void cuda_print_table_FP32(network* net, float* tab, int size, int return_every);
-void cuda_print_table_4d(network* net, void* tab, int w_size, int h_size, int d_size, int last_dim, int biased);
+//void cuda_print_table_4d(network* net, void* tab, int w_size, int h_size, int d_size, int last_dim, int biased);
 void cuda_print_table(network* net, void* tab, int size, int return_every);
 void cuda_print_table_int(network* net, int* tab, int size, int return_every);
 void cuda_print_table_host_FP16(network* net, void* tab, int size, int return_every);
@@ -172,7 +172,7 @@ void cuda_perf_eval_init(void);
 void cuda_perf_eval_in(void);
 float cuda_perf_eval_out(void);
 void cuda_shuffle(network *net, Dataset data, Dataset duplicate, int *index_shuffle, int *index_shuffle_device);
-void host_shuffle(network *net, Dataset data, Dataset duplicate);
+void cuda_host_shuffle(network *net, Dataset data, Dataset duplicate);
 void cuda_host_only_shuffle(network *net, Dataset data);
 
 void cuda_convert_network(layer** network);
@@ -183,20 +183,24 @@ void cuda_compute_error(void** data, void** target_data, int nb_data, float** ou
 
 
 //cuda_activ_functions.cu
+void init_typed_cuda_activ(network* net);
 void cuda_define_activation(layer *current);
 void cuda_deriv_output_error(layer *current);
 
 //cuda_dense_layer.cu
+void cuda_dense_init(network* net);
 void cuda_dense_define(layer *current);
-long long int cuda_convert_dense_layer(layer *current);
+size_t cuda_convert_dense_layer(layer *current);
 
 //cuda_conv_layer.cu
+void cuda_conv_init(network* net);
 void cuda_conv_define(layer *current);
-long long int cuda_convert_conv_layer(layer *current);
+size_t cuda_convert_conv_layer(layer *current);
 
 //cuda_pool_layer.cu
+void cuda_pool_init(network* net);
 void cuda_pool_define(layer *current);
-long long int cuda_convert_pool_layer(layer *current);
+size_t cuda_convert_pool_layer(layer *current);
 
 	
 //######################################
