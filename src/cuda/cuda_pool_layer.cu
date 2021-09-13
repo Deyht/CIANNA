@@ -202,11 +202,11 @@ __global__ void cuda_dropout_apply_pool_##name(void* i_table, int batch_size, in
 }
 
 #define cuda_typed_memset(name, type)																		\
-void cuda_typed_memset_##name(void* i_table, float value, int size)											\
+void cuda_typed_memset_##name(void* i_table, int value, int size)											\
 {																											\
 	type* table = (type*) i_table;																			\
 																											\
-	cudaMemset(table, (type) value, size * sizeof(type));													\
+	cudaMemset(table,  value, size * sizeof(type));															\
 }
 
 
@@ -392,7 +392,7 @@ void cuda_backward_pool_layer(layer* current)
 	{
 		if(current->previous->type == CONV)
 		{		
-			net->cu_inst.cu_pool_fcts.typed_memset_fct(current->previous->delta_o, 0.0f, p_param->nb_maps 
+			net->cu_inst.cu_pool_fcts.typed_memset_fct(current->previous->delta_o, 0, p_param->nb_maps 
 				* p_param->prev_size[0] * p_param->prev_size[1] *p_param->prev_size[2]
 				* net->batch_size);
 				

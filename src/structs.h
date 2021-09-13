@@ -142,7 +142,7 @@ struct cuda_pool_fcts
 		int pool_size_w, int pool_size_h, int pool_size_d,
 		int len, int batch_size, int image_size, int w_size, int h_size);
 	void (*drop_apply_fct)(void* i_table, int batch_size, int dim, int* mask, int size);
-	void (*typed_memset_fct)(void* i_table, float value, int size);
+	void (*typed_memset_fct)(void* i_table, int value, int size);
 };
 
 struct cuda_linear_activ_fcts

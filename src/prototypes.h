@@ -132,7 +132,11 @@ void set_cu_learning_rate_and_momentum(network* net);
 extern float TC_scale_factor;
 extern cublasHandle_t cu_handle;
 extern cudaDataType cuda_data_type;
+#if defined(CUDA_OLD)
+extern cudaDataType cuda_compute_type;
+#else
 extern cublasComputeType_t cuda_compute_type;
+#endif
 void cuda_master_weight_FP32_to_FP32(float *master, void *copy, int size);
 void cuda_master_weight_FP32_to_FP16(float *master, void *copy, int size);
 void cuda_master_weight_FP32_to_BF16(float *master, void *copy, int size);

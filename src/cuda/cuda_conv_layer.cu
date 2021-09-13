@@ -255,6 +255,7 @@ size_t cuda_convert_conv_layer(layer *current)
 			c_param->FP32_filters = c_param->filters;
 			break;
 		
+		#if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 		case FP16C_FP32A:
 		case FP16C_FP16A:
 			temp_tab = (float*)c_param->filters;
@@ -270,7 +271,9 @@ size_t cuda_convert_conv_layer(layer *current)
 			vram_approx += c_param->nb_filters 
 				* (c_param->flat_f_size + c_param->TC_padding)*sizeof(half);
 			break;
+		#endif
 		
+		#if defined (GEN_AMPERE)
 		case BF16C_FP32A:
 			temp_tab = (float*)c_param->filters;
 			cudaMalloc(&(c_param->FP32_filters), c_param->nb_filters 
@@ -285,6 +288,7 @@ size_t cuda_convert_conv_layer(layer *current)
 			vram_approx += c_param->nb_filters 
 				* (c_param->flat_f_size + c_param->TC_padding)*sizeof(nv_bfloat16);
 			break;
+			#endif
 	}
 
 	vram_approx += cuda_convert_table(net, &(c_param->update), c_param->nb_filters 
@@ -302,7 +306,7 @@ size_t cuda_convert_conv_layer(layer *current)
 		((c_param->flat_f_size + c_param->TC_padding) * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) 
 		* net->batch_size);
 	vram_approx += cuda_convert_table(net, &(c_param->im2col_delta_o), 
-		(long long int) net->batch_size * (c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]) 
+		net->batch_size * ((size_t)c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]) 
 		* (c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters));
 	
 	if(c_param->dropout_rate > 0.01)

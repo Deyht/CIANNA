@@ -45,7 +45,7 @@ for i in $*
 do
 	if [ $i  = "CUDA" ]
 	then
-		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart -arch=sm_60 -D GEN_VOLTA"
+		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart -arch=sm_86 -D GEN_AMPERE"
 		arg="$arg -D CUDA -lcublas -lcudart -L $cuda_lib_path"
 		cuda_src="cuda_main.cu cuda_conv_layer.cu cuda_dense_layer.cu cuda_pool_layer.cu cuda_activ_functions.cu"
 		cuda_obj="cuda/cuda_main.o cuda/cuda_conv_layer.o cuda/cuda_dense_layer.o cuda/cuda_pool_layer.o cuda/cuda_activ_functions.o"

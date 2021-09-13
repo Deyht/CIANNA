@@ -34,7 +34,12 @@ half cu_h_learning_rate = 1.0f, cu_h_momentum = 0.0f;
 float TC_scale_factor = 1.0f;
 cublasHandle_t cu_handle;
 cudaDataType cuda_data_type = CUDA_R_32F;
+#if defined(CUDA_OLD)
+cudaDataType cuda_compute_type = CUDA_R_32F;
+#else
 cublasComputeType_t cuda_compute_type = CUBLAS_COMPUTE_32F;
+#endif
+
 
 cudaEvent_t cu_event_start, cu_event_stop;
 
@@ -146,7 +151,7 @@ size_t cuda_convert_table_int(int **tab, int size)
 void cuda_create_table_##name(void **tab, int size)																	\
 {																													\
 	cudaMalloc(tab, size*sizeof(type));																				\
-	cudaMemset(*tab, (type) 0.0f, size*sizeof(type));																\
+	cudaMemset(*tab, 0, size*sizeof(type));																			\
 }
 
 void cuda_create_table(network* net, void **tab, int size)
@@ -265,7 +270,7 @@ void cuda_convert_dataset(network *net, Dataset *data)
 }
 
 #define cuda_get_batches_table_fct(name, type)																		\
-void cuda_get_batched_table_##name(void **tab, int batch_size, int nb_batch, int size)				\
+void cuda_get_batched_table_##name(void **tab, int batch_size, int nb_batch, int size)								\
 {																													\
 	int i;																											\
 	type* temp_tab = (type*) *tab;																					\
@@ -941,6 +946,43 @@ void init_cuda(network* net)
 {
 	cublasStatus_t stat = cublasCreate(&cu_handle);
 	
+	//CUDA version <= 11.0
+	#if defined(CUDA_OLD)
+	switch(net->cu_inst.use_cuda_TC)
+	{
+		default:
+		case FP32C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+			cuda_data_type = CUDA_R_32F;
+			cuda_compute_type = CUDA_R_32F;
+			TC_scale_factor = 1.0f;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+			break;
+		
+		#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
+		case FP16C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
+			cuda_data_type = CUDA_R_16F;
+			cuda_compute_type = CUDA_R_32F;
+			TC_scale_factor = 4.0f;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+			break;
+			
+		case FP16C_FP16A:
+			cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
+			cuda_data_type = CUDA_R_16F;
+			cuda_compute_type = CUDA_R_16F;
+			TC_scale_factor = 4.0f;
+			cu_alpha = &cu_h_alpha; cu_beta = &cu_h_beta;
+			cu_learning_rate = &cu_h_learning_rate; cu_momentum = &cu_h_momentum;
+			break;
+		#endif
+	}
+	
+	//CUDA version >= 11.1
+	#else
 	switch(net->cu_inst.use_cuda_TC)
 	{
 		default:
@@ -957,7 +999,7 @@ void init_cuda(network* net)
 		case TF32C_FP32A:
 			cublasSetMathMode(cu_handle, CUBLAS_TF32_TENSOR_OP_MATH);
 			cuda_data_type = CUDA_R_32F;
-			cuda_compute_type = CUBLAS_COMPUTE_32F;
+			cuda_compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
 			TC_scale_factor = 1.0f;
 			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
 			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
@@ -995,6 +1037,7 @@ void init_cuda(network* net)
 			break;
 		#endif
 	}
+	#endif
 	
 	//set typed function according to USE_CUDA_TC
 	init_auxil_cuda(net);
