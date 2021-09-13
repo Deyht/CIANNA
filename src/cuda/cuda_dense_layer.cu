@@ -231,6 +231,7 @@ size_t cuda_convert_dense_layer(layer *current)
 		
 		case FP16C_FP32A:
 		case FP16C_FP16A:
+			#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
 			temp_tab = (float*)d_param->weights;
 			cudaMalloc(&(d_param->FP32_weights), d_param->in_size*(d_param->nb_neurons+1)*sizeof(float));
 			vram_approx += d_param->in_size*(d_param->nb_neurons+1)*sizeof(float);
@@ -239,9 +240,11 @@ size_t cuda_convert_dense_layer(layer *current)
 			free(temp_tab);
 			cudaMalloc(&(d_param->weights), d_param->in_size*(d_param->nb_neurons+1)*sizeof(half));
 			vram_approx += d_param->in_size*(d_param->nb_neurons+1)*sizeof(half);
+			#endif
 			break;
 			
 		case BF16C_FP32A:
+			#if defined(GEN_AMPERE) 
 			temp_tab = (float*)d_param->weights;
 			cudaMalloc(&(d_param->FP32_weights), d_param->in_size*(d_param->nb_neurons+1)*sizeof(float));
 			vram_approx += d_param->in_size*(d_param->nb_neurons+1)*sizeof(float);
@@ -250,6 +253,7 @@ size_t cuda_convert_dense_layer(layer *current)
 			free(temp_tab);
 			cudaMalloc(&(d_param->weights),d_param->in_size*(d_param->nb_neurons+1)*sizeof(nv_bfloat16));
 			vram_approx += d_param->in_size*(d_param->nb_neurons+1)*sizeof(nv_bfloat16);
+			#endif
 			break;
 	}
 	
