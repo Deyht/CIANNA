@@ -68,6 +68,17 @@ int load_pool_type(char *type)
 		return MAX_pool;
 }
 
+void pool_define_activation_param(layer *current)
+{
+	p_param = (pool_param*) current->param;
+
+	//Linear
+	current->activ_param = (linear_param*) malloc(sizeof(linear_param));
+	((linear_param*)current->activ_param)->size = p_param->nb_area[0] * 
+		p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * current->c_network->batch_size;
+	((linear_param*)current->activ_param)->dim = ((linear_param*)current->activ_param)->size;
+	((linear_param*)current->activ_param)->biased_dim = ((linear_param*)current->activ_param)->dim;
+}
 
 void pool_create(network *net, layer* previous, int *pool_size, int pool_type, float drop_rate)
 {
@@ -147,7 +158,7 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 	mem_approx += p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
 		* net->batch_size * sizeof(float);
 		
-	if(drop_rate > 0.01)
+	if(drop_rate > 0.01f)
 	{
 		p_param->dropout_mask = (int*) calloc(p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), sizeof(int));
 		mem_approx += p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * sizeof(int);
@@ -157,13 +168,11 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 		* net->batch_size * sizeof(float));
 	mem_approx += p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
 		* net->batch_size * sizeof(float);
-	/*p_param->temp_delta_o = (float*) malloc(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]
-		* p_param->nb_maps * net->batch_size * sizeof(float));*/
-	
-	//No activation for this layer for now
-	current->activ_param = (linear_param*) malloc(sizeof(ReLU_param));
 	
 	current->param = p_param;
+	
+	//Linear activation only = no activation
+	pool_define_activation_param(current);
 	
 	//No weights initialization in a pool layer
 	
@@ -179,7 +188,8 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 			break;
 		case C_BLAS:
 		case C_NAIV:
-			//pool_define(current);
+			pool_define(current);
+			define_activation(current);
 			break;
 		default:
 			break;

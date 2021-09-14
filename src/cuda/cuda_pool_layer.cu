@@ -1,4 +1,5 @@
 
+
 /*
 	Copyright (C) 2020 David Cornu
 	for the Convolutional Interactive Artificial 
@@ -122,9 +123,9 @@ __global__ void deltah_max_pool_cont_##name																			\
 		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d			\
 			+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h										\
 			+ ((i%(w_size*h_size))%w_size) * pool_size_w +															\
-			+ (int(pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 				\
-			+ ((int(pool_map[i])%(pool_size_w*pool_size_h))/pool_size_h) * w_size * pool_size_w						\
-			+ ((int(pool_map[i])%(pool_size_w*pool_size_h))%pool_size_h);											\
+			+ ((pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 				\
+			+ (((pool_map[i])%(pool_size_w*pool_size_h))/pool_size_h) * w_size * pool_size_w						\
+			+ (((pool_map[i])%(pool_size_w*pool_size_h))%pool_size_h);											\
 																													\
 		*delta_o_unpool = delta_o[i];																				\
 	}																												\
@@ -261,7 +262,6 @@ void cuda_pool_init(network* net)
 			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_FP16;
 			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_FP16;
 			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_FP16;
-			break;
 			#else
 			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
 			exit(EXIT_FAILURE);
@@ -276,7 +276,6 @@ void cuda_pool_init(network* net)
 			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_BF16;
 			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_BF16;
 			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_BF16;
-			break;
 			#else
 			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
 			exit(EXIT_FAILURE);
@@ -306,10 +305,11 @@ size_t cuda_convert_pool_layer(layer *current)
 	vram_approx += cuda_convert_table(net, &(current->delta_o), p_param->nb_area[0] 
 		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size);
 		
-	if(p_param->dropout_rate > 0.01)
+	if(p_param->dropout_rate > 0.01f)
 	{
 		vram_approx += cuda_convert_table_int(&(p_param->dropout_mask), p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
 		cudaMalloc((void**) &p_param->block_state, (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])) * sizeof(curandState_t));
+		vram_approx += (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])) * sizeof(curandState_t);
 		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
 		init_block_state_pool<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)p_param->block_state);
 	}
@@ -351,8 +351,11 @@ void cuda_forward_pool_layer(layer* current)
 				p_param->nb_maps * net->batch_size);
 			break;
 	}
+	
+	//Linear == No activation
+	current->activation(current);
 
-	if(p_param->dropout_rate > 0.01 && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(p_param->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
 		cuda_dropout_select_pool<<<cu_blocks, 1>>>(p_param->dropout_mask, p_param->nb_maps 
@@ -362,22 +365,20 @@ void cuda_forward_pool_layer(layer* current)
 		dim3 numBlocks((p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
 			(net->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
 		
-		
 		net->cu_inst.cu_pool_fcts.drop_apply_fct<<<numBlocks, threadsPerBlock>>>(current->output, 
 			net->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]),
 			p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-
 	}
 }
 
 
 void cuda_backward_pool_layer(layer* current)
-{	
-	p_param = (pool_param*) current->param;
-	
+{
 	network* net = current->c_network;
 	
-	if(p_param->dropout_rate > 0.01)
+	p_param = (pool_param*) current->param;
+	
+	if(p_param->dropout_rate > 0.01f)
 	{
 		dim3 threadsPerBlock(32, 8);
 		dim3 numBlocks((p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
@@ -416,6 +417,7 @@ void cuda_backward_pool_layer(layer* current)
 					break;
 			}
 		}
+		current->previous->deriv_activation(current->previous);
 	}
 }
 

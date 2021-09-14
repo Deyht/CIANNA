@@ -225,7 +225,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	//allocate the update for the filters
 	c_param->update = (float*) calloc(nb_filters * (c_param->flat_f_size + c_param->TC_padding), sizeof(float));
 	mem_approx += nb_filters * (c_param->flat_f_size + c_param->TC_padding) * sizeof(float);
-	if(drop_rate > 0.01)
+	if(drop_rate > 0.01f)
 	{
 		c_param->dropout_mask = (int*) calloc(c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), sizeof(int));
 		mem_approx += c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * sizeof(int);
@@ -315,7 +315,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 			#endif
 			break;
 		case C_NAIV:
-			//naiv_conv_define(current);
+			naiv_conv_define(current);
 			define_activation(current);
 			break;
 		default:

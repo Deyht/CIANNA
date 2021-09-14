@@ -121,6 +121,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	
 	current->type = DENSE;
 	current->activation_type = activation;
+	current->frozen = 0;
 	d_param->nb_neurons = nb_neurons;
 	d_param->dropout_rate = drop_rate;
 	
@@ -173,8 +174,11 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	
 	d_param->update = (float*) calloc(d_param->in_size*(nb_neurons+1), sizeof(float));
 	mem_approx += d_param->in_size*(nb_neurons+1)*sizeof(float);
-	d_param->dropout_mask = (int*) calloc(d_param->nb_neurons, sizeof(int));
-	mem_approx += d_param->nb_neurons * sizeof(int);
+	if(drop_rate > 0.01f)
+	{
+		d_param->dropout_mask = (int*) calloc(d_param->nb_neurons, sizeof(int));
+		mem_approx += d_param->nb_neurons * sizeof(int);
+	}
 	
 	current->output = (float*) calloc((nb_neurons+1)*net->batch_size, sizeof(float));
 	mem_approx += (nb_neurons+1)*net->batch_size * sizeof(float);
@@ -227,7 +231,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 			break;
 			
 		case C_NAIV:
-			//naiv_dense_define(current);
+			naiv_dense_define(current);
 			define_activation(current);
 			break;
 			

@@ -151,6 +151,12 @@ CIANNA V-0.9.2.7 EXPERIMENTAL BUILD (09/2021), by D.Cornu\n\
 
 }
 
+void copy_to_host(float* in_tab, void* out_tab, int out_offset, int size)
+{
+	float* f_out_tab = (float*) out_tab;
+	for(int i = 0; i < size; i++)
+		*(f_out_tab + out_offset + i) = (*(in_tab + i));
+}
 
 Dataset create_dataset_host(network *net, int nb_elem)
 {
@@ -162,7 +168,7 @@ Dataset create_dataset_host(network *net, int nb_elem)
 	data.input = (void**) malloc(data.nb_batch*sizeof(float*));
 	data.target = (void**) malloc(data.nb_batch*sizeof(float*));
 	data.localization = HOST;
-	data.cont_copy = NULL;
+	data.cont_copy = copy_to_host;
 	
 	for(i = 0; i < data.nb_batch; i++)
 	{
@@ -1499,7 +1505,6 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				perf_eval_out(net, net->nb_layers-1-k, net->back_perf, net->back_perf_n);
 			}
 			
-			// Live loss monitoring
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
@@ -1507,7 +1512,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				net->output_error = net->cu_inst.output_error_cuda;
 				#endif
 			}
-
+			
+			// Live loss monitoring
 			output_error(net->net_layers[net->nb_layers-1]);
 						
 			if(net->compute_method == C_CUDA)

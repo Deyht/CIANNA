@@ -114,8 +114,10 @@ __global__ void quadratic_output_error_kernel_##name																							\
 	if(i < len && (i+1)%(dim+1) != 0)																											\
 	{																																			\
 		pos = i - i/(dim+1);																													\
-		output_error[pos] = (type)(0.5f*(float)(output[i] - target[pos])*(float)(output[i] - target[pos]));										\
+		output_error[i] = (type)(0.5f*(float)(output[i] - target[pos])*(float)(output[i] - target[pos]));										\
 	}																																			\
+	else																																		\
+		output_error[i]	= 0.0f;																													\
 }
 
 //#####################################################
@@ -259,10 +261,12 @@ __global__ void cross_entropy_output_error_kernel_##name																						\
 	{																																			\
 		pos = i - i/(dim+1);																													\
 		if((float)output[i] > 0.00001f)																											\
-			output_error[pos] = -target[pos] * (type) logf((float)output[i]);																	\
+			output_error[i] = -target[pos] * (type) logf((float)output[i]);																		\
 		else																																	\
-			output_error[pos] = -target[pos] * (type) logf((float)0.00001f);																	\
+			output_error[i] = -target[pos] * (type) logf((float)0.00001f);																		\
 	}																																			\
+	else																																		\
+		output_error[i] = (type) 0.0f;																											\
 }
 
 //#####################################################

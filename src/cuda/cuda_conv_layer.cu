@@ -37,8 +37,8 @@ void cuda_backward_conv_layer(layer *current);
 //areas that will be used for convolution. Highly redundant but still allows a significant speed up
 //due to subsequent matrix operations. Currently memory bound despite only one load per element of the original image.
 //VERSION 4.2
-#define im2col_kernel_v4(name, type) 																										\
-__global__ void im2col_kernel_v4_##name																										\
+#define im2col_kernel_v5(name, type) 																										\
+__global__ void im2col_kernel_v5_##name																										\
 	(void* i_output, void* i_input, 																										\
 	int image_size, int flat_image_size, 																									\
 	int stride_w, int stride_h ,int stride_d, 																								\
@@ -175,18 +175,18 @@ __global__ void cuda_dropout_apply_conv_##name(void* i_table, int batch_size, in
 
 
 
-im2col_kernel_v4(FP32, float);
+im2col_kernel_v5(FP32, float);
 cuda_rotate_filter_matrix(FP32, float); 
 cuda_dropout_apply_conv(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
-im2col_kernel_v4(FP16, half);
+im2col_kernel_v5(FP16, half);
 cuda_rotate_filter_matrix(FP16, half); 
 cuda_dropout_apply_conv(FP16, half);
 #endif
 
 #if defined (GEN_AMPERE)
-im2col_kernel_v4(BF16, nv_bfloat16);
+im2col_kernel_v5(BF16, nv_bfloat16);
 cuda_rotate_filter_matrix(BF16, nv_bfloat16); 
 cuda_dropout_apply_conv(BF16, nv_bfloat16);
 #endif
@@ -199,7 +199,7 @@ void cuda_conv_init(network* net)
 		default:
 		case FP32C_FP32A:
 		case TF32C_FP32A:
-			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v4_FP32;
+			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v5_FP32;
 			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_FP32;
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_FP32;
 			break;
@@ -208,7 +208,7 @@ void cuda_conv_init(network* net)
 		case FP16C_FP32A:
 		case FP16C_FP16A:
 			#if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
-			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v4_FP16;
+			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v5_FP16;
 			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_FP16;
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_FP16;
 			#else
@@ -219,7 +219,7 @@ void cuda_conv_init(network* net)
 
 		case BF16C_FP32A:
 			#if defined (GEN_AMPERE)
-			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v4_BF16;
+			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v5_BF16;
 			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_BF16;
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_BF16;
 			#else
@@ -241,7 +241,9 @@ size_t cuda_convert_conv_layer(layer *current)
 {
 	c_param = (conv_param*)current->param;
 	size_t vram_approx = 0;
+	#if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 	float* temp_tab;
+	#endif
 
 	network* net = current->c_network;
 
@@ -311,7 +313,7 @@ size_t cuda_convert_conv_layer(layer *current)
 		net->batch_size * ((size_t)c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]) 
 		* (c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters));
 	
-	if(c_param->dropout_rate > 0.01)
+	if(c_param->dropout_rate > 0.01f)
 	{
 		vram_approx += cuda_convert_table_int(&(c_param->dropout_mask), c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
 		cudaMalloc((void**) &c_param->block_state, (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t));
@@ -438,7 +440,7 @@ void cuda_forward_conv_layer(layer *current)
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
 	
-	if(c_param->dropout_rate > 0.01 && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(c_param->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		cu_blocks = (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
 		cuda_dropout_select_conv<<<cu_blocks, 1>>>(c_param->dropout_mask, c_param->nb_filters 
@@ -461,18 +463,16 @@ void cuda_backward_conv_layer(layer *current)
 {
 	int k;
 	int depth_padding;
-	int *back_padding;
+	int back_padding[3];
 	int image_padding;
 	int flat_f_size;
 	int dim_a, dim_b, dim_c;
 	
 	network* net = current->c_network;
 
-	back_padding = (int*) calloc(3, sizeof(int));
-
 	c_param = (conv_param*) current->param;
 	
-	if(c_param->dropout_rate > 0.01)
+	if(c_param->dropout_rate > 0.01f)
 	{
 		dim3 threadsPerBlock(32, 8);
 		dim3 numBlocks((c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
@@ -501,10 +501,11 @@ void cuda_backward_conv_layer(layer *current)
 		//the backprop process generate bias nodes so they must be taken into account
 		
 		//Warning : the convolution processed is reversed using full convolution with padding
-		//this means that the meaning of nb_area_w/h and prev_size_w/h are reversed in the following operations
+		//this means that the meaning of nb_area and prev_size are reversed in the following operations
 		depth_padding = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * net->batch_size;
 		image_padding = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2];
 		flat_f_size = c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters;
+		//this flat size remove the bias != c_param->flat_f_size
 		
 		for(k = 0; k < 3; k++)
 		{
@@ -541,7 +542,7 @@ void cuda_backward_conv_layer(layer *current)
 					current->delta_o, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], 
 					(c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * flat_f_size, 
 					1, 1, 1, back_padding[0], back_padding[1], back_padding[2], 
-					c_param->stride[0] - 1 , c_param->stride[1] - 1 , c_param->stride[2] - 1 ,
+					c_param->stride[0] - 1 , c_param->stride[1] - 1 , c_param->stride[2] - 1,
 					c_param->nb_filters, depth_padding, image_padding, 0, net->batch_size,
 					c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], flat_f_size, 
 					c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
@@ -578,8 +579,6 @@ void cuda_backward_conv_layer(layer *current)
 		cuda_update_weights(net, c_param->FP32_filters, c_param->update, 
 			(c_param->flat_f_size + c_param->TC_padding) * c_param->nb_filters);
 	}
-	
-	free(back_padding);
 }
 
 

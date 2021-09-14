@@ -324,10 +324,10 @@ void ReLU_activation_fct(void *tab, int len, int dim, float saturation, float le
 	for(i = 0; i < len; i++)
 	{
 		pos = i + i/dim;
-		if(f_tab[pos] <= 0.0)
+		if(f_tab[pos] <= 0.0f)
 			f_tab[pos] *= leaking_factor;
-		else if(f_tab[i] > saturation)
-			f_tab[i] = saturation + (f_tab[i] - saturation)*leaking_factor;
+		else if(f_tab[pos] > saturation)
+			f_tab[pos] = saturation + (f_tab[pos] - saturation)*leaking_factor;
 	}
 }
 
@@ -352,13 +352,13 @@ void ReLU_deriv_fct(void *deriv, void *value, int len, int dim,  float saturatio
 	{
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
-			if(f_value[i] <= 0.0)
+			if(f_value[i] <= 0.0f)
 				f_deriv[i] *= leaking_factor;
 			else if(f_deriv[i] > saturation)
 				f_deriv[i] *= leaking_factor;
 		}
 		else
-			f_deriv[i] = 0.0;
+			f_deriv[i] = 0.0f;
 	}
 }
 
@@ -425,8 +425,10 @@ void quadratic_output_error(void *output_error, void *output, void *target, int 
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
 			pos = i - i/(dim+1);
-			f_output_error[pos] = 0.5*(f_output[i] - f_target[pos])*(f_output[i] - f_target[pos]);
+			f_output_error[i] = 0.5*(f_output[i] - f_target[pos])*(f_output[i] - f_target[pos]);
 		}
+		else
+			f_output_error[i] = 0.0f;
 	}
 }
 
@@ -543,12 +545,12 @@ void softmax_activation_fct(void *tab, int len, int dim, int size)
 	int j;
 	float *pos;
 	float vmax;
-	float normal = 0.0000001;
+	float normal = 0.0000001f;
 	
 	#pragma omp parallel for private(j, pos, vmax, normal) schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
-		normal = 0.0000001;
+		normal = 0.0000001f;
 		if(i < len)
 		{
 			pos = (float*)tab + i*(dim+1);
@@ -563,19 +565,18 @@ void softmax_activation_fct(void *tab, int len, int dim, int size)
 				pos[j] = expf(pos[j]-vmax);
 				normal += pos[j];
 			}		
-			pos[j] = 0.0;
+			pos[dim] = 0.0f;
 			
 			for(j = 0; j < dim; j++)
-					pos[j] /= normal;
-					
-			pos[j] = 0.0;
+				pos[j] /= normal;
+			pos[dim] = 0.0f;
 		}
 		else
 		{
 			pos = (float*)tab + i*(dim+1);		
 			for(j = 0; j < dim; j++)
-				pos[j] = 0.0;
-			pos[j] = 0.0;
+				pos[j] = 0.0f;
+			pos[dim] = 0.0f;
 		}
 	}
 }
@@ -627,7 +628,7 @@ void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target,
 		}
 		else
 		{
-			f_delta_o[i] = 0.0;
+			f_delta_o[i] = 0.0f;
 		}
 	}
 }
@@ -647,11 +648,13 @@ void cross_entropy_output_error(void *output_error, void *output, void *target, 
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
 			pos = i - i/(dim+1);
-			if(f_output[i] > 0.00001)
-				f_output_error[pos] = -f_target[pos]*log(f_output[i]);
+			if(f_output[i] > 0.00001f)
+				f_output_error[i] = -f_target[pos]*logf(f_output[i]);
 			else
-				f_output_error[pos] = -f_target[pos]*log(0.00001);
+				f_output_error[i] = -f_target[pos]*logf(0.00001f);
 		}
+		else
+			f_output_error[i] = 0.0f;
 	}
 }
 

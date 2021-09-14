@@ -110,8 +110,15 @@ void add_bias_im2col(void* output, float bias_value, int flat_f_size, int size);
 void rotate_filter_matrix(void* in, void* out, int nb_rows, int depth_size, int nb_filters_in, int len);
 void unroll_conv(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 void reroll_delta_o(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
-void im2col_fct_v4(void* output, void* input, int image_size, int flat_image_size, int stride, int padding, int internal_padding, int depth, int depth_padding, int image_padding, int batch_size, int f_size, int flat_f_size, int w_size, int nb_area_w, int bias);
-
+void im2col_fct_v5
+	(void* i_output, void* i_input, 
+	int image_size, int flat_image_size, 
+	int stride_w, int stride_h ,int stride_d, 
+	int padding_w, int padding_h, int padding_d, 
+	int internal_padding_w, int internal_padding_h, int internal_padding_d, 
+	int channel, int channel_padding, int image_padding, 
+	int batch_size, int f_size_w, int f_size_h, int f_size_d, int flat_f_size, 
+	int w_size, int h_size, int d_size, int nb_area_w, int nb_area_h, int bias_in, int bias_out);
 
 #ifdef CUDA
 //######################################

@@ -45,7 +45,7 @@ print ("Done !", flush=True)
 #Details about the functions and parameters are given in the GitHub Wiki
 
 cnn.init_network(dims=i_ar([28,28,1,1]), out_dim=10, \
-		bias=0.1, b_size=32, comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP16C_FP16A") #Change to C_BLAS or C_NAIV
+		bias=0.1, b_size=24, comp_meth="C_NAIV", dynamic_load=0, mixed_precision="FP32C_FP32A") #Change to C_BLAS or C_NAIV
 
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)

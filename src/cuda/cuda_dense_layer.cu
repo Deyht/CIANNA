@@ -1,4 +1,5 @@
 
+
 /*
 	Copyright (C) 2020 David Cornu
 	for the Convolutional Interactive Artificial 
@@ -21,7 +22,6 @@
 
 
 #include "../prototypes.h"
-
 
 static int cu_blocks;
 static dense_param *d_param;
@@ -185,7 +185,9 @@ size_t cuda_convert_dense_layer(layer *current)
 {
 	d_param = (dense_param*)current->param;
 	size_t vram_approx = 0;
+	#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
 	float* temp_tab;
+	#endif
 	
 	network* net = current->c_network;
 	
@@ -258,16 +260,19 @@ size_t cuda_convert_dense_layer(layer *current)
 	}
 	
 	vram_approx += cuda_convert_table(net, &(d_param->update), d_param->in_size*(d_param->nb_neurons+1));
-	vram_approx += cuda_convert_table_int(&(d_param->dropout_mask), d_param->nb_neurons);
-	cudaMalloc((void**) &d_param->block_state, (d_param->nb_neurons) * sizeof(curandState_t));
-	vram_approx += (d_param->nb_neurons) * sizeof(curandState_t);
-	cu_blocks = (d_param->nb_neurons);
-	init_block_state<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)d_param->block_state);
-	
 	vram_approx += cuda_convert_table(net, &(current->output), (d_param->nb_neurons+1) 
 		* net->batch_size);
 	vram_approx += cuda_convert_table(net, &(current->delta_o), (d_param->nb_neurons+1) 
 		* net->batch_size);
+		
+	if(d_param->dropout_rate > 0.01f)
+	{
+		vram_approx += cuda_convert_table_int(&(d_param->dropout_mask), d_param->nb_neurons);
+		cudaMalloc((void**) &d_param->block_state, (d_param->nb_neurons) * sizeof(curandState_t));
+		vram_approx += (d_param->nb_neurons) * sizeof(curandState_t);
+		cu_blocks = (d_param->nb_neurons);
+		init_block_state<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)d_param->block_state);
+	}
 
 	return vram_approx;
 }
@@ -360,7 +365,7 @@ void cuda_forward_dense_layer(layer *current)
 	
 	current->activation(current);
 
-	if(d_param->dropout_rate > 0.01)
+	if(d_param->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		// Must check performance impact -> the present approach is due to the curand behavior
 		cu_blocks = (d_param->nb_neurons);
@@ -386,7 +391,7 @@ void cuda_backward_dense_layer(layer* current)
 
 	d_param = (dense_param*) current->param;	
 	
-	if(d_param->dropout_rate > 0.01)
+	if(d_param->dropout_rate > 0.01f)
 	{
 		dim3 threadsPerBlock(8, 32);
 		dim3 numBlocks((net->batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
@@ -427,7 +432,7 @@ void cuda_backward_dense_layer(layer* current)
 					nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
 					nb_area_d = ((conv_param*)current->previous->param)->nb_area[2];
 					depth = ((conv_param*)current->previous->param)->nb_filters;
-					break;	
+					break;
 			}
 			
 			//Need to unroll delta_o to already be in the proper format for deriv calculation
@@ -442,21 +447,23 @@ void cuda_backward_dense_layer(layer* current)
 		
 		current->previous->deriv_activation(current->previous);
 	}
-	
 		
 	//########################  WEIGHTS UPDATE   ########################
 	if(current->previous != NULL && current->previous->type != DENSE)
 		ref_input = d_param->flat_input;
 	
-	set_cu_learning_rate_and_momentum(net);
-	
-	cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_T, d_param->nb_neurons+1, d_param->in_size,
-		net->batch_size, cu_learning_rate, current->delta_o, cuda_data_type, 
-		d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, cu_momentum,
-		d_param->update, cuda_data_type, d_param->nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-	
-	cuda_update_weights(net, d_param->FP32_weights, d_param->update, d_param->in_size 
-		* (d_param->nb_neurons+1));
+	if(!current->frozen)
+	{
+		set_cu_learning_rate_and_momentum(net);
+		
+		cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_T, d_param->nb_neurons+1, d_param->in_size,
+			net->batch_size, cu_learning_rate, current->delta_o, cuda_data_type, 
+			d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, cu_momentum,
+			d_param->update, cuda_data_type, d_param->nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+		
+		cuda_update_weights(net, d_param->FP32_weights, d_param->update, d_param->in_size 
+			* (d_param->nb_neurons+1));
+	}
 }
 
 
