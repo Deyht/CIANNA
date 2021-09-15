@@ -23,6 +23,8 @@
 
 #include "prototypes.h"
 
+struct timeval t_perf_eval;
+
 void init_timing(struct timeval* tstart)
 {
     gettimeofday(tstart, NULL);
@@ -855,6 +857,10 @@ void perf_eval_in(network *net)
 		cuda_perf_eval_in();
 		#endif
 	}
+	else
+	{
+		init_timing(&t_perf_eval);
+	}
 }
 
 
@@ -868,6 +874,10 @@ void perf_eval_out(network *net, int layer_id, float *vect, int *n_vect)
 		#ifdef CUDA
 		time = cuda_perf_eval_out();
 		#endif
+	}
+	else
+	{
+		time = ellapsed_time(t_perf_eval)*1000;
 	}
 	
 	if(n_vect[layer_id] < 999)

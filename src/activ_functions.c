@@ -627,9 +627,7 @@ void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target,
 			f_delta_o[i] = (f_output[i] - f_target[pos]);
 		}
 		else
-		{
 			f_delta_o[i] = 0.0f;
-		}
 	}
 }
 

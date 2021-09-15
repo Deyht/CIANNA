@@ -28,7 +28,7 @@ if(os.environ.get('USE_BLAS') != None):
 	print("USE_BLAS")
 	blas_obj = ['blas/blas_dense_layer.o', 'blas/blas_conv_layer.o']
 	blas_include = ['/opt/OpenBLAS/include']
-	blas_extra = ['-L/opt/OpenBLAS/lib', '-lopenblas']
+	blas_extra = ['-lopenblas', '-L/opt/OpenBLAS/lib']
 	blas_macro = [('BLAS', '1')]
 if(os.environ.get('USE_OPENMP') != None):
 	print("USE_OPENMP")

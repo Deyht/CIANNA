@@ -367,10 +367,6 @@ void backward_conv_layer(layer *current)
 			}
 		}
 		
-		//print_table(c_param->filters, c_param->flat_f_size, c_param->nb_filters);
-		//print_table(c_param->update, c_param->flat_f_size, c_param->nb_filters);
-		//exit(1);
-		
 		update_weights(c_param->filters, c_param->update, c_param->flat_f_size*c_param->nb_filters);
 	}
 }

@@ -101,15 +101,31 @@ void pool_define(layer *current);
 void naiv_dense_define(layer *current);
 void naiv_conv_define(layer *current);
 
+void max_pooling_fct(void* i_input, void* i_output, int* pool_map,
+	int pool_size_w, int pool_size_h, int pool_size_d, 
+	int w_size, int h_size, int d_size, 
+	int w_size_out, int h_size_out, int d_size_out, int length);
+void avg_pooling_fct(void* i_input, void* i_output, int* pool_map, 
+	int pool_size_w, int pool_size_h, int pool_size_d,
+	int w_size, int h_size, int d_size, 
+	int w_size_out, int h_size_out, int d_size_out, int length);
+void deltah_max_pool_cont_fct(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 
+	int pool_size_w, int pool_size_h, int pool_size_d, 
+	int len, int batch_size, int image_size, int w_size, int h_size);
+void deltah_avg_pool_cont_fct(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 
+	int pool_size_w, int pool_size_h, int pool_size_d,
+	int len, int batch_size, int image_size, int w_size, int h_size);
+void dropout_select_pool(int* mask, int size, float drop_rate);
+void dropout_apply_pool(void* i_table, int batch_size, int dim, int* mask, int size);
+
 void flat_dense(void* in, void* out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 void reroll_batch(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
-void dropout_select(int* mask, int size, float drop_rate);
-void dropout_apply(void* table, int batch_size, int dim, int* mask);
+void dropout_select_dense(int* mask, int size, float drop_rate);
+void dropout_apply_dense(void* table, int batch_size, int dim, int* mask);
 
-void add_bias_im2col(void* output, float bias_value, int flat_f_size, int size);
-void rotate_filter_matrix(void* in, void* out, int nb_rows, int depth_size, int nb_filters_in, int len);
-void unroll_conv(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
-void reroll_delta_o(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
+void rotate_filter_matrix_fct(void* i_in, void* i_out, int nb_rows, int depth_size, int nb_filters_in, int len);
+void dropout_select_conv(int* mask, int size, float drop_rate);
+void dropout_apply_conv(void* i_table, int batch_size, int dim, int* mask, int size);
 void im2col_fct_v5
 	(void* i_output, void* i_input, 
 	int image_size, int flat_image_size, 
@@ -118,7 +134,7 @@ void im2col_fct_v5
 	int internal_padding_w, int internal_padding_h, int internal_padding_d, 
 	int channel, int channel_padding, int image_padding, 
 	int batch_size, int f_size_w, int f_size_h, int f_size_d, int flat_f_size, 
-	int w_size, int h_size, int d_size, int nb_area_w, int nb_area_h, int bias_in, int bias_out);
+	int w_size, int h_size, int d_size, int nb_area_w, int nb_area_h, int bias_in, int bias_out) ;
 
 #ifdef CUDA
 //######################################

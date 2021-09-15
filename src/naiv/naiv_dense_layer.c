@@ -205,10 +205,7 @@ void naiv_forward_dense_layer(layer *current)
 		dropout_select_dense(d_param->dropout_mask, d_param->nb_neurons+1, d_param->dropout_rate);
 		dropout_apply_dense(current->output, net->batch_size, d_param->nb_neurons, d_param->dropout_mask);
 	}
-	
 }
-
-
 
 
 void naiv_backward_dense_layer(layer* current)
@@ -305,10 +302,6 @@ void naiv_backward_dense_layer(layer* current)
 						+ net->momentum * f_update[i*(d_param->nb_neurons+1)+j];
 			}
 		}
-		
-		//print_table(d_param->weights, d_param->nb_neurons+1, d_param->in_size);
-		//print_table(d_param->update, d_param->nb_neurons+1, d_param->in_size);
-		//exit(1);
 		
 		update_weights(d_param->weights, d_param->update, d_param->in_size*(d_param->nb_neurons+1));
 	}
