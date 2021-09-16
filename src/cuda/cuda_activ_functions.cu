@@ -1031,8 +1031,8 @@ void typed_cuda_activ_fct_association_##name(network *net)																						
 ReLU_activation_kernel(FP32, float);
 ReLU_deriv_kernel(FP32, float);
 quadratic_deriv_output_error_kernel(FP32, float);
-quadratic_output_error_kernel(FP32, float)
-logistic_activation_kernel(FP32, float, expf)
+quadratic_output_error_kernel(FP32, float);
+logistic_activation_kernel(FP32, float, expf);
 logistic_deriv_kernel(FP32, float);
 softmax_activation_kernel(FP32, float, expf);
 cross_entropy_deriv_output_error_kernel(FP32, float);
@@ -1047,8 +1047,8 @@ typed_cuda_activ_fct_association(FP32);
 ReLU_activation_kernel(FP16, half);
 ReLU_deriv_kernel(FP16, half);
 quadratic_deriv_output_error_kernel(FP16, half);
-quadratic_output_error_kernel(FP16, float)
-logistic_activation_kernel(FP16, half, hexp)
+quadratic_output_error_kernel(FP16, float);
+logistic_activation_kernel(FP16, half, hexp);
 logistic_deriv_kernel(FP16, half);
 softmax_activation_kernel(FP16, half, hexp);
 cross_entropy_deriv_output_error_kernel(FP16, half);
@@ -1064,8 +1064,8 @@ typed_cuda_activ_fct_association(FP16);
 ReLU_activation_kernel(BF16, nv_bfloat16);
 ReLU_deriv_kernel(BF16, nv_bfloat16);
 quadratic_deriv_output_error_kernel(BF16, nv_bfloat16);
-quadratic_output_error_kernel(BF16, nv_bfloat16)
-logistic_activation_kernel(BF16, nv_bfloat16, hexp)
+quadratic_output_error_kernel(BF16, nv_bfloat16);
+logistic_activation_kernel(BF16, nv_bfloat16, hexp);
 logistic_deriv_kernel(BF16, nv_bfloat16);
 softmax_activation_kernel(BF16, nv_bfloat16, hexp);
 cross_entropy_deriv_output_error_kernel(BF16, nv_bfloat16);
