@@ -5,7 +5,7 @@
 
 CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists - is a general purpose deep learning framework, but is mainly developed and used for astrophysical applications. Functionalities and optimizations are added based on relevance for (our subset of) astrophysical problem solving.
 
-Main developer : David Cornu, FR - LERMA / Observatoire de Paris, PSL
+Main developer : [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), FR - LERMA / Observatoire de Paris, PSL
 david.cornu@observatoiredeparis.psl.eu
 
 See Copyight (C) and [License](#License) terms.
@@ -103,7 +103,7 @@ Users must be aware of those issues and able to identify them in order to make p
 
 #### License
 
-These files are Copyright &copy; 2020 [David Cornu](https://github.com/Deyht/CIANNA), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
+These files are Copyright &copy; 2020 [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
 
 \ 
 
