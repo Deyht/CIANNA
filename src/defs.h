@@ -31,12 +31,20 @@
 #include <tgmath.h>
 #include <string.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #ifdef comp_CUDA
 #ifdef CUDA
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
+#if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 #include <cuda_fp16.h>
+#endif
+
+#if defined(GEN_AMPERE) 
+#include <cuda_bf16.h>
+#endif
+
 #include <curand.h>
 #include <curand_kernel.h>
 #endif

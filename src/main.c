@@ -35,11 +35,7 @@ int main()
 	//Common randomized seed based on time at execution
 	srand(time(NULL));
 	
-	
-	printf("############################################################\n\
-	CIANNA V-0.8 (08/2020), by D.Cornu\n\
-############################################################\n\n");
-	
+
 	f = fopen("mnist_dat/mnist.dat", "r+");
 	if(f == NULL)
 	{
@@ -135,46 +131,34 @@ int main()
 	//Must be converted if Dynamic load is off !
 	#ifdef CUDA
 	
-	if(networks[0]->compute_method == C_CUDA && networks[0]->dynamic_load == 0)
+	if(networks[0]->compute_method == C_CUDA && networks[0]->cu_inst.dynamic_load == 0)
 	{
 		cuda_convert_dataset(networks[0], &networks[0]->train);
 		cuda_convert_dataset(networks[0], &networks[0]->test);
 		cuda_convert_dataset(networks[0], &networks[0]->valid);
 	}
-	else if(networks[0]->compute_method == C_CUDA && networks[0]->dynamic_load == 1 && networks[0]->use_cuda_TC)
+	else if(networks[0]->compute_method == C_CUDA && networks[0]->cu_inst.dynamic_load == 1 && networks[0]->cu_inst.use_cuda_TC)
 	{
-		cuda_convert_host_dataset_FP32(networks[0], &networks[0]->train);
-		cuda_convert_host_dataset_FP32(networks[0], &networks[0]->test);
-		cuda_convert_host_dataset_FP32(networks[0], &networks[0]->valid);
+		cuda_convert_host_dataset(networks[0], &networks[0]->train);
+		cuda_convert_host_dataset(networks[0], &networks[0]->test);
+		cuda_convert_host_dataset(networks[0], &networks[0]->valid);
 	}
 	#endif
 	
-	
-	/*
-	conv_create(networks[0], NULL, 5, 6, 1, 2, RELU, NULL);
-	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 2, RELU, NULL);
-	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 3, 48, 1, 1, RELU, NULL);
-	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 1024, RELU, 0.5, NULL);
-	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.0, NULL);
-	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 
-		networks[0]->output_dim, SOFTMAX, 0.0, NULL);*/
-	
-	
-	conv_create(networks[0], NULL, 5, 8, 1, 2, RELU, NULL);
-	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 2, RELU, NULL);
-	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2);
-	//conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 3, 48, 1, 1, RELU, NULL);
+	/* MUST UPDATE FILTER, STRIDE AND PADDING ARGUMENT PASSING
+	conv_create(networks[0], NULL, 5, 8, 1, 2, RELU, 0.0, NULL);
+	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2, 0.0);
+	conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 5, 16, 1, 2, RELU, 0.0, NULL);
+	pool_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 2, 0.0);
+	//conv_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 3, 48, 1, 1, RELU, 0.0, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 1024, RELU, 0.5, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 256, RELU, 0.2, NULL);
 	dense_create(networks[0], networks[0]->net_layers[networks[0]->nb_layers-1], 
 		networks[0]->output_dim, SOFTMAX, 0.0, NULL);
-	
+	*/
 	printf("Start learning phase ...\n");
 	
-	train_network(networks[0], 1, 1, 0.0002, 0.0001, 0.9, 0.009, 1, 5, 1, 1);
+	train_network(networks[0], 1, 1, 0.0002, 0.0001, 0.9, 0.009, 1, 5, 1, 1, 2.0);
 
 	exit(EXIT_SUCCESS);
 }
