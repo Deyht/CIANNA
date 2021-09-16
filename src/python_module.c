@@ -224,7 +224,6 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 		cuda_get_batched_dataset(networks[network_id], data);
 	}
 	//printf("Time convert data for CUDA %f\n", ellapsed_time(time));
-	
 	#endif
 	if(silent == 0)
 		printf("\n");
@@ -287,7 +286,7 @@ static PyObject* py_delete_dataset(PyObject* self, PyObject *args, PyObject *kwa
 		printf("Warning: No matching dataset to delete!\n");
 	}
 
-	free_dataset(*data);
+	free_dataset(data);
 	Py_END_ALLOW_THREADS
 
 	return Py_None;

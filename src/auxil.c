@@ -235,27 +235,29 @@ void print_epoch_advance(int c_batch, int nb_batch, float loss)
 	printf("\e[?25h");
 }
 
-void free_dataset(Dataset data)
+void free_dataset(Dataset *data)
 {
 	int i;
 		
-	if(data.localization == HOST)
+	if(data->localization == HOST)
 	{
-		for(i = 0; i < data.nb_batch; i++)
+		for(i = 0; i < data->nb_batch; i++)
 		{
-			free(data.input[i]);
-			free(data.target[i]);
+			free(data->input[i]);
+			free(data->target[i]);
 		}
+		free(&data->input[0]);
+		free(&data->target[0]);
 	}
 	#ifdef CUDA
-	else
+	else if(data->localization == DEVICE)
 	{
-		cuda_free_dataset(&data);
+		cuda_free_dataset(data);
+		
+		free(&data->input[0]);
+		free(&data->target[0]);
 	}
 	#endif
-	
-	free(data.input);
-	free(data.target);
 }
 
 
@@ -1128,14 +1130,53 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			}
 			else
 			{
-				/*MUST BE UPDATED FOR CONV LAYER OUTPUT*/
+				output_save = net->net_layers[net->nb_layers-1]->output;
 				if(saving > 0)
 				{
-					for(k = 0; k < net->length; k++)
+					switch(net->net_layers[net->nb_layers-1]->type)
 					{
-						for(l = 0; l < net->out_size; l++)
-							fprintf(f_save, "%g ", ((float*)net->net_layers[net->nb_layers-1]->output)[k*net->out_size + l]);
-						fprintf(f_save, "\n");
+						default:
+						case DENSE:
+							if(saving == 1)
+							{
+								for(k = 0; k < net->length; k++)
+								{
+									for(l = 0; l < net->out_size; l++)
+										fprintf(f_save, "%g ", ((float*)output_save)[k*net->out_size + l]);
+									fprintf(f_save, "\n");
+								}
+							}
+							else if(saving == 2)
+							{
+								for(k = 0; k < net->length; k++)
+									fwrite(&((float*)output_save)[k*net->out_size], sizeof(float), net->out_size, f_save);
+							}
+							break;
+						case CONV:
+							c_param = (conv_param*)net->net_layers[net->nb_layers-1]->param;
+							int batch_offset = c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2];
+							int filter_offset = batch_offset*net->batch_size;
+							if(saving == 1)
+							{
+								for(k = 0; k < net->length; k++)
+								{
+									for(l = 0; l < c_param->nb_filters; l++)
+									{
+										for(m = 0; m < batch_offset; m++)
+											fprintf(f_save,"%g ", ((float*)output_save)[k*batch_offset + l*filter_offset + m]);
+									}
+									fprintf(f_save, "\n");
+								}
+							}
+							else if(saving == 2)
+							{
+								for(k = 0; k < net->length; k++)
+								{
+									for(l = 0; l < c_param->nb_filters; l++)
+										fwrite(&((float*)output_save)[k*batch_offset + l*filter_offset], sizeof(float), batch_offset, f_save);
+								}
+							}
+							break;
 					}
 				}
 			}
@@ -1224,8 +1265,13 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 							nb_IoU += host_IoU_monitor[k];
 							sum_IoU += host_IoU_monitor[k]*host_IoU_monitor[k+1];
 						}
-						if(host_IoU_monitor != NULL)
-							free(host_IoU_monitor);
+						#ifdef CUDA
+						if(net->compute_method == C_CUDA)
+						{
+							if(host_IoU_monitor != NULL)
+								free(host_IoU_monitor);
+						}
+						#endif
 					}
 					break;
 			}
@@ -1503,8 +1549,16 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				perf_eval_out(net, k,net->fwd_perf, net->fwd_perf_n);
 			}
 			
+			//print_table(net->net_layers[net->nb_layers-1]->output, 8*8*16*14, net->batch_size);
+			
 			perf_eval_in(net); //Include output deriv error in the last layer performance metric
 			output_deriv_error(net->net_layers[net->nb_layers-1]);
+			
+			//print_table(net->net_layers[net->nb_layers-1]->delta_o, 8*8*16*14, net->batch_size);
+			//if(j == 5)
+			//	exit(1);
+			
+			//printf("After\n");
 			
 			//Propagate error through all layers
 			for(k = 0; k < net->nb_layers; k++)
@@ -1525,12 +1579,12 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			
 			// Live loss monitoring
 			output_error(net->net_layers[net->nb_layers-1]);
-						
+			
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
 				cuda_get_table_FP32(net->output_error, temp_error, net->batch_size*net->out_size);
-				net->output_error = temp_error;	
+				net->output_error = temp_error;
 				#endif
 			}
 			pos = 0;
@@ -1606,7 +1660,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		}
 		else
 		{
-			free_dataset(shuffle_duplicate);
+			free_dataset(&shuffle_duplicate);
 		}	
 	}
 	#endif

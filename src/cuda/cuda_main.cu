@@ -42,6 +42,7 @@ cublasComputeType_t cuda_compute_type = CUBLAS_COMPUTE_32F;
 
 
 cudaEvent_t cu_event_start, cu_event_stop;
+int set_TC_scale_factor_error_mem = 0;
 
 //local prototypes
 
@@ -65,11 +66,12 @@ void cuda_set_TC_scale_factor(network* net, float val)
 	{
 		TC_scale_factor = val;
 	}
-	else
+	else if(!set_TC_scale_factor_error_mem)
 	{
 		if(val != 1.0f)
 			printf("\nWARNING: Tried to set TC_scale_factor but the mixed precision mode is incompatible.\nScale kept to 1.\n");
 		TC_scale_factor = 1.0f;
+		set_TC_scale_factor_error_mem = 1; //prevent warning spam
 	}
 }
 

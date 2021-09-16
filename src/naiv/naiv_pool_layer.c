@@ -43,7 +43,7 @@ void max_pooling_fct
 	float* input  = (float*) i_input;
 	float* output = (float*) i_output;
 	
-	#pragma omp parallel for private(i, k, x, y, z, x_max, y_max, z_max, pos, pos_x, pos_y, pos_z, pos_out) collapse(2) schedule(guided, 2)
+	#pragma omp parallel for private(k, x, y, z, x_max, y_max, z_max, pos, pos_x, pos_y, pos_z, pos_out) collapse(2) schedule(guided, 2)
 	for(i = 0; i < w_size_out * h_size_out * d_size_out; i++)
 	{
 		for(k = 0; k < length; k++)
@@ -87,7 +87,7 @@ void avg_pooling_fct
 	float* input  = (float*) i_input;
 	float* output = (float*) i_output;
 	
-	#pragma omp parallel for private(i, k, x, y, z, pos, pos_x, pos_y, pos_z, pos_out) collapse(2) schedule(guided, 2)
+	#pragma omp parallel for private(k, x, y, z, pos, pos_x, pos_y, pos_z, pos_out, r_avg) collapse(2) schedule(guided, 2)
 	for(i = 0; i < w_size_out * h_size_out * d_size_out; i++)
 	{
 		for(k = 0; k < length; k++)
@@ -100,6 +100,7 @@ void avg_pooling_fct
 			
 			pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;
 			
+			r_avg = 0.0;
 			if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)
 			{
 				for(x = 0; x < pool_size_d; x++)

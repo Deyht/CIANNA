@@ -119,7 +119,7 @@ void conv_define_activation_param(layer *current)
 			((yolo_param*)current->activ_param)->cell_w = current->c_network->input_width / c_param->nb_area[0];
 			((yolo_param*)current->activ_param)->cell_h = current->c_network->input_height / c_param->nb_area[1];
 			((yolo_param*)current->activ_param)->cell_d = current->c_network->input_depth / c_param->nb_area[2];
-			c_param->bias_value = 0.01;
+			c_param->bias_value = 0.1;
 			((yolo_param*)current->activ_param)->IoU_monitor = (float*) calloc(2 * current->c_network->y_param->nb_box
 				* c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, sizeof(float));
 			break;

@@ -44,7 +44,7 @@ void init_timing(struct timeval* tstart);
 float ellapsed_time(struct timeval tstart);
 void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load, int u_use_cuda_TC);
 Dataset create_dataset(network *net, int nb_elem);
-void free_dataset(Dataset data);
+void free_dataset(Dataset *data);
 void print_table(float* tab, int column_size, int nb_column);
 void write_formated_dataset(network *net, const char *filename, Dataset *data, int input_data_type, int output_data_type);
 Dataset load_formated_dataset(network *net, const char *filename, int input_data_type, int output_data_type);

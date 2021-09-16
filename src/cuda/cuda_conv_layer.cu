@@ -60,7 +60,7 @@ __global__ void im2col_kernel_v5_##name																										\
 	int pos_w_filter, pos_h_filter, pos_d_filter;																							\
 	int loc;																																\
 																																			\
-	if( i < batch_size)																														\
+	if(i < batch_size)																														\
 	{																																		\
 		input += i*(image_padding + bias_in);																								\
 		output += i*(flat_image_size);																										\
@@ -82,15 +82,15 @@ __global__ void im2col_kernel_v5_##name																										\
 					pos_d_filter = d-z*stride_d;																							\
 					if((pos_d_filter + padding_d < 0) || (pos_d_filter > d_size*(1 + internal_padding_d) + 2*padding_d - f_size_d))			\
 						continue;																											\
-					for(x = w/stride_w; (w-x*stride_w < f_size_w); x -= 1)																	\
+					for(y = h/stride_h; (h-y*stride_h < f_size_h); y -= 1)																	\
 					{																														\
-						pos_w_filter = w-x*stride_w;																						\
-						if((pos_w_filter + padding_w < 0) || (pos_w_filter > w_size*(1 + internal_padding_w) + 2*padding_w - f_size_w))		\
+						pos_h_filter = h-y*stride_h;																						\
+						if((pos_h_filter + padding_h < 0) || (pos_h_filter > h_size*(1 + internal_padding_h) + 2*padding_h - f_size_h))		\
 							continue;																										\
-						for(y = h/stride_h; (h-y*stride_h < f_size_h); y -= 1)																\
+						for(x = w/stride_w; (w-x*stride_w < f_size_w); x -= 1)																\
 						{																													\
-							pos_h_filter = h-y*stride_h;																					\
-							if((pos_h_filter + padding_h < 0) || (pos_h_filter > h_size*(1 + internal_padding_h) + 2*padding_h - f_size_h))	\
+							pos_w_filter = w-x*stride_w;																					\
+							if((pos_w_filter + padding_w < 0) || (pos_w_filter > w_size*(1 + internal_padding_w) + 2*padding_w - f_size_w))	\
 								continue;																									\
 							loc = z*nb_area_w*nb_area_h*(flat_f_size+TC_padding) + y*nb_area_w*(flat_f_size+TC_padding) 					\
 								+ x*(flat_f_size+TC_padding) + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;		\
