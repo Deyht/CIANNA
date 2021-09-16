@@ -3,9 +3,9 @@
 
 ## CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists
 
-CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists - is a general purpose deep learning framework, but is mainly developed and used for astrophysical applications. Functionalities and optimizations are added based on relevance for (our subseset of) astrophysical problem solving.
+CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists - is a general purpose deep learning framework, but is mainly developed and used for astrophysical applications. Functionalities and optimizations are added based on relevance for (our subset of) astrophysical problem solving.
 
-Main developer : David Cornu, FR - LERMA / Observatoire de Paris, PSL
+Main developer : [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), FR - LERMA / Observatoire de Paris, PSL
 david.cornu@observatoiredeparis.psl.eu
 
 See Copyight (C) and [License](#License) terms.
@@ -31,7 +31,7 @@ CIANNA is codded in C99 and requires at least a C compiler to be used. Additiona
 - **C_BLAS**: Require OpenBLAS, much more optimized multi-CPU implementation. Non-matrix operations can also be multi-threaded with OpenMP. (An OpenMP installation for OpenBLAS is advised)
 - **C_CUDA**: (Recommended) Most efficient implementation relying on Nvidia GPUs. It should work on GPUs from Maxwell to Ampere architecture, and can be compiled using CUDA 9.0 to CUDA 11.4, most recent being recommended.
 
-More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/Sytem-Requirements) page
+More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/System-Requirements) page
 
 #### How to install and compile
 
@@ -103,7 +103,7 @@ Users must be aware of those issues and able to identify them in order to make p
 
 #### License
 
-These files are Copyright &copy; 2020 [David Cornu](https://github.com/Deyht/CIANNA), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
+These files are Copyright &copy; 2020 [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
 
 \ 
 
