@@ -5,24 +5,24 @@
 
 CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists - is a general purpose deep learning framework, but is mainly developed and used for astrophysical applications. Functionalities and optimizations are added based on relevance for (our subset of) astrophysical problem solving.
 
-Main developer : [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), FR - LERMA / Observatoire de Paris, PSL
+Developer : [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), FR - LERMA / Observatoire de Paris, PSL
 david.cornu@observatoiredeparis.psl.eu
 
 See Copyight (C) and [License](#License) terms.
 
 
+&nbsp;
 
-#############################################################
 ##          /!\ /!\ /!\ WARNING /!\ /!\ /!\
-#############################################################
 
-CIANNA is not in a "released" / "stable" state. The framework itself and the associated interface are subject to significant changes between versions (no guaranteed forward or backward compatibility for now). One must pay attention to what have been changed before performing updates.
+CIANNA is not in a "released" / "stable" state. The framework itself and the associated interface are subject to significant changes between versions (no guaranteed forward or backward compatibility for now). One must pay attention to what has been changed before performing updates.
 
+**SKA Science Data Challenge 2 information** [(SDC2](https://sdc2.astronomers.skatelescope.org/)): *The present dev branch of CIANNA includes the work that was done by the MINERVA team of implementing a 3D-YOLO network. However, the present repository is **not** a participation to the SDC2 reproducibility award and does not contain the actual training procedure we used for the challenge.  
+This last point will come in a few weeks along with papers dedicated to our approach. Still, the present CIANNA_dev contains all the necessary functions (un-documented) to construct a 3D-YOLO network.*
 
+&nbsp;
 
-#############################################################
 ##                         Installation
-#############################################################
 
 #### Dependencies
 
@@ -41,8 +41,7 @@ More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/S
    - Check the various paths (GCC, OpenBLAS, CUDA, ...)
 
    CUDA Only:
-   - Check all the references to cublas and nvcc
-
+   - Check all the references to cublas and nvcc  
      Edit cuda_arg="...":
      - Update the -arch parameter to fit your GPU architecture
      - Add -D CUDA_OLD if using CUDA < 11.1
@@ -83,10 +82,9 @@ Then, the interface can be build automatically by adding the PY_INTERF argument 
    The created Python interface module has no dependency with *main.c*. Any Python code invoking CIANNA can be written with no need for new compilation.
 
 
+&nbsp;
 
-#############################################################
 ##                   Various Recommandations
-#############################################################
 
 Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/How-to-use-(Python-interface)) Wiki page. The Wiki page containing all the interface functions details is under construction.
 Also "Troubleshooting" and "F.A.Q" pages will be added soon.
@@ -96,7 +94,9 @@ However, since there is no fancy automated gradient optimization, it might happe
 Users must be aware of those issues and able to identify them in order to make proper use of the framework.
 
 
-\ 
+&nbsp;
+
+&nbsp;
 
 
 ########################################################################################
@@ -105,7 +105,7 @@ Users must be aware of those issues and able to identify them in order to make p
 
 These files are Copyright &copy; 2020 [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
 
-\ 
+&nbsp;
 
 #### Contributor License Agreement
 *While you are free to duplicate and modify this repository under the Apache2 License above, by being allowed to submit a contribution to this repository you agree to the following terms:*
@@ -115,6 +115,3 @@ These files are Copyright &copy; 2020 [David Cornu](https://vm-weblerma.obspm.fr
 - *To the fullest extent permitted, you agree not to assert, all of your “moral rights” in or relating to your contributions for the benefit of the present CIANNA framework.*
 
 - *Your contribution was created in whole or in part by you and you have the right to submit it under the open source license indicated in the LICENCE file; or the contribution is based upon previous work that, to the best of your knowledge, is covered under an appropriate open source license and you have the right to submit that work with modifications.*
-
-
-
