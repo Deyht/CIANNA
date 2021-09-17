@@ -17,8 +17,7 @@ See Copyight (C) and [License](#License) terms.
 
 CIANNA is not in a "released" / "stable" state. The framework itself and the associated interface are subject to significant changes between versions (no guaranteed forward or backward compatibility for now). One must pay attention to what has been changed before performing updates.
 
-**SKA Science Data Challenge 2 information** [(SDC2](https://sdc2.astronomers.skatelescope.org/)): *The present dev branch of CIANNA includes the work that was done by the MINERVA team of implementing a 3D-YOLO network. However, the present repository is **not** a participation to the SDC2 reproducibility award and does not contain the actual training procedure we used for the challenge.  
-This last point will come in a few weeks along with papers dedicated to our approach. Still, the present CIANNA_dev contains all the necessary functions (un-documented) to construct a 3D-YOLO network.*
+**SKA Science Data Challenge 2 information** ([SDC2](https://sdc2.astronomers.skatelescope.org/)): *The present dev branch of CIANNA includes the work that was done by the [MINERVA](https://vm-weblerma.obspm.fr/minerva/ska-data-challenges/) team of implementing a 3D-YOLO network. However, this is **not** a participation to the SDC2 reproducibility award and does not contain the actual training procedure we used for the challenge. This last point will come in a few weeks along with papers dedicated to our approach. Still, the present CIANNA_dev contains all the necessary functions (un-documented) to construct a 3D-YOLO network.*
 
 &nbsp;
 
@@ -31,7 +30,7 @@ CIANNA is codded in C99 and requires at least a C compiler to be used. Additiona
 - **C_BLAS**: Require OpenBLAS, much more optimized multi-CPU implementation. Non-matrix operations can also be multi-threaded with OpenMP. (An OpenMP installation for OpenBLAS is advised)
 - **C_CUDA**: (Recommended) Most efficient implementation relying on Nvidia GPUs. It should work on GPUs from Maxwell to Ampere architecture, and can be compiled using CUDA 9.0 to CUDA 11.4, most recent being recommended.
 
-More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/System-Requirements) page
+More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/1\)-System-Requirements) page
 
 #### How to install and compile
 
@@ -86,7 +85,7 @@ Then, the interface can be build automatically by adding the PY_INTERF argument 
 
 ##                   Various Recommandations
 
-Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/How-to-use-(Python-interface)) Wiki page. The Wiki page containing all the interface functions details is under construction.
+Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface)) Wiki page. The Wiki page containing all the interface functions details is under construction.
 Also "Troubleshooting" and "F.A.Q" pages will be added soon.
 
 This framework take into account various modern neural network optimizations. 
