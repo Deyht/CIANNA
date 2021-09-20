@@ -541,7 +541,7 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 					for(l = k; l > 0; l--)																										\
 					{																															\
 						if(prior_w[l-1]*prior_h[l-1]*prior_d[l+1] < prior_w[k]*prior_h[k]*prior_d[k])											\
-							if(targ_w*targ_h*targ_d < prior_w[l-1]*prior_h[l-1]*prior_h[l-1])													\
+							if(targ_w*targ_h*targ_d < prior_w[l-1]*prior_h[l-1]*prior_d[l-1])													\
 								smaller_box = 1;																								\
 					}																															\
 				}																																\
@@ -839,7 +839,7 @@ __global__ void YOLO_error_kernel_##name																										\
 					for(l = k; l > 0; l--)																										\
 					{																															\
 						if(prior_w[l-1]*prior_h[l-1]*prior_d[l+1] < prior_w[k]*prior_h[k]*prior_d[k])											\
-							if(targ_w*targ_h*targ_d < prior_w[l-1]*prior_h[l-1]*prior_h[l-1])													\
+							if(targ_w*targ_h*targ_d < prior_w[l-1]*prior_h[l-1]*prior_d[l-1])													\
 								smaller_box = 1;																								\
 					}																															\
 				}																																\
