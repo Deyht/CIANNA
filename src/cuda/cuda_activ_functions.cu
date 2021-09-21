@@ -133,7 +133,7 @@ __global__ void logistic_activation_kernel_##name(void *i_tab, float beta, float
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
 	type* tab = (type*) i_tab;																													\
-	type t_one = (type) 1.0f;																													\
+	float t_one = (type) 1.0f;																													\
 	type t_beta = (type) beta;																													\
 	type t_saturation = (type) saturation;																										\
 																																				\
@@ -300,7 +300,7 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, int 
 		tab[i] = -(type)sm_tab[0][0]*tab[i];																									\
 		if(tab[i] > (type)sm_tab[0][1])																											\
 			tab[i] = (type)sm_tab[0][1];																										\
-		tab[i] = (type)1.0f/((type)1.0f + exp_fct(tab[i]));																						\
+		tab[i] = 1.0f/(1.0f + exp_fct(tab[i]));																									\
 		return;																																	\
 	}																																			\
 																																				\
@@ -311,7 +311,7 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, int 
 		if(tab[i] > (type)sm_tab[1][1])																											\
 			tab[i] = (type)sm_tab[1][1];																										\
 		else if(tab[i] < (type)(sm_tab[1][2]))																									\
-			tab[i] = (type)(sm_tab[1][2]);																										\
+			tab[i] = (sm_tab[1][2]);																											\
 		return;																																	\
 	}																																			\
 																																				\
@@ -321,7 +321,7 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, int 
 		tab[i] = -(type)sm_tab[2][0]*tab[i];																									\
 		if(tab[i] > (type)sm_tab[2][1])																											\
 			tab[i] = (type)sm_tab[2][1];																										\
-		tab[i] = (type)1.0f/((type)1.0f + exp_fct(tab[i]));																						\
+		tab[i] = 1.0f/(1.0f + exp_fct(tab[i]));																									\
 		return;																																	\
 	}																																			\
 																																				\
@@ -331,7 +331,7 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, int 
 		tab[i] = -(type)sm_tab[3][0]*tab[i];																									\
 		if(tab[i] > (type)sm_tab[3][1])																											\
 			tab[i] = (type)sm_tab[3][1];																										\
-		tab[i] = (type)1.0f/((type)1.0f + exp_fct(tab[i]));																						\
+		tab[i] = 1.0f/(1.0f + exp_fct(tab[i]));																									\
 		return;																																	\
 	}																																			\
 																																				\
@@ -341,7 +341,7 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, int 
 		tab[i] = -(type)sm_tab[4][0]*tab[i];																									\
 		if(tab[i] > (type)sm_tab[4][1])																											\
 			tab[i] = (type)sm_tab[4][1];																										\
-		tab[i] = (type)1.0f/((type)1.0f + exp_fct(tab[i]));																						\
+		tab[i] = 1.0f/(1.0f + exp_fct(tab[i]));																									\
 		return;																																	\
 	}																																			\
 																																				\
@@ -352,7 +352,7 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, int 
 		if(tab[i] > (type)sm_tab[5][1])																											\
 			tab[i] = (type)sm_tab[5][1];																										\
 		else if(tab[i] < (type)(sm_tab[5][2]))																									\
-			tab[i] = (type)(sm_tab[5][2]);																										\
+			tab[i] = (sm_tab[5][2]);																											\
 		return;																																	\
 	}																																			\
 }
@@ -1048,12 +1048,12 @@ ReLU_activation_kernel(FP16, half);
 ReLU_deriv_kernel(FP16, half);
 quadratic_deriv_output_error_kernel(FP16, half);
 quadratic_output_error_kernel(FP16, float);
-logistic_activation_kernel(FP16, half, hexp);
+logistic_activation_kernel(FP16, half, expf);
 logistic_deriv_kernel(FP16, half);
-softmax_activation_kernel(FP16, half, hexp);
+softmax_activation_kernel(FP16, half, expf);
 cross_entropy_deriv_output_error_kernel(FP16, half);
 cross_entropy_output_error_kernel(FP16, half);
-YOLO_activation_kernel(FP16, half, hexp);
+YOLO_activation_kernel(FP16, half, expf);
 YOLO_deriv_error_kernel(FP16, half);
 YOLO_error_kernel(FP16, half);
 typed_cuda_activ_fct_association(FP16);
@@ -1065,12 +1065,12 @@ ReLU_activation_kernel(BF16, nv_bfloat16);
 ReLU_deriv_kernel(BF16, nv_bfloat16);
 quadratic_deriv_output_error_kernel(BF16, nv_bfloat16);
 quadratic_output_error_kernel(BF16, nv_bfloat16);
-logistic_activation_kernel(BF16, nv_bfloat16, hexp);
+logistic_activation_kernel(BF16, nv_bfloat16, expf);
 logistic_deriv_kernel(BF16, nv_bfloat16);
-softmax_activation_kernel(BF16, nv_bfloat16, hexp);
+softmax_activation_kernel(BF16, nv_bfloat16, expf);
 cross_entropy_deriv_output_error_kernel(BF16, nv_bfloat16);
 cross_entropy_output_error_kernel(BF16, nv_bfloat16);
-YOLO_activation_kernel(BF16, nv_bfloat16, hexp);
+YOLO_activation_kernel(BF16, nv_bfloat16, expf);
 YOLO_deriv_error_kernel(BF16, nv_bfloat16);
 YOLO_error_kernel(BF16, nv_bfloat16);
 typed_cuda_activ_fct_association(BF16);
