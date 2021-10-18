@@ -40,18 +40,18 @@ More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/1
    - Check the various paths (GCC, OpenBLAS, CUDA, ...)
 
    CUDA Only:
-   - Check all the references to cublas and nvcc  
+   - Check all the references to **cublas** and **nvcc**  
      Edit cuda_arg="...":
      - Update the -arch parameter to fit your GPU architecture
      - Add -D CUDA_OLD if using CUDA < 11.1
      - Add -D GEN_VOLTA (Volta, Pascal, Turing) or -D GEN_AMPERE (Ampere only) for various mixed precision type support)
 
-3. Execute *compile.cp* to compile the source code.
+3. Use the *compile.cp* commande with the appropriate arguments in order to compile the source code.
 Each of the following optional argument adds support for a given compute methode
    - CUDA 	   : compile additional cuda files
    - OPEN_MP   : add multi-thread for some operations (for C_NAIV and C_BLAS)
    - BLAS 	   : add OpenBLAS gemm (mutli-threaded) operations
-   - PY_INTERF : build the Python interface at the end
+   - PY_INTERF : build the Python interface at the end (need modifications described in step 5)
 
    Multiple parameters can be used at the same time:
    ```
@@ -66,14 +66,14 @@ The C interface works by editing *src/main.c* and recompile using *compile.cp*. 
 
 5. Build the Python interface.
 
-    First check if any path or compile option need to be adapted for your need in the file *src/python_module_setup.py* (GCC, CUDA, OpenBLAS, ...).
-Then, the interface can be build automatically by adding the PY_INTERF argument to the *compile.cp* command, or manually by going into the *src* directory and execute:
+    First, check if any path or compile option need to be adapted for your need in *src/python_module_setup.py* (GCC, CUDA, OpenBLAS, ...).
+Then, the interface can be build automatically by adding the PY_INTERF argument to the *compile.cp* command (re-compile with all arguments), or manually by going into the *src* directory and execute:
    ```
    python3 python_module_setup.py build
    ```
-   To used the locally built interface the explicit build path must be given to the Python script (see example).
+   To used the locally built interface the explicit build path must be given to the Python script (see [example](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface))).
    
-   To provide access to the framework system wide (including using the PY_INTERF option), execute into the *src* directory:
+   To provide system-wide access to the framework (must also be done when using the PY_INTERF option), execute into the *src* directory:
    ```
    sudo python3 python_module_setup.py install
    ```
