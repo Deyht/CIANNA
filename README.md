@@ -1,5 +1,5 @@
 
-<img src="cianna_logo_v2.2.png" alt="drawing" width="612" height="240"/>
+<img src="cianna_logo_v2.2.png" alt="drawing" width="651" height="240"/>
 
 ## CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists
 
