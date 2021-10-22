@@ -1,6 +1,8 @@
 
-<img src="cianna_logo_v2.2.png" alt="drawing" width="651" height="240"/>
-
+<p align="center">
+<img src="cianna_logo_v2.2.png" alt="drawing" width="80%"/>
+</p>
+   
 *Logo made by &copy; Sarah E. Anderson*
 
 ## CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists
