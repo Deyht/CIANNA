@@ -32,7 +32,7 @@ CIANNA is not in a "released" / "stable" state. The framework itself and the ass
 CIANNA is codded in C99 and requires at least a C compiler to be used. Additionally, it supports several compute methods:
 - **C_NAIV**: No dependency, very simple CPU implementation (mainly for pedagogical purpose). Support basic multi-CPU with OpenMP.
 - **C_BLAS**: Require OpenBLAS, much more optimized multi-CPU implementation. Non-matrix operations can also be multi-threaded with OpenMP. (An OpenMP installation for OpenBLAS is advised)
-- **C_CUDA**: (Recommended) Most efficient implementation relying on Nvidia GPUs. It should work on GPUs from Maxwell to Ampere architecture, and can be compiled using CUDA 9.0 to CUDA 11.4, most recent being recommended.
+- **C_CUDA**: (Recommended) Most efficient implementation relying on Nvidia GPUs. It should work on GPUs from Maxwell to Ampere architecture, and can be compiled using CUDA 9.0 to CUDA 11.6, most recent being recommended.
 
 More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/1\)-System-Requirements) page
 
