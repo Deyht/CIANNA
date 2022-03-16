@@ -19,6 +19,8 @@ fwd_step_*.dat
 *.nvvp
 error.txt
 input.dat
-./fwd_res/*
+./net_save
+./fwd_res
 ./src/build
 
+__pycache__

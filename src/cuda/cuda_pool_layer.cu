@@ -123,9 +123,9 @@ __global__ void deltah_max_pool_cont_##name																			\
 		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d			\
 			+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h										\
 			+ ((i%(w_size*h_size))%w_size) * pool_size_w +															\
-			+ ((pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 				\
+			+ ((pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 					\
 			+ (((pool_map[i])%(pool_size_w*pool_size_h))/pool_size_h) * w_size * pool_size_w						\
-			+ (((pool_map[i])%(pool_size_w*pool_size_h))%pool_size_h);											\
+			+ (((pool_map[i])%(pool_size_w*pool_size_h))%pool_size_h);												\
 																													\
 		*delta_o_unpool = delta_o[i];																				\
 	}																												\

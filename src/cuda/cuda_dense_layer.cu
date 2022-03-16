@@ -33,7 +33,7 @@ void cuda_forward_dense_layer(layer *current);
 void cuda_backward_dense_layer(layer* current);
 
 
-//used to reshape output of Conv layer that as the result of filter 1 continuous for the all batch
+//used to reshape output of Conv layer that has the result of filter 1 continuous for the batch
 //convert into all filters continuous for image 1, then image 2, ...
 #define cuda_flat_dense(name, type) 																			\
 __global__ void cuda_flat_dense_##name																			\
@@ -287,6 +287,8 @@ void cuda_forward_dense_layer(layer *current)
 	
 	float w_f_alpha;
 	
+	float prev_drop_rate = 0.0f;
+	
 	network* net = current->c_network;
 	
 	#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
@@ -320,6 +322,7 @@ void cuda_forward_dense_layer(layer *current)
 				nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
 				nb_area_d = ((conv_param*)current->previous->param)->nb_area[2];
 				depth = ((conv_param*)current->previous->param)->nb_filters;
+				prev_drop_rate = ((conv_param*)current->previous->param)->dropout_rate;
 				break;
 			
 			case POOL:
@@ -328,6 +331,7 @@ void cuda_forward_dense_layer(layer *current)
 				nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
 				nb_area_d = ((pool_param*)current->previous->param)->nb_area[2];
 				depth = ((pool_param*)current->previous->param)->nb_maps;
+				prev_drop_rate = ((pool_param*)current->previous->param)->dropout_rate;
 				break;
 		}
 		
@@ -341,13 +345,15 @@ void cuda_forward_dense_layer(layer *current)
 		
 		ref_input = d_param->flat_input;
 	}
+	else if(current->previous != NULL && current->previous->type == DENSE)
+		prev_drop_rate = ((dense_param*)current->previous->param)->dropout_rate;
 	
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
 		if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-			*((half*)w_alpha) = (1.0f/(1.0f+ (((conv_param*)current->previous->param)->dropout_rate)));	
+			*((half*)w_alpha) = (1.0f/(1.0f + prev_drop_rate));	
 		else
-			*((float*)w_alpha)  = (1.0f/(1.0f+ (((conv_param*)current->previous->param)->dropout_rate)));
+			*((float*)w_alpha)  = (1.0f/(1.0f + prev_drop_rate));
 		 //bias weight is included in drop, should change this behavior ?
 	}
 	else
@@ -369,7 +375,7 @@ void cuda_forward_dense_layer(layer *current)
 	{
 		// Must check performance impact -> the present approach is due to the curand behavior
 		cu_blocks = (d_param->nb_neurons);
-		cuda_dropout_select<<<cu_blocks, 1>>>(d_param->dropout_mask, d_param->nb_neurons+1, 
+		cuda_dropout_select<<<cu_blocks, 1>>>(d_param->dropout_mask, d_param->nb_neurons, 
 			d_param->dropout_rate, (curandState_t*) d_param->block_state);	
 
 		dim3 threadsPerBlock(8, 32);

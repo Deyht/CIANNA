@@ -1,0 +1,34 @@
+
+
+********************************************
+===== V-0.9.2.8 =====
+ (interface V-0.6.1)
+
+====    Interface related    ====
+
+- Update the Python interface for network and layer creation with more default values and automated 1D->2D->3D completion for the C function call
+- Remove (comment) the formatted I/O related functions from the interface (depreciated). The use of dynamic data loading is now recommended for large dataset handling using the recent behavior of create and "swap" dataset functions (will add an example script asap).
+- Related to previous point: all dataset created from the python interface must NOT include a bias value (bias parameter depreciated), the bias addition is managed automatically.
+- A new example file ex_script_dyn_load.py is provided to illustrate how to use the dynamic data loading functions. The wiki page will be extended in order to provide more in depth details.
+- Unified saving parameter naming in code, the keyword is now "save_every" and can be <= 0 value to indicate that the network should not be saved automatically.
+- The prior existence of "fwd_res" and "net_save" directories is now check at execution time. They are now created if missing, which prevent several crashes or error stop. Consequently they are no more present in the default git repo structure. 
+- Add a CIANNA logo display in ascii art. Can be turned off by setting the no-logo parameter to 1.
+- Fix spacing in some terminal displays, and remove unnecessary logs in the default output.
+
+==== Low level modifications ====
+
+- Add internal padding user control. Allows to create increasing size convolutional layers. 
+  (int_padding is a required parameter at layer create for now, no default)
+- Add experimental support (CUDA Only) for GAN construction and training. Classical GAN works partially (call for Batch Norm addition to CIANNA).
+     Add some experimental functions in the perspective of semi-supervised GAN. (not accessible through the interface for now).
+- Fix remaining edge error on classical convolution
+- Fix the global behavior of transposed convolution (both for the new user controlled Tr.Conv and the automated one in backprop)
+- Fix a discrepancy between CUDA and CPU implementation in dropout for dense layers (errors in both compute methods might remain for the AVG_MODEL inference)
+- Fix an import issue that could occur in specific environment when compiling the python interface
+- Added interrupt signal handling in the C code when called from the Python interface. This solve the issue with CUDA not freeing up GPU memory when using ctrl-C to abort training. (Works to be done on a graceful memory clean in this context).
+
+
+********************************************
+V-0.9.2.7
+
+Starting patch note after version 9.2.7

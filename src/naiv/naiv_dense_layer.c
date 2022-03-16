@@ -202,7 +202,7 @@ void naiv_forward_dense_layer(layer *current)
 	
 	if(d_param->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
-		dropout_select_dense(d_param->dropout_mask, d_param->nb_neurons+1, d_param->dropout_rate);
+		dropout_select_dense(d_param->dropout_mask, d_param->nb_neurons, d_param->dropout_rate);
 		dropout_apply_dense(current->output, net->batch_size, d_param->nb_neurons, d_param->dropout_mask);
 	}
 }

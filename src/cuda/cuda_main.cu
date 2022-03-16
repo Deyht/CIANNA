@@ -372,13 +372,19 @@ void cuda_free_dataset(Dataset *data)
 {
 	int i;
 	
-	for(i = 0; i < data->nb_batch; i++)
+	if(data->input != NULL)
 	{
-		cudaFree(data->input[i]);
-		cudaFree(data->target[i]);
+		for(i = 0; i < data->nb_batch; i++)
+		{
+			cudaFree(data->input[i]);
+			cudaFree(data->target[i]);
+		}
 	}
-	cudaFree(data->input_device);
-	cudaFree(data->target_device);
+	if(data->input_device != NULL)
+	{
+		cudaFree(data->input_device);
+		cudaFree(data->target_device);
+	}
 }
 
 __global__ void cuda_master_weight_FP32_to_FP32_kernel(float *master, void *copy, int size)
@@ -789,6 +795,107 @@ void cuda_host_only_shuffle(network *net, Dataset data)
 }
 
 
+#define cuda_gan_disc_mix_input_kernel(name, type)																	\
+__global__ void cuda_gan_disc_mix_input_kernel_##name																\
+	(void *gen_output, void *disc_input, void* true_input, 															\
+	int half_offset, int im_flat_size, int nb_channels, int batch_size, int len) 									\
+{																													\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
+																													\
+	type* g_out = (type*) gen_output;																				\
+	type* d_in  = (type*) disc_input;																				\
+	type* true_in = (type*) true_input;																				\
+																													\
+	if(i < len)																										\
+	{																												\
+		int im_channel = i / (im_flat_size*batch_size);																\
+		int im_id = (i % (im_flat_size*batch_size))/im_flat_size;													\
+		int im_coord = (i % (im_flat_size*batch_size))%im_flat_size;												\
+		int half_im_id = 0;																							\
+																													\
+		if(im_id < batch_size*0.5) /*Fake from generator*/															\
+		{																											\
+			d_in[i] = g_out[i+int(half_offset*(0.5*batch_size*im_flat_size))];										\
+		}																											\
+		else 				  /*True from input training set*/														\
+		{																											\
+			half_im_id = im_id - (1-half_offset)*int(0.5*batch_size);												\
+			d_in[i] = true_in[half_im_id*(im_flat_size*nb_channels+1)												\
+												+ im_channel*im_flat_size + im_coord];								\
+		}																											\
+	}																												\
+}
+
+
+void cuda_gan_disc_mix_input(layer *gen_output, layer *disc_input, void* true_input, int half_offset)
+{
+	conv_param *gen_c_param = ((conv_param*)gen_output->param);
+
+	int im_flat_size = gen_c_param->nb_area[0]*gen_c_param->nb_area[1]*gen_c_param->nb_area[2];
+	int nb_channels = gen_c_param->nb_filters;
+	int batch_size = gen_output->c_network->batch_size;
+	
+	cu_blocks = ( im_flat_size*nb_channels*batch_size + cu_threads - 1) / cu_threads;
+
+	if(half_offset == -1)
+	{
+		batch_size *= 2;
+		half_offset = 0;
+	}
+
+	disc_input->c_network->cu_inst.cu_auxil_fcts.cu_gan_disc_mix_input_kernel<<< cu_blocks, cu_threads >>>
+		(gen_output->output, disc_input->output, true_input, half_offset, im_flat_size, nb_channels, batch_size, im_flat_size*nb_channels*batch_size);
+}
+
+#define cuda_create_gan_target_kernel(name, type)																	\
+__global__ void cuda_create_gan_target_kernel_##name																\
+(void* i_targ, void* i_true_targ, int out_size, int batch_size, float frac_ones, int i_half, int len)				\
+{																													\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
+																													\
+	type* targ = (type*) i_targ;																					\
+	/*type* true_targ = (type*) i_true_targ;*/																			\
+																													\
+	if(i < len)																										\
+	{																												\
+		int obj_id = i / out_size;																					\
+		int pos_id = i % out_size;																					\
+																													\
+		if(frac_ones <= 0.0f)																						\
+		{																											\
+			if(pos_id == 0)																							\
+				targ[i] = (type)0.0f;																				\
+			else																									\
+				targ[i] = (type)1.0f;																				\
+		}																											\
+		else if(obj_id < int(frac_ones*batch_size))																	\
+		{																											\
+			if(pos_id == 0)																							\
+				targ[i] = (type)1.0f;																				\
+			else																									\
+				targ[i] = (type)0.0f;																				\
+		}																											\
+		else																										\
+		{																											\
+			if(pos_id == 0)																							\
+				targ[i] = (type)0.0f;																				\
+			/*if(true_targ[i - int((1 - i_half)*frac_ones*batch_size*out_size)] > (type) 0.0f)*/					\
+			/*	targ[i] = (type)1.0f;*/																				\
+			else																									\
+				targ[i] = (type)1.0f;																				\
+		}																											\
+	}																												\
+}
+
+void cuda_create_gan_target(network* net, void* targ, void* true_targ, float frac_ones, int i_half)
+{
+	cu_blocks = (net->output_dim*net->batch_size + cu_threads - 1) / cu_threads;
+
+	net->cu_inst.cu_auxil_fcts.cu_create_gan_target_kernel<<< cu_blocks, cu_threads >>>
+		(targ, true_targ, net->output_dim, net->batch_size, frac_ones, i_half, net->output_dim*net->batch_size);
+}
+
+
 
 cuda_host_copy_to(FP32, float, ); //last argument empty en purpose
 cuda_create_host_table_fct(FP32, float);
@@ -807,6 +914,8 @@ shfl_kern_fct(FP32, float);
 get_back_shuffle_fct(FP32, float);
 host_shuffle_typed(FP32, float);
 cuda_host_only_shuffle_type(FP32, float);
+cuda_gan_disc_mix_input_kernel(FP32, float);
+cuda_create_gan_target_kernel(FP32, float);
 
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE)
@@ -831,6 +940,8 @@ shfl_kern_fct(FP16, half);
 get_back_shuffle_fct(FP16, half);
 host_shuffle_typed(FP16, half);
 cuda_host_only_shuffle_type(FP16, half);
+cuda_gan_disc_mix_input_kernel(FP16, half);
+cuda_create_gan_target_kernel(FP16, half);
 #endif
 
 #if defined(GEN_AMPERE)
@@ -855,6 +966,8 @@ shfl_kern_fct(BF16, nv_bfloat16);
 get_back_shuffle_fct(BF16, nv_bfloat16);
 host_shuffle_typed(BF16, nv_bfloat16);
 cuda_host_only_shuffle_type(BF16, nv_bfloat16);
+cuda_gan_disc_mix_input_kernel(BF16, nv_bfloat16);
+cuda_create_gan_target_kernel(BF16, nv_bfloat16);
 #endif
 
 
@@ -884,6 +997,8 @@ void init_auxil_cuda(network* net)
 			net->cu_inst.cu_auxil_fcts.cu_get_back_shuffle_fct = get_back_shuffle_FP32;
 			net->cu_inst.cu_auxil_fcts.cu_host_shuffle_fct = cuda_host_shuffle_FP32;
 			net->cu_inst.cu_auxil_fcts.cu_host_only_shuffle_fct = cuda_host_only_shuffle_FP32;
+			net->cu_inst.cu_auxil_fcts.cu_gan_disc_mix_input_kernel = cuda_gan_disc_mix_input_kernel_FP32;
+			net->cu_inst.cu_auxil_fcts.cu_create_gan_target_kernel = cuda_create_gan_target_kernel_FP32;
 			break;
 		
 		
@@ -908,6 +1023,8 @@ void init_auxil_cuda(network* net)
 			net->cu_inst.cu_auxil_fcts.cu_get_back_shuffle_fct = get_back_shuffle_FP16;
 			net->cu_inst.cu_auxil_fcts.cu_host_shuffle_fct = cuda_host_shuffle_FP16;
 			net->cu_inst.cu_auxil_fcts.cu_host_only_shuffle_fct = cuda_host_only_shuffle_FP16;
+			net->cu_inst.cu_auxil_fcts.cu_gan_disc_mix_input_kernel = cuda_gan_disc_mix_input_kernel_FP16;
+			net->cu_inst.cu_auxil_fcts.cu_create_gan_target_kernel = cuda_create_gan_target_kernel_FP16;
 			#else
 			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
 			exit(EXIT_FAILURE);
@@ -934,6 +1051,8 @@ void init_auxil_cuda(network* net)
 			net->cu_inst.cu_auxil_fcts.cu_get_back_shuffle_fct = get_back_shuffle_BF16;
 			net->cu_inst.cu_auxil_fcts.cu_host_shuffle_fct = cuda_host_shuffle_BF16;
 			net->cu_inst.cu_auxil_fcts.cu_host_only_shuffle_fct = cuda_host_only_shuffle_BF16;
+			net->cu_inst.cu_auxil_fcts.cu_gan_disc_mix_input_kernel = cuda_gan_disc_mix_input_kernel_BF16;
+			net->cu_inst.cu_auxil_fcts.cu_create_gan_target_kernel = cuda_create_gan_target_kernel_BF16;
 			#else
 			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
 			exit(EXIT_FAILURE);
@@ -946,100 +1065,106 @@ void init_auxil_cuda(network* net)
 
 void init_cuda(network* net)
 {
-	cublasStatus_t stat = cublasCreate(&cu_handle);
-	
-	//CUDA version <= 11.0
-	#if defined(CUDA_OLD)
-	switch(net->cu_inst.use_cuda_TC)
+	cublasStatus_t stat = CUBLAS_STATUS_SUCCESS;
+	if(!is_cuda_init)
 	{
-		default:
-		case FP32C_FP32A:
-			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
-			cuda_data_type = CUDA_R_32F;
-			cuda_compute_type = CUDA_R_32F;
-			TC_scale_factor = 1.0f;
-			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-			break;
-		
-		#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
-		case FP16C_FP32A:
-			cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
-			cuda_data_type = CUDA_R_16F;
-			cuda_compute_type = CUDA_R_32F;
-			TC_scale_factor = 4.0f;
-			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-			break;
+		stat = cublasCreate(&cu_handle);
+	
+		//CUDA version <= 11.0
+		#if defined(CUDA_OLD)
+		switch(net->cu_inst.use_cuda_TC)
+		{
+			default:
+			case FP32C_FP32A:
+				cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+				cuda_data_type = CUDA_R_32F;
+				cuda_compute_type = CUDA_R_32F;
+				TC_scale_factor = 1.0f;
+				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+				break;
 			
-		case FP16C_FP16A:
-			cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
-			cuda_data_type = CUDA_R_16F;
-			cuda_compute_type = CUDA_R_16F;
-			TC_scale_factor = 4.0f;
-			cu_alpha = &cu_h_alpha; cu_beta = &cu_h_beta;
-			cu_learning_rate = &cu_h_learning_rate; cu_momentum = &cu_h_momentum;
-			break;
+			#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
+			case FP16C_FP32A:
+				cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
+				cuda_data_type = CUDA_R_16F;
+				cuda_compute_type = CUDA_R_32F;
+				TC_scale_factor = 4.0f;
+				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+				break;
+				
+			case FP16C_FP16A:
+				cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
+				cuda_data_type = CUDA_R_16F;
+				cuda_compute_type = CUDA_R_16F;
+				TC_scale_factor = 4.0f;
+				cu_alpha = &cu_h_alpha; cu_beta = &cu_h_beta;
+				cu_learning_rate = &cu_h_learning_rate; cu_momentum = &cu_h_momentum;
+				break;
+			#endif
+		}
+
+		//CUDA version >= 11.1
+		#else
+		switch(net->cu_inst.use_cuda_TC)
+		{
+			default:
+			case FP32C_FP32A:
+				cublasSetMathMode(cu_handle, CUBLAS_PEDANTIC_MATH);
+				cuda_data_type = CUDA_R_32F;
+				cuda_compute_type = CUBLAS_COMPUTE_32F_PEDANTIC;
+				TC_scale_factor = 1.0f;
+				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+				break;
+
+			#if defined(GEN_AMPERE) 
+			case TF32C_FP32A:
+				cublasSetMathMode(cu_handle, CUBLAS_TF32_TENSOR_OP_MATH);
+				cuda_data_type = CUDA_R_32F;
+				cuda_compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
+				TC_scale_factor = 1.0f;
+				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+				break;
+			#endif
+			
+			#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
+			case FP16C_FP32A:
+				cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+				cuda_data_type = CUDA_R_16F;
+				cuda_compute_type = CUBLAS_COMPUTE_32F;
+				TC_scale_factor = 4.0f;
+				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+				break;
+				
+			case FP16C_FP16A:
+				cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+				cuda_data_type = CUDA_R_16F;
+				cuda_compute_type = CUBLAS_COMPUTE_16F;
+				TC_scale_factor = 4.0f;
+				cu_alpha = &cu_h_alpha; cu_beta = &cu_h_beta;
+				cu_learning_rate = &cu_h_learning_rate; cu_momentum = &cu_h_momentum;
+				break;
+			#endif
+			
+			#if defined(GEN_AMPERE)
+			case BF16C_FP32A:
+				cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+				cuda_data_type = CUDA_R_16BF;
+				cuda_compute_type = CUBLAS_COMPUTE_32F;
+				TC_scale_factor = 1.0f;
+				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+				break;
+			#endif
+		}
 		#endif
 	}
 	
-	//CUDA version >= 11.1
-	#else
-	switch(net->cu_inst.use_cuda_TC)
-	{
-		default:
-		case FP32C_FP32A:
-			cublasSetMathMode(cu_handle, CUBLAS_PEDANTIC_MATH);
-			cuda_data_type = CUDA_R_32F;
-			cuda_compute_type = CUBLAS_COMPUTE_32F_PEDANTIC;
-			TC_scale_factor = 1.0f;
-			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-			break;
-	
-		#if defined(GEN_AMPERE) 
-		case TF32C_FP32A:
-			cublasSetMathMode(cu_handle, CUBLAS_TF32_TENSOR_OP_MATH);
-			cuda_data_type = CUDA_R_32F;
-			cuda_compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
-			TC_scale_factor = 1.0f;
-			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-			break;
-		#endif
-		
-		#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
-		case FP16C_FP32A:
-			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
-			cuda_data_type = CUDA_R_16F;
-			cuda_compute_type = CUBLAS_COMPUTE_32F;
-			TC_scale_factor = 4.0f;
-			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-			break;
-			
-		case FP16C_FP16A:
-			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
-			cuda_data_type = CUDA_R_16F;
-			cuda_compute_type = CUBLAS_COMPUTE_16F;
-			TC_scale_factor = 4.0f;
-			cu_alpha = &cu_h_alpha; cu_beta = &cu_h_beta;
-			cu_learning_rate = &cu_h_learning_rate; cu_momentum = &cu_h_momentum;
-			break;
-		#endif
-		
-		#if defined(GEN_AMPERE)
-		case BF16C_FP32A:
-			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
-			cuda_data_type = CUDA_R_16BF;
-			cuda_compute_type = CUBLAS_COMPUTE_32F;
-			TC_scale_factor = 1.0f;
-			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-			break;
-		#endif
-	}
-	#endif
+	is_cuda_init = 1;
 	
 	//set typed function according to USE_CUDA_TC
 	init_auxil_cuda(net);

@@ -30,7 +30,7 @@ float random_uniform(void)
 	return  rand()/(float)RAND_MAX;
 }
 
-//return a real value following normal distribution with 0 mean and 1 standart deviation
+//return a real value following normal distribution with 0 mean and 1 standard deviation
 float random_normal(void)
 {
 	// non optimized box muller normal distribution generator

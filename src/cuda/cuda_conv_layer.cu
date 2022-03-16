@@ -36,7 +36,7 @@ void cuda_backward_conv_layer(layer *current);
 //One of the most important function, aims to convert an image into a table that contains all the
 //areas that will be used for convolution. Highly redundant but still allows a significant speed up
 //due to subsequent matrix operations. Currently memory bound despite only one load per element of the original image.
-//VERSION 4.2
+//VERSION 5.3
 #define im2col_kernel_v5(name, type) 																										\
 __global__ void im2col_kernel_v5_##name																										\
 	(void* i_output, void* i_input, 																										\
@@ -73,24 +73,24 @@ __global__ void im2col_kernel_v5_##name																										\
 			{																																\
 				local_pix = input[p];																										\
 																																			\
-				d = (p / (w_size*h_size))*(1 + internal_padding_d) + padding_d;																\
-				h = (p % (w_size*h_size) / w_size)*(1 + internal_padding_h) + padding_h;													\
-				w = (p % (w_size*h_size) % w_size)*(1 + internal_padding_w) + padding_w;													\
+				d = (p / (w_size*h_size)) * (1+internal_padding_d) + padding_d;																\
+				h = (p % (w_size*h_size) / w_size) * (1+internal_padding_h) + padding_h;													\
+				w = (p % (w_size*h_size) % w_size) * (1+internal_padding_w) + padding_w;													\
 																																			\
 				for(z = d/stride_d; (d-z*stride_d < f_size_d); z -=1)																		\
 				{																															\
 					pos_d_filter = d-z*stride_d;																							\
-					if((pos_d_filter + padding_d < 0) || (pos_d_filter > d_size*(1 + internal_padding_d) + 2*padding_d - f_size_d))			\
+					if((z < 0) || (pos_d_filter > d_size + (d_size-1)*internal_padding_d + 2*padding_d - f_size_d))							\
 						continue;																											\
 					for(y = h/stride_h; (h-y*stride_h < f_size_h); y -= 1)																	\
 					{																														\
 						pos_h_filter = h-y*stride_h;																						\
-						if((pos_h_filter + padding_h < 0) || (pos_h_filter > h_size*(1 + internal_padding_h) + 2*padding_h - f_size_h))		\
+						if((y < 0) || (pos_h_filter > h_size + (h_size-1)*internal_padding_h + 2*padding_h - f_size_h))						\
 							continue;																										\
 						for(x = w/stride_w; (w-x*stride_w < f_size_w); x -= 1)																\
 						{																													\
 							pos_w_filter = w-x*stride_w;																					\
-							if((pos_w_filter + padding_w < 0) || (pos_w_filter > w_size*(1 + internal_padding_w) + 2*padding_w - f_size_w))	\
+							if((x < 0) || (pos_w_filter > w_size + (w_size-1)*internal_padding_w + 2*padding_w - f_size_w))					\
 								continue;																									\
 							loc = z*nb_area_w*nb_area_h*(flat_f_size+TC_padding) + y*nb_area_w*(flat_f_size+TC_padding) 					\
 								+ x*(flat_f_size+TC_padding) + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;		\
@@ -305,6 +305,10 @@ size_t cuda_convert_conv_layer(layer *current)
 		* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
 	vram_approx += cuda_convert_table(net, &(current->delta_o), c_param->nb_filters 
 		* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
+		
+	if(current->previous != NULL && current->previous->type == DENSE)
+		vram_approx += cuda_convert_table(net, &(c_param->temp_delta_o), c_param->prev_depth * c_param->prev_size[0] 
+			* c_param->prev_size[1] * c_param->prev_size[2] * current->c_network->batch_size);
 	
 	vram_approx += cuda_convert_table(net, &(c_param->im2col_input), 
 		((c_param->flat_f_size + c_param->TC_padding) * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) 
@@ -349,14 +353,17 @@ void cuda_forward_conv_layer(layer *current)
 		return;
 	c_param = (conv_param*) current->param;
 	
-	if(current->previous == NULL)
+	if(current->previous == NULL || current->previous->type == DENSE)
 	{
 		//if previous layer is input layer then remove the added bias on the image
 		//and interpret it as continuous RGB images
 		//size in line format
 		depth_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2];
 		image_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * c_param->prev_depth;
-		current->input = net->input;
+		if(current->previous == NULL)
+			current->input = net->input;
+		else
+			current->input = current->previous->output;
 		im2col_prev_bias = 1;
 	}
 	else
@@ -365,10 +372,10 @@ void cuda_forward_conv_layer(layer *current)
 		//it also not contain a bias directly in the image
 		depth_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * net->batch_size;
 		image_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2];
-		im2col_prev_bias = 0;
 		current->input = current->previous->output;
+		im2col_prev_bias = 0;
 	}
-	
+		
 	cuda_master_weight_copy(net, (float*)c_param->FP32_filters, c_param->filters, 
 		c_param->nb_filters * (c_param->flat_f_size + c_param->TC_padding));
 	
@@ -399,7 +406,8 @@ void cuda_forward_conv_layer(layer *current)
 				current->input, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
 				c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * 
 				(c_param->flat_f_size + c_param->TC_padding), c_param->stride[0], c_param->stride[1], c_param->stride[2],
-				c_param->padding[0], c_param->padding[1], c_param->padding[2], 0, 0 ,0, 
+				c_param->padding[0], c_param->padding[1], c_param->padding[2],
+				c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2],
 				c_param->prev_depth, depth_padding, image_padding, c_param->TC_padding, net->batch_size, 
 				c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], c_param->flat_f_size, 
 				c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
@@ -413,12 +421,24 @@ void cuda_forward_conv_layer(layer *current)
 			c_dr = ((pool_param*)current->previous->param)->dropout_rate;
 		else
 			c_dr = 0.0f;
-		c_dr = 1.0f - (((c_param->flat_f_size-1)*(1.0f-c_dr) + 1)/c_param->flat_f_size);
-		//w_alpha = (1.0f - c_dr);       //account for the bias node that is never dropped
-		if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-			*((half*)w_alpha) = (1.0f/(1.0 + c_dr));	
+			
+		if(c_dr <= 0.01f)
+		{
+			if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
+				*((half*)w_alpha) = 1.0f;	
+			else
+				*((float*)w_alpha) = 1.0f;
+		}
 		else
-			*((float*)w_alpha) = (1.0f/(1.0 + c_dr));
+		{
+			//c_dr = 1.0f - (((c_param->flat_f_size-1)*(1.0f-c_dr) + 1)/c_param->flat_f_size);
+			c_dr = ((c_param->flat_f_size-1)*(1.0f-c_dr)+1)/c_param->flat_f_size;
+			//w_alpha = (1.0f - c_dr);       //account for the bias node that is never dropped
+			if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
+				*((half*)w_alpha) = c_dr/*(1.0f/(2.0 - c_dr))*/;	
+			else
+				*((float*)w_alpha) = c_dr/*(1.0f/(2.0 - c_dr))*/;
+		}
 	}
 	else
 	{
@@ -467,6 +487,7 @@ void cuda_backward_conv_layer(layer *current)
 	int image_padding;
 	int flat_f_size;
 	int dim_a, dim_b, dim_c;
+	void *c_prev_delta_o;
 	
 	network* net = current->c_network;
 
@@ -509,7 +530,8 @@ void cuda_backward_conv_layer(layer *current)
 		
 		for(k = 0; k < 3; k++)
 		{
-			back_padding[k] =  c_param->f_size[k] -  c_param->padding[k] - 1;
+			//back_padding[k] =  c_param->f_size[k] -  c_param->padding[k] - 1;
+			back_padding[k] =  c_param->f_size[k] -  c_param->padding[k] /*- c_param->int_padding[k]*/ - 1;
 			if(back_padding[k] < 0)
 				back_padding[k] = 0;
 		}
@@ -541,24 +563,49 @@ void cuda_backward_conv_layer(layer *current)
 		net->cu_inst.cu_conv_fcts.im2col_fct<<< numBlocks2, threadsPerBlock2 >>>(c_param->im2col_delta_o,
 					current->delta_o, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], 
 					(c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * flat_f_size, 
-					1, 1, 1, back_padding[0], back_padding[1], back_padding[2], 
+					c_param->int_padding[0]+1,  c_param->int_padding[1]+1, c_param->int_padding[2]+1,
+					back_padding[0], back_padding[1], back_padding[2],
 					c_param->stride[0] - 1 , c_param->stride[1] - 1 , c_param->stride[2] - 1,
 					c_param->nb_filters, depth_padding, image_padding, 0, net->batch_size,
 					c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], flat_f_size, 
 					c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
 					c_param->prev_size[0], c_param->prev_size[1], 0, 0);
+					
+		if(current->previous->type == DENSE)
+			c_prev_delta_o = c_param->temp_delta_o;
+		else
+			c_prev_delta_o = current->previous->delta_o;
 
 		cublasGemmEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] 
 			*net->batch_size, c_param->prev_depth, c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2] 
 			*c_param->nb_filters, cu_alpha, c_param->im2col_delta_o, cuda_data_type, c_param->f_size[0] 
 			*c_param->f_size[1]*c_param->f_size[2]*c_param->nb_filters, c_param->rotated_filters, cuda_data_type, 
 			c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2]*c_param->nb_filters, cu_beta, 
-			current->previous->delta_o, cuda_data_type, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]
+			c_prev_delta_o, cuda_data_type, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]
 			*net->batch_size, cuda_compute_type, CUBLAS_GEMM_DEFAULT);
+		
+		if(current->previous->type == DENSE)
+		{
+			cu_blocks = ((c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] * c_param->prev_depth + 1) 
+				* net->batch_size + cu_threads - 1) / cu_threads;
+			
+			net->cu_inst.cu_dense_fcts.flat_dense_fct<<< cu_blocks, cu_threads >>>(c_param->temp_delta_o, 
+				current->previous->delta_o, 0, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2],
+				c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] * c_param->prev_depth + 1, c_param->prev_depth, net->batch_size, 
+				(c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] * c_param->prev_depth + 1) 
+				* net->batch_size);
+		}
 
-		//update gradiant regarding the previous layer activation function
+		//update gradient regarding the previous layer activation function
 		//WARNING : ONLY WORK IF PREVIOUS LAYER IS A CONV AS OUTPUT AND DELTA_O SHARE THE SAME DATA ORDER
 		current->previous->deriv_activation(current->previous);
+		
+		/*if(current->previous->type == DENSE)
+		{
+			cuda_print_table(net, current->previous->delta_o, (c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] * c_param->prev_depth + 1) 
+				* net->batch_size, (c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] * c_param->prev_depth + 1) );
+			exit(1);
+		}*/
 	}
 	
 	//########################  WEIGHTS UPDATE   ########################

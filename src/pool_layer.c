@@ -109,10 +109,10 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 	if(previous == NULL)
 	{
 		//Case of the first layer
-		p_param->prev_size[0] = net->input_width;
-		p_param->prev_size[1] = net->input_height;
-		p_param->prev_size[2] = net->input_depth;
-		p_param->prev_depth = net->input_channels;
+		p_param->prev_size[0] = net->in_dims[0];
+		p_param->prev_size[1] = net->in_dims[1];
+		p_param->prev_size[2] = net->in_dims[2];
+		p_param->prev_depth = net->in_dims[3];
 		//input pointer must be set at the begining of forward
 		current->input = net->input;
 		

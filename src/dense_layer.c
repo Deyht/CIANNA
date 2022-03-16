@@ -47,8 +47,8 @@ void dense_define_activation_param(layer *current)
 				* current->c_network->batch_size;
 			((ReLU_param*)current->activ_param)->dim = d_param->nb_neurons;
 			((ReLU_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
-			((ReLU_param*)current->activ_param)->saturation = 100.0;
-			((ReLU_param*)current->activ_param)->leaking_factor = 0.1;
+			((ReLU_param*)current->activ_param)->saturation = 1000.0;
+			((ReLU_param*)current->activ_param)->leaking_factor = 0.2;
 			d_param->bias_value = 0.1;
 			break;
 		
@@ -59,7 +59,7 @@ void dense_define_activation_param(layer *current)
 			((ReLU_param*)current->activ_param)->dim = d_param->nb_neurons;
 			((ReLU_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
 			((ReLU_param*)current->activ_param)->saturation = 6.0;
-			((ReLU_param*)current->activ_param)->leaking_factor = 0.1;
+			((ReLU_param*)current->activ_param)->leaking_factor = 0.2;
 			d_param->bias_value = 0.1;
 			break;
 			
@@ -70,7 +70,7 @@ void dense_define_activation_param(layer *current)
 			((logistic_param*)current->activ_param)->dim = d_param->nb_neurons;
 			((logistic_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
 			((logistic_param*)current->activ_param)->beta = 1.0;
-			((logistic_param*)current->activ_param)->saturation = 10.0;
+			((logistic_param*)current->activ_param)->saturation = 8.0;
 			d_param->bias_value = -1.0;
 			break;
 			
@@ -100,7 +100,7 @@ void dense_define_activation_param(layer *current)
 }
 
 
-void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, FILE *f_load)
+void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, int strict_size, FILE *f_load)
 {
 	int i, j;
 	float bias_padding_value;
@@ -108,7 +108,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	layer* current;
 	
 	#ifdef CUDA
-	if(net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC != FP32C_FP32A && nb_neurons % 8 == 0)
+	if(!strict_size && net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC != FP32C_FP32A && nb_neurons % 8 == 0)
 		nb_neurons -= 1;
 	#endif
 	
@@ -130,7 +130,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	
 	if(previous == NULL)
 	{
-		d_param->in_size = net->input_width*net->input_height*net->input_depth*net->input_channels+1;
+		d_param->in_size = net->in_dims[0]*net->in_dims[1]*net->in_dims[2]*net->in_dims[3]+1;
 		current->input = net->input;
 	}
 	else
@@ -244,7 +244,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	printf("L:%d - Dense layer created:\n \
 \t Input: %d, Nb. Neurons: %d, Activation: %s, Dropout: %f\n\
 \t Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",
-		net->nb_layers, d_param->in_size,  d_param->nb_neurons+1, 
+		net->nb_layers, d_param->in_size,  d_param->nb_neurons, 
 		activ, d_param->dropout_rate,
 		(d_param->nb_neurons+1)*d_param->in_size, (int)(mem_approx/1000000));
 	
@@ -336,7 +336,7 @@ void dense_load(network *net, FILE* f)
 	else
 		previous = net->net_layers[net->nb_layers-1];
 
-	dense_create(net, previous, nb_neurons, load_activ_param(activ_type), dropout_rate, f);
+	dense_create(net, previous, nb_neurons, load_activ_param(activ_type), dropout_rate, 1, f);
 }
 
 

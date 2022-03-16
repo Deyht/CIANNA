@@ -35,7 +35,7 @@ static void backward_conv_layer(layer *current);
 //One of the most important function, aims to convert an image into a table that contains all the
 //areas that will be used for convolution. Highly redundant but still allows a significant speed up
 //due to subsequent matrix operations. Currently memory bound despite only one load per element of the original image.
-//VERSION 5.0
+//VERSION 5.3
 void im2col_fct_v5
 	(void* i_output, void* i_input, 
 	int image_size, int flat_image_size, 
@@ -74,17 +74,17 @@ void im2col_fct_v5
 				for(z = d/stride_d; (d-z*stride_d < f_size_d); z -=1)
 				{
 					pos_d_filter = d-z*stride_d;
-					if((pos_d_filter + padding_d < 0) || (pos_d_filter > d_size*(1 + internal_padding_d) + 2*padding_d - f_size_d))
+					if((z < 0) || (pos_d_filter > d_size + (d_size-1)*internal_padding_d + 2*padding_d - f_size_d))
 						continue;
 					for(y = h/stride_h; (h-y*stride_h < f_size_h); y -= 1)
 					{
 						pos_h_filter = h-y*stride_h;
-						if((pos_h_filter + padding_h < 0) || (pos_h_filter > h_size*(1 + internal_padding_h) + 2*padding_h - f_size_h))
+						if((y < 0) || (pos_h_filter > h_size + (h_size-1)*internal_padding_h + 2*padding_h - f_size_h))
 							continue;
 						for(x = w/stride_w; (w-x*stride_w < f_size_w); x -= 1)
 						{
 							pos_w_filter = w-x*stride_w;
-							if((pos_w_filter + padding_w < 0) || (pos_w_filter > w_size*(1 + internal_padding_w) + 2*padding_w - f_size_w))
+							if((x < 0) || (pos_w_filter > w_size + (w_size-1)*internal_padding_w + 2*padding_w - f_size_w))
 								continue;
 							loc = z*nb_area_w*nb_area_h*flat_f_size + y*nb_area_w*flat_f_size 
 								+ x*flat_f_size + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;

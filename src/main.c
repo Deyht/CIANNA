@@ -46,7 +46,7 @@ int main()
 	fscanf(f, "%d %d %d %dx%dx%d %d", &train_size, &test_size, &valid_size, &dims[0], &dims[1],
 		&dims[2], &out_dim);
 	
-	init_network(0, dims, out_dim, 0.1, 64, C_CUDA, 0, 1);
+	init_network(0, dims, out_dim, 0.1, 64, C_CUDA, 0, 1, 0);
 	
 	//train_size = 128;
 	//test_size = 128;

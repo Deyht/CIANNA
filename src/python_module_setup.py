@@ -1,4 +1,5 @@
 from distutils.core import setup, Extension
+import numpy
 import os
 
 
@@ -34,13 +35,11 @@ if(os.environ.get('USE_OPENMP') != None):
 	print("USE_OPENMP")
 	open_mp_extra = ['-fopenmp']
 
-#Re-add naiv: 'naiv/naiv_dense_layer.o', 'naiv/naiv_conv_layer.o', 'naiv/naiv_pool_layer.o'
-
 setup(name = 'CIANNA', 
 	version = '0.9', 
 	ext_modules = [Extension('CIANNA', ['python_module.c'], 
 	extra_objects=['conv_layer.o', 'dense_layer.o', 'pool_layer.o', 'activ_functions.o', 'initializers.o', 'vars.o', 'auxil.o', 'naiv/naiv_dense_layer.o', 'naiv/naiv_conv_layer.o', 'naiv/naiv_pool_layer.o'] + cuda_obj + blas_obj,
-	include_dirs= cuda_include + blas_include,
+	include_dirs= cuda_include + blas_include + [numpy.get_include()],
 	extra_link_args=['-O3 -std=c99'] + cuda_extra + blas_extra + open_mp_extra,
 	define_macros=[('MAX_LAYERS_NB', '100'), ('MAX_NETWORKS_NB','10')] + cuda_macro + blas_macro)])
 

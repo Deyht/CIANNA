@@ -36,7 +36,7 @@ enum inference_modes{AVG_MODEL, MC_MODEL};
 enum batch_param{OFF, SGD, FULL};
 enum data_types{c_FP32, c_UINT16, c_UINT8};
 enum compute_method{C_NAIV, C_BLAS, C_CUDA};
-enum memory_localization{HOST, DEVICE};
+enum memory_localization{NO_LOC, HOST, DEVICE};
 enum IoU_types{IOU, GIOU, DIOU};
 enum pool_types{MAX_pool, AVG_pool};
 
@@ -101,6 +101,11 @@ struct cuda_auxil_fcts
 		int in_size, int b_size, int d_in, int d_out);
 	void (*cu_host_shuffle_fct)(network *net, Dataset data, Dataset duplicate);
 	void (*cu_host_only_shuffle_fct)(network *net, Dataset data);
+	void (*cu_gan_disc_mix_input_kernel)(void *gen_output, void *disc_input, void* true_input,
+		int half_offset, int im_flat_size, int nb_channels, int batch_size, int len);
+	void (*cu_create_gan_target_kernel)(void* i_targ, void* i_true_targ, int out_size, int batch_size, float frac_ones, int i_half, int len);
+	void (*cu_exp_disc_activation_kernel)(void *i_tab, int len, int dim, int size, int halved, int revert);
+	void (*cu_exp_disc_deriv_output_kernel)(void *i_delta_o, void *i_output, void *i_target, int len, int dim, int size, int halved, int revert);
 };
 
 
@@ -268,8 +273,8 @@ struct network
 	Dataset train, test, valid;
 	Dataset train_buf, test_buf, valid_buf;
 	
-	int input_width, input_height, input_depth, input_channels;
-	int input_dim;
+	int in_dims[4];
+	int input_dim; // flat size
 	//Correspond to the "target size"
 	int output_dim;
 	//Correspond to the actual ouput size with various paddings if needed
@@ -306,6 +311,7 @@ struct network
 };
 
 
+
 //############################################
 //               Various Layers
 //############################################
@@ -338,6 +344,7 @@ struct conv_param
 	int TC_padding;
 	int *stride;
 	int *padding;
+	int *int_padding;
 	
 	int nb_filters;
 	int *nb_area;

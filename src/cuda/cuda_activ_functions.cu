@@ -91,7 +91,7 @@ __global__ void quadratic_deriv_output_error_kernel_##name																						
 	if(i < len && (i+1)%(dim+1) != 0)																											\
 	{																																			\
 		pos = i - i/(dim+1);																													\
-		delta_o[i] = (output[i] - target[pos]) * (type)TC_scale_factor;																			\
+		delta_o[i] = (type)(((float)output[i] - (float)target[pos]) * TC_scale_factor);															\
 	}																																			\
 	else																																		\
 		delta_o[i] = (type) 0.0f;																												\
@@ -114,7 +114,7 @@ __global__ void quadratic_output_error_kernel_##name																							\
 	if(i < len && (i+1)%(dim+1) != 0)																											\
 	{																																			\
 		pos = i - i/(dim+1);																													\
-		output_error[i] = (type)(0.5f*(float)(output[i] - target[pos])*(float)(output[i] - target[pos]));										\
+		output_error[i] = (0.5f*((float)output[i] - (float)target[pos])*((float)output[i] - (float)target[pos]));								\
 	}																																			\
 	else																																		\
 		output_error[i]	= 0.0f;																													\
@@ -146,7 +146,7 @@ __global__ void logistic_activation_kernel_##name(void *i_tab, float beta, float
 		tab[i] = -t_beta*tab[i];																												\
 		if(tab[i] > t_saturation)																												\
 			tab[i] = t_saturation;																												\
-		tab[i] = t_one/(t_one + exp_fct(tab[i]));																								\
+		tab[i] = t_one/(t_one + exp_fct((float)tab[i]));																						\
 	}																																			\
 	else																																		\
 		tab[i] = (type)0.0f;																													\
@@ -202,7 +202,7 @@ __global__ void softmax_activation_kernel_##name(void *i_tab, int len, int dim, 
 																																				\
 		for(j = 0; j < dim; j++)																												\
 		{																																		\
-			pos[j] = exp_fct(pos[j]-vmax);																										\
+			pos[j] = exp_fct((float)(pos[j]-vmax));																								\
 			normal += (float)pos[j];																											\
 		}																																		\
 		pos[dim] = 0.0f;																														\
@@ -270,6 +270,158 @@ __global__ void cross_entropy_output_error_kernel_##name																						\
 }
 
 //#####################################################
+
+
+//#####################################################
+//		  Exp activation (SGAN discriminator) related templates
+//#####################################################
+
+#define exp_disc_activation_kernel(name, type, exp_fct)																							\
+__global__ void exp_disc_activation_kernel_##name(void *i_tab, int len, int dim, int size, int halved, int revert)								\
+{																																				\
+/*difficult to further optimize but can be invastigated*/																						\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int j;																																		\
+	type* pos;																																	\
+	type vmax;																																	\
+	float normal = 0.000001f + 0.0f;																											\
+	/*float add_node = 0.0f;*/																													\
+	type* tab = (type*) i_tab;																													\
+																																				\
+	if(i >= size)																																\
+		return;																																	\
+																																				\
+	pos = tab + i*(dim+1);																														\
+																																				\
+	/*if(revert || (halved && i < size/2))*/																									\
+	/*	add_node = 1.0f;				  */																									\
+																																				\
+	if(i < len)																																	\
+	{																																			\
+		if((0 && revert) || (0 && (halved && i < size/2)))																						\
+		{																																		\
+			vmax = 0.000001f; /*the "fake" label is set to 0 (exp(0) = 1 in normal offset)	*/													\
+			/*vmax = pos[0];				*/																									\
+			/*for(j = 0; j < dim; j++)*/																										\
+			/*	if(pos[j] > vmax)	*/																											\
+			/*		vmax = pos[j];	*/																											\
+																																				\
+			for(j = 0; j < dim; j++)																											\
+			{																																	\
+				normal += exp_fct((float)(pos[j] - vmax));																						\
+			}																																	\
+																																				\
+			for(j = 0; j < dim; j++)																											\
+				/*pos[j] = exp_fct((float)(pos[j] - vmax));*/																					\
+				pos[j] = (type) (normal/(normal+1.0f));																							\
+			pos[dim] = 0.0f;																													\
+		}																																		\
+		else																																	\
+		{																																		\
+			/*if(1 || (revert || (halved && i < size/2)))	*/																					\
+				vmax = 0.000001f;  /*the "fake" label is set to 0 (exp(0) = 1 in normal offset)	*/												\
+			/*else								*/																								\
+			/*	vmax = pos[0];					*/																								\
+			/*for(j = 0; j < dim; j++)			*/																								\
+			/*	if(pos[j] > vmax)				*/																								\
+			/*		vmax = pos[j];				*/																								\
+																																				\
+			for(j = 0; j < dim; j++)																											\
+			{																																	\
+				/*if(pos[j] > (type) 6.0f)		*/																								\
+				/*	pos[j] = 6.0f;				*/																								\
+				pos[j] = exp_fct((float)(pos[j]-vmax));																							\
+				normal += (float)pos[j];																										\
+			}																																	\
+			pos[dim] = 0.0f;																													\
+																																				\
+			/*for(j = 0; j < dim; j++)*/																										\
+			/*	pos[j] /= (type)(normal + 1.0f);*/																								\
+			/*pos[dim] = 0.0f;*/																												\
+		}																																		\
+	}																																			\
+	else																																		\
+	{																																			\
+		for(j = 0; j < dim; j++)																												\
+			pos[j] = 0.0f;																														\
+		pos[dim] = 0.0f;																														\
+	}																																			\
+}
+
+
+#define exp_disc_deriv_output_kernel(name, type)																								\
+__global__ void exp_disc_deriv_output_kernel_##name																								\
+(void *i_delta_o, void *i_output, void *i_target, int len, int dim, int size, int halved, int revert)											\
+{																																				\
+/*difficult to further optimize but can be invastigated*/																						\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int j;																																		\
+																																				\
+	type* delta_o = (type*)i_delta_o;																											\
+	type* output  = (type*)i_output;																											\
+	type* target  = (type*)i_target;																											\
+																																				\
+	float sum = 0.000001f + 0.0f;																												\
+	float vmax = 0.000001f;																														\
+	int arg_max = 0;																															\
+																																				\
+	delta_o += i*(dim+1);																														\
+	output  += i*(dim+1);																														\
+	target  += i*(dim);																															\
+																																				\
+	if(i >= size)																																\
+		return;																																	\
+																																				\
+	if(i < len)																																	\
+	{																																			\
+																																				\
+		vmax = (float)output[0];																												\
+		/*sum += (float)output[0];*/																											\
+		for(j = 0; j < dim; j++)																												\
+		{																																		\
+			if((float)output[j] > vmax)																											\
+			{																																	\
+				vmax = (float)output[j];																										\
+				arg_max = j;																													\
+			}																																	\
+			sum += (float)output[j];																											\
+		}																																		\
+																																				\
+		if(revert)																																\
+		{																																		\
+			for(j = 0; j < dim; j++)																											\
+			{																																	\
+				if(j == arg_max)																												\
+					delta_o[j] = (type) (((float)(((float)output[j])/(sum+1.0f)) - 0.9f)/**((float)output[j])/(sum+0.0f)*/);					\
+				else																															\
+					delta_o[j] = (type) (((float)(((float)output[j])/(sum+1.0f)) - 0.0f)/**((float)output[j])/(sum+0.0f)*/);					\
+			}																																	\
+			delta_o[dim] = (type) 0.0f;																											\
+		}																																		\
+		else																																	\
+		{																																		\
+			if(halved && i < size/2)																											\
+			{																																	\
+				for(j = 0; j < dim; j++)																										\
+					delta_o[j] = (type) (((float)(((float)output[j])/(sum+1.0f)) - 0.0f));														\
+				delta_o[dim] = (type) 0.0f;																										\
+			}																																	\
+			else																																\
+			{																																	\
+				for(j = 0; j < dim; j++)																										\
+					delta_o[j] = (type) (((float)(((float)output[j])/(sum+1.0f)) - (float)target[j]));											\
+				delta_o[dim] = (type) 0.0f;																										\
+			}																																	\
+		}																																		\
+	}																																			\
+	else																																		\
+	{																																			\
+		for(j = 0; j < dim; j++)																												\
+			delta_o[j] = (type) 0.0f;																											\
+		delta_o[dim] = (type) 0.0f;																												\
+	}																																			\
+}
+
 
 
 //#####################################################
@@ -1025,6 +1177,9 @@ void typed_cuda_activ_fct_association_##name(network *net)																						
 	net->cu_inst.cu_YOLO_activ_fcts.activ_fct = YOLO_activation_kernel_##name;																	\
 	net->cu_inst.cu_YOLO_activ_fcts.deriv_output_error_fct = YOLO_deriv_error_kernel_##name;													\
 	net->cu_inst.cu_YOLO_activ_fcts.output_error_fct = YOLO_error_kernel_##name;																\
+																																				\
+	net->cu_inst.cu_auxil_fcts.cu_exp_disc_activation_kernel = exp_disc_activation_kernel_##name;												\
+	net->cu_inst.cu_auxil_fcts.cu_exp_disc_deriv_output_kernel = exp_disc_deriv_output_kernel_##name;											\
 }
 
 
@@ -1037,6 +1192,8 @@ logistic_deriv_kernel(FP32, float);
 softmax_activation_kernel(FP32, float, expf);
 cross_entropy_deriv_output_error_kernel(FP32, float);
 cross_entropy_output_error_kernel(FP32, float);
+exp_disc_activation_kernel(FP32, float, expf);
+exp_disc_deriv_output_kernel(FP32, float);
 YOLO_activation_kernel(FP32, float, expf);
 YOLO_deriv_error_kernel(FP32, float);
 YOLO_error_kernel(FP32, float);
@@ -1047,12 +1204,14 @@ typed_cuda_activ_fct_association(FP32);
 ReLU_activation_kernel(FP16, half);
 ReLU_deriv_kernel(FP16, half);
 quadratic_deriv_output_error_kernel(FP16, half);
-quadratic_output_error_kernel(FP16, float);
+quadratic_output_error_kernel(FP16, half);
 logistic_activation_kernel(FP16, half, expf);
 logistic_deriv_kernel(FP16, half);
 softmax_activation_kernel(FP16, half, expf);
 cross_entropy_deriv_output_error_kernel(FP16, half);
 cross_entropy_output_error_kernel(FP16, half);
+exp_disc_activation_kernel(FP16, half, expf);
+exp_disc_deriv_output_kernel(FP16, half)
 YOLO_activation_kernel(FP16, half, expf);
 YOLO_deriv_error_kernel(FP16, half);
 YOLO_error_kernel(FP16, half);
@@ -1070,6 +1229,8 @@ logistic_deriv_kernel(BF16, nv_bfloat16);
 softmax_activation_kernel(BF16, nv_bfloat16, expf);
 cross_entropy_deriv_output_error_kernel(BF16, nv_bfloat16);
 cross_entropy_output_error_kernel(BF16, nv_bfloat16);
+exp_disc_activation_kernel(BF16, nv_bfloat16, expf);
+exp_disc_deriv_output_kernel(BF16, nv_bfloat16);
 YOLO_activation_kernel(BF16, nv_bfloat16, expf);
 YOLO_deriv_error_kernel(BF16, nv_bfloat16);
 YOLO_error_kernel(BF16, nv_bfloat16);
@@ -1255,6 +1416,29 @@ void cuda_softmax_output_error(layer *current)
 		((float*)current->c_network->output_error, current->output, 
 		current->c_network->target, (param->dim+1)*current->c_network->length,
 		param->dim, (param->biased_dim)*current->c_network->batch_size);
+}
+
+void cuda_semi_supervised_gan_deriv_output_error(layer *current, int halved, int reversed)
+{
+	//First half unsuperfvised fake	
+	//Second half supervised true (for now)
+	linear_param *param = (linear_param*)current->activ_param;
+	cu_blocks = (current->c_network->batch_size + cu_threads - 1) / cu_threads;
+	current->c_network->cu_inst.cu_auxil_fcts.cu_exp_disc_activation_kernel<<< cu_blocks, cu_threads >>>
+		(current->output, current->c_network->batch_size, param->dim, current->c_network->length, halved, reversed);
+	
+	if(0 && current->c_network->epoch%10 == 0)
+	{
+		printf("in output\n");
+		cuda_print_table(current->c_network, current->output, 11*current->c_network->batch_size, 11);
+		//cuda_print_table(current->c_network, current->c_network->target, 10*current->c_network->batch_size, 10);
+	}
+	
+	cu_blocks = (current->c_network->batch_size + cu_threads - 1) / cu_threads;
+	current->c_network->cu_inst.cu_auxil_fcts.cu_exp_disc_deriv_output_kernel<<< cu_blocks, cu_threads >>>
+		(current->delta_o, current->output, current->c_network->target, current->c_network->length,
+		 param->dim, current->c_network->batch_size, halved, reversed);
+	
 }
 
 //#####################################################
@@ -1463,8 +1647,8 @@ void cuda_define_activation(layer *current)
 		case RELU:
 			current->activation = cuda_ReLU_activation;
 			current->deriv_activation = cuda_ReLU_deriv;
-			
 			break;
+			
 		case RELU_6:
 			current->activation = cuda_ReLU_activation;
 			current->deriv_activation = cuda_ReLU_deriv;

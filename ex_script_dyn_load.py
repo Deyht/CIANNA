@@ -1,5 +1,6 @@
 
 import numpy as np
+from threading import Thread
 #Uncomment to access a locally compiled version
 #import sys
 #sys.path.insert(0,'./src/build/lib.linux-x86_64-3.8')
@@ -14,6 +15,55 @@ def i_ar(int_list):
 
 def f_ar(float_list):
 	return np.array(float_list, dtype="float32")
+
+def roll_zeropad(a, shift, axis=None):
+    a = np.asanyarray(a)
+    if shift == 0: return a
+    if axis is None:
+        n = a.size
+        reshape = True
+    else:
+        n = a.shape[axis]
+        reshape = False
+    if np.abs(shift) > n:
+        res = np.zeros_like(a)
+    elif shift < 0:
+        shift += n
+        zeros = np.zeros_like(a.take(np.arange(n-shift), axis))
+        res = np.concatenate((a.take(np.arange(n-shift,n), axis), zeros), axis)
+    else:
+        zeros = np.zeros_like(a.take(np.arange(n-shift,n), axis))
+        res = np.concatenate((zeros, a.take(np.arange(n-shift), axis)), axis)
+    if reshape:
+        return res.reshape(a.shape)
+    else:
+        return res
+
+def create_augm_batch(data_raw, targ_raw, augm_size):
+	
+	data_augm = np.zeros((augm_size,np.shape(data_raw)[1]), dtype="float32")
+	targ_augm  = np.zeros((augm_size,np.shape(targ_raw)[1]), dtype="float32")
+	
+	for i in range(0,augm_size):
+		i_d = int(np.random.random()*np.shape(data_raw)[0])
+		
+		patch = np.copy(np.reshape(data_raw[i_d],(28,28)))
+		
+		patch = roll_zeropad(patch, np.random.randint(0,4), axis=0)
+		patch = roll_zeropad(patch, np.random.randint(0,4), axis=1)
+		
+		data_augm[i] = np.copy(patch.flatten())
+		targ_augm[i] = targ_raw[i_d]
+	
+	return data_augm, targ_augm
+
+def data_augm_fct(data_raw, targ_raw, augm_size):
+	data_augm, targ_augm = create_augm_batch(data_raw, targ_raw, augm_size)
+	cnn.delete_dataset("TRAIN_buf")
+	cnn.create_dataset("TRAIN_buf", 20000, data_augm, targ_augm)
+	return
+
+
 
 print ("Reading inputs ... ", end = "", flush=True)
 
@@ -47,12 +97,10 @@ print ("Done !", flush=True)
 cnn.init_network(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10, \
 		bias=0.1, b_size=24, comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP32C_FP32A") #Change to C_BLAS or C_NAIV
 
-
-cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
+data_augm, target_augm = create_augm_batch(data_train, target_train, 20000)
+cnn.create_dataset("TRAIN", size=20000, input=data_augm, target=target_augm)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)
 cnn.create_dataset("TEST", size=10000, input=data_test, target=target_test)
-
-del (data_train, target_train, data_valid, target_valid, data_test, target_test)
 
 #Used to load a saved network at a given epoch
 load_step = 0
@@ -68,15 +116,28 @@ else:
 	cnn.dense_create(nb_neurons=10, activation="SOFTMAX")
 
 
-cnn.train_network(nb_epoch=10, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=0)
-#Change save_every in previous function to save network weights
-cnn.perf_eval()
+for k in range(0,20):
 
+	t = Thread(target=data_augm_fct(data_train, target_train, 20000))
+	t.start()
+	
+	cnn.train_network(nb_epoch=2, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=0, silent=1)
+	
+	t.join()
+		
+	cnn.swap_data_buffers("TRAIN")
+
+
+cnn.perf_eval()
 
 #Uncomment to save network prediction
 cnn.forward_network(repeat=1)
 
 exit()
+
+
+
+
 
 
 

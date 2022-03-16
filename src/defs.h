@@ -30,7 +30,10 @@
 #include <time.h>
 #include <tgmath.h>
 #include <string.h>
+#include <signal.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #ifdef comp_CUDA
