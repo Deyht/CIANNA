@@ -46,6 +46,8 @@ void blas_forward_dense_layer(layer *current)
 	int nb_area_w, nb_area_h, nb_area_d, depth;
 	void* ref_input;
 	
+	float prev_drop_rate = 0.0f;
+	
 	network* net = current->c_network;
 	
 	if(net->length == 0)
@@ -68,6 +70,7 @@ void blas_forward_dense_layer(layer *current)
 				nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
 				nb_area_d = ((conv_param*)current->previous->param)->nb_area[2];
 				depth = ((conv_param*)current->previous->param)->nb_filters;
+				prev_drop_rate = ((conv_param*)current->previous->param)->dropout_rate;
 				break;
 			
 			case POOL:
@@ -76,6 +79,7 @@ void blas_forward_dense_layer(layer *current)
 				nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
 				nb_area_d = ((pool_param*)current->previous->param)->nb_area[2];
 				depth = ((pool_param*)current->previous->param)->nb_maps;
+				prev_drop_rate = ((pool_param*)current->previous->param)->dropout_rate;
 				break;
 		}
 		
@@ -85,10 +89,12 @@ void blas_forward_dense_layer(layer *current)
 		
 		ref_input = d_param->flat_input;
 	}
+	else if(current->previous->type == DENSE)
+		prev_drop_rate = ((dense_param*)current->previous->param)->dropout_rate;
 	
 	//bias weight is included in drop, should change this behavior ?
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
-		w_alpha = (1.0f/(1.0f+ (((conv_param*)current->previous->param)->dropout_rate)));
+		w_alpha = (1.0f/(1.0f + prev_drop_rate));
 	else
 		w_alpha = 1.0f;
 	
