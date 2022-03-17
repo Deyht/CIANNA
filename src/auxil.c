@@ -1417,7 +1417,7 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 
 
 
-
+#ifdef CUDA
 // Experimental function for now, only for development purpose
 void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, float gen_disc_learn_rate_ratio, int save_every, int save_bin, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor)
 {
@@ -1926,7 +1926,7 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 	#endif
 	printf("\n");
 }
-
+#endif
 
 
 

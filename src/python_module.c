@@ -660,6 +660,7 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 	return Py_None;
 }
 
+#ifdef CUDA
 // Experimental function for now, only for development purpose
 static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
 {
@@ -688,6 +689,7 @@ static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
 
 	return Py_None;
 }
+#endif
 
 
 // Module creation functions
@@ -709,7 +711,9 @@ static PyMethodDef CIANNAMethods[] = {
     { "load_network", (PyCFunction)py_load_network, METH_VARARGS | METH_KEYWORDS, "Load a previous network structure pre-trained from a file" },
     { "train_network", (PyCFunction)py_train_network, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
     { "forward_network", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },
+    #ifdef CUDA
     { "gan_train", (PyCFunction)py_gan_train, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
+    #endif
     { NULL, NULL, 0, NULL }
 };
 

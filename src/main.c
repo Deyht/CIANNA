@@ -40,7 +40,7 @@ int main()
 	train_size = 60000; test_size = 10000; valid_size = 10000;
 	dims[0] = 28; dims[1] = 28; dims[2] = 1; dims[3] = 1; out_dim = 10;
 	
-	init_network(0, dims, out_dim, 0.1, 24, C_CUDA, 1, FP32C_FP32A, 0);
+	init_network(0, dims, out_dim, 0.1, 24, C_CUDA, 1, 0, 0);
 	
 	
 	net = networks[0];
