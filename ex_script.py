@@ -68,7 +68,7 @@ else:
 	cnn.dense_create(nb_neurons=10, activation="SOFTMAX")
 
 
-cnn.train_network(nb_epoch=10, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=0)
+cnn.train_network(nb_epoch=10, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=5)
 #Change save_every in previous function to save network weights
 cnn.perf_eval()
 

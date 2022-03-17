@@ -365,7 +365,7 @@ static PyObject* py_dense_create(PyObject* self, PyObject *args, PyObject *kwarg
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	dense_create(networks[network_id], prev, nb_neurons, i_activ, drop_rate, strict_size, NULL);
+	dense_create(networks[network_id], prev, nb_neurons, i_activ, drop_rate, strict_size, NULL, 0);
 	
 	return Py_None;
 }
@@ -425,7 +425,7 @@ static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	conv_create(networks[network_id], prev, C_f_size, nb_filters, C_stride, C_padding, C_int_padding, C_input_shape, i_activ, drop_rate, NULL);
+	conv_create(networks[network_id], prev, C_f_size, nb_filters, C_stride, C_padding, C_int_padding, C_input_shape, i_activ, drop_rate, NULL, 0);
 	
 	return Py_None;
 }
@@ -582,15 +582,16 @@ static PyObject* perf_eval(PyObject* self, PyObject* args)
 }
 
 
-static PyObject* py_load_network(PyObject* self, PyObject* args)
+static PyObject* py_load_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	char* file = "relative_path_to_the_save_file_location_which_must_be_long_enough";
-	int epoch, network_id = nb_networks-1;
+	char *file = "relative_path_to_the_save_file_location_which_must_be_long_enough";
+	int epoch, network_id = nb_networks-1, f_bin = 0;
+	static char *kwlist[] = {"file", "epoch", "network", "bin", NULL};
 
-	if(!PyArg_ParseTuple(args, "si|i", &file, &epoch, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "si|ii", kwlist, &file, &epoch, &network_id, &f_bin))
 	    return Py_None;
 	    
-	load_network(networks[network_id], file, epoch);
+	load_network(networks[network_id], file, epoch, f_bin);
 	
 	return Py_None;
 }
@@ -602,24 +603,24 @@ static PyObject* py_load_network(PyObject* self, PyObject* args)
 static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_every = 0, network_id = nb_networks-1;
-	int shuffle_gpu = 1, shuffle_every = 1, silent = 0;
+	int shuffle_gpu = 1, shuffle_every = 1, silent = 0, save_bin = 0;
 	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 1.0;
-	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "decay", "confmat", "save_every", "network", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "silent", NULL};
+	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "decay", "confmat", "save_every", "save_bin", "network", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "silent", NULL};
 	
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|diddiiiiidi", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_every, &network_id, &shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &silent))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|diddiiiiiidi", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_every, &save_bin, &network_id, &shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &silent))
 	    return Py_None;
 	
 	if(silent == 0)
-		printf("\nNetwork %d training with :\n  nb_epoch: %d, control_interv: %d, save_every: %d \n  learning_rate: %g, end_learning_rate: %g , momentum: %0.2f, decay: %g \n  confmat: %d, shuffle_gpu: %d , shuffle_every: %d, TC_scale_factor: %g\n", 
-			network_id, py_nb_epoch, py_control_interv, save_every, py_learning_rate, py_end_learning_rate, py_momentum, 
+		printf("\nNetwork %d training with :\n  nb_epoch: %d, control_interv: %d, save_every: %d, save_bin: %d \n  learning_rate: %g, end_learning_rate: %g , momentum: %0.2f, decay: %g \n  confmat: %d, shuffle_gpu: %d , shuffle_every: %d, TC_scale_factor: %g\n", 
+			network_id, py_nb_epoch, py_control_interv, save_every, save_bin, py_learning_rate, py_end_learning_rate, py_momentum, 
 			py_decay, py_confmat, shuffle_gpu, shuffle_every, py_TC_scale_factor);
 		
 	// GIL MACRO : Allow to serialize C thread with python threads
 	Py_BEGIN_ALLOW_THREADS
 		
 	train_network(networks[network_id], py_nb_epoch, py_control_interv, 
-		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_every, shuffle_gpu, shuffle_every, py_TC_scale_factor);
+		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_every, save_bin, shuffle_gpu, shuffle_every, py_TC_scale_factor);
 		
 	Py_END_ALLOW_THREADS
 
@@ -663,25 +664,25 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	
-	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_net = 0, gen_id = nb_networks-2, disc_id = nb_networks-1;
+	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_every = 0, gen_id = nb_networks-2, disc_id = nb_networks-1;
 	int shuffle_gpu = 1, shuffle_every = 1, silent = 0, disc_only = 0;
 	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 1.0, py_gen_disc_lr_ratio = 2.0;
-	static char *kwlist[] = {"gen_id", "disc_id", "nb_epoch", "learning_rate", "end_learning_rate", "gen_disc_lr_ratio","control_interv", "momentum", "decay", "confmat", "save_each", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "disc_only", "silent", NULL};
+	static char *kwlist[] = {"gen_id", "disc_id", "nb_epoch", "learning_rate", "end_learning_rate", "gen_disc_lr_ratio","control_interv", "momentum", "decay", "confmat", "save_every", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "disc_only", "silent", NULL};
 	
 	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiid|ddiddiiiidiu", kwlist, &gen_id, &disc_id, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_gen_disc_lr_ratio, 
-		&py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_net, &shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &disc_only, &silent))
+		&py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_every, &shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &disc_only, &silent))
 	    return Py_None;
 	
 	if(silent == 0)
-		printf("py_nb_epoch %d, py_control_interv %d, py_learning_rate %g, py_end_learning_rate %g , py_momentum %0.2f, py_decay %g, py_confmat %d, save_net %d, shuffle_gpu %d , shuffle_every %d, TC_scale_factor %g\n", 
+		printf("py_nb_epoch %d, py_control_interv %d, py_learning_rate %g, py_end_learning_rate %g , py_momentum %0.2f, py_decay %g, py_confmat %d, save_every %d, shuffle_gpu %d , shuffle_every %d, TC_scale_factor %g\n", 
 			py_nb_epoch, py_control_interv, py_learning_rate, py_end_learning_rate, py_momentum, 
-			py_decay, py_confmat, save_net, shuffle_gpu, shuffle_every, py_TC_scale_factor);
+			py_decay, py_confmat, save_every, shuffle_gpu, shuffle_every, py_TC_scale_factor);
 	
 	// GIL MACRO : Allow to serialize C thread with python threads
 	Py_BEGIN_ALLOW_THREADS
 	
-	train_gan(networks[gen_id], networks[disc_id], py_nb_epoch, py_control_interv, py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_gen_disc_lr_ratio, 
-		save_net, shuffle_gpu, shuffle_every, disc_only, py_TC_scale_factor);
+	train_gan(networks[gen_id], networks[disc_id], py_nb_epoch, py_control_interv, py_learning_rate, py_end_learning_rate, 
+		py_momentum, py_decay, py_gen_disc_lr_ratio, save_every, 0, shuffle_gpu, shuffle_every, disc_only, py_TC_scale_factor);
 	
 	Py_END_ALLOW_THREADS
 
@@ -705,7 +706,7 @@ static PyMethodDef CIANNAMethods[] = {
     { "set_yolo_params",(PyCFunction)py_set_yolo_params, METH_VARARGS | METH_KEYWORDS, "Set parameters for YOLO output layout" },
     { "pool_create",(PyCFunction)py_pool_create, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },
     { "perf_eval", perf_eval, METH_VARARGS, "Display each layer time in ms and in percent of the total networj time" },
-    { "load_network", py_load_network, METH_VARARGS, "Load a previous network structure pre-trained from a file" },
+    { "load_network", (PyCFunction)py_load_network, METH_VARARGS | METH_KEYWORDS, "Load a previous network structure pre-trained from a file" },
     { "train_network", (PyCFunction)py_train_network, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
     { "forward_network", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },
     { "gan_train", (PyCFunction)py_gan_train, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },

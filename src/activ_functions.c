@@ -203,35 +203,42 @@ void output_error(layer* current)
 }
 
 
-void print_activ_param(FILE *f, int type)
+void print_activ_param(FILE *f, int type, int f_bin)
 {
+	char temp_string[40];
+
 	switch(type)
 	{
 		case LOGISTIC:
-			fprintf(f,"(LOGI)");
+			sprintf(temp_string, "(LOGI)");
 			break;
 		
 		case SOFTMAX:
-			fprintf(f,"(SMAX)");
+			sprintf(temp_string,"(SMAX)");
 			break;
 	
 		case LINEAR:
-			fprintf(f,"(LIN)");
+			sprintf(temp_string,"(LIN)");
 			break;
 			
 		case YOLO:
-			fprintf(f,"(YOLO)");
+			sprintf(temp_string,"(YOLO)");
 			break;
 			
 		case RELU_6:
-			fprintf(f,"(RELU_6)");
+			sprintf(temp_string,"(RELU_6)");
 			break;
 	
 		case RELU:
 		default:
-			fprintf(f,"(RELU)");
+			sprintf(temp_string,"(RELU)");
 			break;
-	}	
+	}
+	
+	if(f_bin)
+		fwrite(temp_string, sizeof(char), 40, f);
+	else
+		fprintf(f, "%s", temp_string);
 }
 
 void get_string_activ_param(char* activ, int type)

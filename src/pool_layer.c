@@ -28,19 +28,26 @@
 static pool_param *p_param;
 
 
-void print_pool_type(FILE *f, int type)
+void print_pool_type(FILE *f, int type, int f_bin)
 {
+	char temp_string[40];
+	
 	switch(type)
 	{
 		default:
 		case MAX_pool:
-			fprintf(f,"(MAX)");
+			sprintf(temp_string,"(MAX)");
 			break;
 			
 		case AVG_pool:
-			fprintf(f,"(AVG)");
+			sprintf(temp_string,"(AVG)");
 			break;
 	}
+	
+	if(f_bin)
+		fwrite(temp_string, sizeof(char), 40, f);
+	else
+		fprintf(f, "%s", temp_string);
 }
 
 void get_string_pool_type(char* str, int type)
@@ -208,25 +215,43 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 	
 }
 
-void pool_save(FILE *f, layer *current)
+void pool_save(FILE *f, layer *current, int f_bin)
 {
 	p_param = (pool_param*) current->param;
+	char layer_type = 'P';
 	
-	fprintf(f, "P%dx%dx%d_%fd", p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->dropout_rate);
-	print_pool_type(f, p_param->pool_type);
-	fprintf(f, "\n\n");
+	if(f_bin)
+	{
+		fwrite(&layer_type, sizeof(char), 1, f);
+		fwrite(p_param->p_size, sizeof(int), 3, f);
+		fwrite(&p_param->dropout_rate, sizeof(float), 1, f);
+		print_pool_type(f, p_param->pool_type, f_bin);
+	}	
+	else
+	{
+		fprintf(f, "P%dx%dx%d_%fd", p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->dropout_rate);
+		print_pool_type(f, p_param->pool_type, f_bin);
+		fprintf(f, "\n\n");
+	}
 }
 
-void pool_load(network *net, FILE *f)
+void pool_load(network *net, FILE *f, int f_bin)
 {
 	int p_size[3];
 	float dropout_rate;
-	char s_pool_type[10];
+	char s_pool_type[40];
 	layer* previous;
 
 	printf("Loading pool layer, L:%d\n", net->nb_layers);
 	
-	fscanf(f, "%dx%dx%d_%fd%s\n", &p_size[0], &p_size[1], &p_size[2], &dropout_rate, s_pool_type);
+	if(f_bin)
+	{
+		fread(p_size, sizeof(int), 3, f);
+		fread(&dropout_rate, sizeof(float), 1, f);
+		fread(s_pool_type, sizeof(char), 40, f);
+	}
+	else
+		fscanf(f, "%dx%dx%d_%fd%s\n", &p_size[0], &p_size[1], &p_size[2], &dropout_rate, s_pool_type);
 	
 	if(net->nb_layers <= 0)
 		previous = NULL;

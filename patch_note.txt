@@ -21,6 +21,7 @@
   (int_padding is a required parameter at layer create for now, no default)
 - Add experimental support (CUDA Only) for GAN construction and training. Classical GAN works partially (call for Batch Norm addition to CIANNA).
      Add some experimental functions in the perspective of semi-supervised GAN. (not accessible through the interface for now).
+- Add option to save and load networks in a binary format (forward results are already possible in binary)
 - Fix remaining edge error on classical convolution
 - Fix the global behavior of transposed convolution (both for the new user controlled Tr.Conv and the automated one in backprop)
 - Fix a discrepancy between CUDA and CPU implementation in dropout for dense layers (errors in both compute methods might remain for the AVG_MODEL inference)

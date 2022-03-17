@@ -54,39 +54,39 @@ void normalize_dataset(network *net, Dataset c_data);
 void update_weights(void *weights, void* update, int size);
 void perf_eval_display(network *net);
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat);
-void save_network(network *net, char *filename);
-void load_network(network *net, char *filename, int epoch);
+void save_network(network *net, char *filename, int f_bin);
+void load_network(network *net, char *filename, int epoch, int f_bin);
 void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
-	float u_decay, int show_confmat, int save_net, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor);
+	float u_decay, int show_confmat, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor);
 void forward_testset(network *net, int train_step, int saving, int repeat, int drop_mode);
 void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
-	float u_decay, float gen_disc_learn_rate_ratio, int save_net, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor);
+	float u_decay, float gen_disc_learn_rate_ratio, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor);
 
 
 //activations.c
 void define_activation(layer *current);
 void output_error(layer* current);
 void output_deriv_error(layer* current);
-void print_activ_param(FILE *f, int type);
+void print_activ_param(FILE *f, int type, int f_bin);
 void get_string_activ_param(char* activ, int type);
 int load_activ_param(char *type);
 int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, float *yolo_noobj_prob_prior,
 	 int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts);
 
 //dense_layer.c
-void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, int strict_size, FILE *f_load);
-void dense_save(FILE *f, layer *current);
-void dense_load(network *net, FILE* f);
+void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, int strict_size, FILE *f_load, int f_bin);
+void dense_save(FILE *f, layer *current, int f_bin);
+void dense_load(network *net, FILE* f, int f_bin);
 
 //conv_layer.c
 void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, 
-	int *int_padding, int *in_shape, int activation, float drop_rate, FILE *f_load);
-void conv_save(FILE *f, layer *current);
-void conv_load(network *net, FILE *f);
+	int *int_padding, int *in_shape, int activation, float drop_rate, FILE *f_load, int f_bin);
+void conv_save(FILE *f, layer *current, int f_bin);
+void conv_load(network *net, FILE *f, int f_bin);
 
 void pool_create(network *net, layer* previous, int *pool_size, int pool_type, float drop_rate);
-void pool_save(FILE *f, layer *current);
-void pool_load(network *net, FILE *f);
+void pool_save(FILE *f, layer *current, int f_bin);
+void pool_load(network *net, FILE *f, int f_bin);
 
 //initializers.c
 float random_uniform(void);

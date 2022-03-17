@@ -330,7 +330,7 @@ int argmax(float *tab, int size)
 }
 
 
-void save_network(network *net, char *filename)
+void save_network(network *net, char *filename, int f_bin)
 {
 	int i;
 	FILE* f = NULL;
@@ -343,29 +343,35 @@ void save_network(network *net, char *filename)
 	if(stat("net_save", &st) == -1)
 		mkdir("net_save", 0700);
 	
-	f = fopen(full_filename, "w+");
+	if(f_bin)
+		f = fopen(full_filename, "wb+");
+	else
+		f = fopen(full_filename, "w+");
 	if(f == NULL)
 	{
 		printf("ERROR : cannot save %s file\n", full_filename);
 		exit(EXIT_FAILURE);
 	}
 
-	fprintf(f, "%dx%dx%dx%d\n", net->in_dims[0], net->in_dims[1], net->in_dims[2], net->in_dims[3]);
+	if(f_bin)
+		fwrite(&net->in_dims, sizeof(int), 4, f);
+	else
+		fprintf(f, "%dx%dx%dx%d\n", net->in_dims[0], net->in_dims[1], net->in_dims[2], net->in_dims[3]);
 	for(i = 0; i < net->nb_layers; i++)
 	{
 		switch(net->net_layers[i]->type)
 		{
 			case CONV:
-				conv_save(f, net->net_layers[i]);
+				conv_save(f, net->net_layers[i], f_bin);
 				break;
 			
 			case POOL:
-				pool_save(f, net->net_layers[i]);
+				pool_save(f, net->net_layers[i], f_bin);
 				break;
 		
 			case DENSE:
 			default:
-				dense_save(f, net->net_layers[i]);
+				dense_save(f, net->net_layers[i], f_bin);
 				break;
 		}
 	}
@@ -374,46 +380,64 @@ void save_network(network *net, char *filename)
 }
 
 
-void load_network(network *net, char *filename, int epoch)
+void load_network(network *net, char *filename, int epoch, int f_bin)
 {
 	FILE* f = NULL;
-	int width, height, depth, channels;
-	char layer_type;
+	int temp_dim[4];
+	char layer_type = 'N';
 	
 	net->epoch = epoch;
 	net->nb_layers = 0;
 	
-	f = fopen(filename, "r+");
+	if(f_bin)
+		f = fopen(filename, "rb+");
+	else
+		f = fopen(filename, "r+");
+	
 	if(f == NULL)
 	{
 		printf("ERROR : cannot load/find %s file\n", filename);
 		exit(EXIT_FAILURE);
 	}
-	fscanf(f, "%dx%dx%dx%d\n", &width, &height, &depth, &channels);
 	
-	if(net->in_dims[0] != width || net->in_dims[1] != height || net->in_dims[2] != depth || net->in_dims[3] != channels)
+	if(f_bin)
+		fread(temp_dim, sizeof(int), 4, f);
+	else
+		fscanf(f, "%dx%dx%dx%d\n", &temp_dim[0], &temp_dim[1], &temp_dim[2], &temp_dim[3]);
+	
+	
+	if(net->in_dims[0] != temp_dim[0] || net->in_dims[1] != temp_dim[1] || net->in_dims[2] != temp_dim[2] || net->in_dims[3] != temp_dim[3])
 	{
-		printf("ERROR : Wrong image format to load the network\nExpect : W = %d, H = %d, D = %d, C = %d\n", width, height, depth, channels);
+		printf("ERROR : Wrong image format to load the network\nExpect : W = %d, H = %d, D = %d, C = %d\n", 
+			 temp_dim[0], temp_dim[1], temp_dim[2], temp_dim[3]);
 		exit(EXIT_FAILURE);
 	}
 	
 	do
 	{
-		if(fscanf(f, "%c", &layer_type) == EOF)
-			break;
+		if(f_bin)
+		{
+			if(fread(&layer_type, sizeof(char), 1, f) != 1)
+				break;
+		}
+		else
+		{
+			if(fscanf(f, "%c", &layer_type) == EOF)
+				break;
+		}
 		
 		switch(layer_type)
 		{
 			case 'C':
-				conv_load(net, f);
+				conv_load(net, f, f_bin);
 				break;
 			
 			case 'P':
-				pool_load(net, f);
+				pool_load(net, f, f_bin);
 				break;
 		
 			case 'D':
-				dense_load(net, f);
+				dense_load(net, f, f_bin);
 				break;
 			default:
 				break;
@@ -1032,7 +1056,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 }
 
 
-void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, int show_confmat, int save_every, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor)
+void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, int show_confmat, int save_every, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor)
 {
 	int i, j, k, l, m;
 	float begin_learn_rate;
@@ -1283,7 +1307,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			{
 				sprintf(net_save_file_name, "net%d_s%04d.dat", net->id, net->epoch);
 				printf("Saving network for epoch: %d\n", net->epoch);
-				save_network(net, net_save_file_name);
+				save_network(net, net_save_file_name, save_bin);
 			}
 		}
 	}
@@ -1395,7 +1419,7 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 
 
 // Experimental function for now, only for development purpose
-void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, float gen_disc_learn_rate_ratio, int save_every, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor)
+void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, float gen_disc_learn_rate_ratio, int save_every, int save_bin, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor)
 {
 	//1)Generate data or use data provided in the form of a dataset
 	//Forward the generative model
@@ -1854,11 +1878,11 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 			{
 				sprintf(net_save_file_name, "net%d_s%04d.dat", gen->id, gen->epoch);
 				printf("Saving network for epoch: %d\n", gen->epoch);
-				save_network(gen, net_save_file_name);
+				save_network(gen, net_save_file_name, save_bin);
 				
 				sprintf(net_save_file_name, "net%d_s%04d.dat", disc->id, disc->epoch);
 				printf("Saving network for epoch: %d\n", disc->epoch);
-				save_network(disc, net_save_file_name);
+				save_network(disc, net_save_file_name, save_bin);
 			}
 		}
 	}

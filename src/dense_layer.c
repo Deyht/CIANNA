@@ -100,7 +100,7 @@ void dense_define_activation_param(layer *current)
 }
 
 
-void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, int strict_size, FILE *f_load)
+void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, int strict_size, FILE *f_load, int f_bin)
 {
 	int i, j;
 	float bias_padding_value;
@@ -208,9 +208,19 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	}
 	else
 	{
-		for(i = 0; i < d_param->in_size; i++)
-			for(j = 0; j < (d_param->nb_neurons+1); j++)
-				fscanf(f_load, "%f", &(((float*)d_param->weights)[i*(d_param->nb_neurons+1) + j]));
+		if(f_bin)
+		{
+			for(i = 0; i < d_param->in_size; i++)
+				fread(&(((float*)d_param->weights)[i*(d_param->nb_neurons+1)]), sizeof(float), (d_param->nb_neurons+1), f_load);
+		}
+		else
+		{
+			for(i = 0; i < d_param->in_size; i++)
+			{
+				for(j = 0; j < (d_param->nb_neurons+1); j++)
+					fscanf(f_load, "%f", &(((float*)d_param->weights)[i*(d_param->nb_neurons+1) + j]));
+			}
+		}	
 	}
 	
 	switch(net->compute_method)
@@ -265,17 +275,28 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 }
 
 
-void dense_save(FILE *f, layer *current)
+void dense_save(FILE *f, layer *current, int f_bin)
 {
 	int i, j;
 	float* host_weights = NULL;
+	char layer_type = 'D';
 
 	d_param = (dense_param*)current->param;	
 	
-	fprintf(f,"D");
-	fprintf(f, "%dn%fd", d_param->nb_neurons, d_param->dropout_rate);
-	print_activ_param(f, current->activation_type);
-	fprintf(f,"\n");
+	if(f_bin)
+	{
+		fwrite(&layer_type, sizeof(char), 1, f);
+		fwrite(&d_param->nb_neurons, sizeof(int), 1, f);
+		fwrite(&d_param->dropout_rate, sizeof(float), 1, f);
+		print_activ_param(f, current->activation_type, f_bin);
+	}
+	else
+	{	
+		fprintf(f,"D");
+		fprintf(f, "%dn%fd", d_param->nb_neurons, d_param->dropout_rate);
+		print_activ_param(f, current->activation_type, f_bin);
+		fprintf(f,"\n");
+	}
 	
 	if(current->c_network->compute_method == C_CUDA)
 	{
@@ -308,35 +329,50 @@ void dense_save(FILE *f, layer *current)
 		host_weights = d_param->weights;
 	}
 	
-	for(i = 0; i < d_param->in_size; i++)
+	if(f_bin)
 	{
-		for(j = 0; j < (d_param->nb_neurons+1); j++)
-			fprintf(f, "%g ", host_weights[i*(d_param->nb_neurons+1) + j]);
+		for(i = 0; i < d_param->in_size; i++)
+			fwrite(&host_weights[i*(d_param->nb_neurons+1)], sizeof(float), (d_param->nb_neurons+1), f);
+	}	
+	else
+	{
+		for(i = 0; i < d_param->in_size; i++)
+		{
+			for(j = 0; j < (d_param->nb_neurons+1); j++)
+				fprintf(f, "%g ", host_weights[i*(d_param->nb_neurons+1) + j]);
+			fprintf(f, "\n");
+		}
 		fprintf(f, "\n");
 	}
-	fprintf(f, "\n");
 	
 	if(current->c_network->compute_method == C_CUDA)
 		free(host_weights);
 }
 
-void dense_load(network *net, FILE* f)
+void dense_load(network *net, FILE* f, int f_bin)
 {
 	int nb_neurons;
 	float dropout_rate;
-	char activ_type[20];
+	char activ_type[40];
 	layer *previous;
 	
 	printf("Loading dense layer, L:%d\n", net->nb_layers);
 	
-	fscanf(f, "%dn%fd%s\n", &nb_neurons, &dropout_rate, activ_type);
+	if(f_bin)
+	{
+		fread(&nb_neurons, sizeof(int), 1, f);
+		fread(&dropout_rate, sizeof(float), 1, f);
+		fread(activ_type, sizeof(char), 40, f);
+	}
+	else
+		fscanf(f, "%dn%fd%s\n", &nb_neurons, &dropout_rate, activ_type);
 	
 	if(net->nb_layers <= 0)
 		previous = NULL;
 	else
 		previous = net->net_layers[net->nb_layers-1];
 
-	dense_create(net, previous, nb_neurons, load_activ_param(activ_type), dropout_rate, 1, f);
+	dense_create(net, previous, nb_neurons, load_activ_param(activ_type), dropout_rate, 1, f, f_bin);
 }
 
 

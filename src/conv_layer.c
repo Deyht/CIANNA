@@ -138,7 +138,7 @@ void conv_define_activation_param(layer *current)
 
 
 //Used to allocate a convolutionnal layer
-void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, int *int_padding, int *in_shape, int activation, float drop_rate, FILE *f_load)
+void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, int *int_padding, int *in_shape, int activation, float drop_rate, FILE *f_load, int f_bin)
 {
 	int i, j, k;
 	long long int mem_approx = 0;
@@ -311,10 +311,18 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	}
 	else
 	{
-		for(i = 0; i < nb_filters; i++)
+		if(f_bin)
 		{
-			for(j = 0; j < c_param->flat_f_size; j++)
-				fscanf(f_load, "%f", &(((float*)c_param->filters)[i*(c_param->flat_f_size+c_param->TC_padding) + j]));
+			for(i = 0; i < nb_filters; i++)
+				fread(&(((float*)c_param->filters)[i*(c_param->flat_f_size+c_param->TC_padding)]), sizeof(float), c_param->flat_f_size, f_load);
+		}
+		else
+		{
+			for(i = 0; i < nb_filters; i++)
+			{
+				for(j = 0; j < c_param->flat_f_size; j++)
+					fscanf(f_load, "%f", &(((float*)c_param->filters)[i*(c_param->flat_f_size+c_param->TC_padding) + j]));
+			}
 		}	
 	}
 	
@@ -378,20 +386,38 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 }
 
 
-void conv_save(FILE *f, layer *current)
+void conv_save(FILE *f, layer *current, int f_bin)
 {
 	int i, j;
 	void *host_filters = NULL;
+	char layer_type = 'C';
 
 	c_param = (conv_param*)current->param;	
 	
-	fprintf(f,"C");
-	fprintf(f, "%df%dx%dx%d.%dx%dx%ds%dx%dx%dp%dx%dx%dip%dx%dx%dx%didim%fd", c_param->nb_filters, c_param->f_size[0], c_param->f_size[1], c_param->f_size[2],
-		c_param->stride[0], c_param->stride[1], c_param->stride[2], c_param->padding[0], c_param->padding[1], c_param->padding[2],
-		c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2], c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
-		c_param->prev_depth, c_param->dropout_rate);
-	print_activ_param(f, current->activation_type);
-	fprintf(f, "\n");
+	
+	if(f_bin)
+	{
+		fwrite(&layer_type, sizeof(char), 1, f);
+		fwrite(&c_param->nb_filters, sizeof(int), 1, f);
+		fwrite(c_param->f_size, sizeof(int), 3, f);
+		fwrite(c_param->stride, sizeof(int), 3, f);
+		fwrite(c_param->padding, sizeof(int), 3, f);
+		fwrite(c_param->int_padding, sizeof(int), 3, f);
+		fwrite(c_param->prev_size, sizeof(int), 3, f);
+		fwrite(&c_param->prev_depth, sizeof(int), 1, f);
+		fwrite(&c_param->dropout_rate, sizeof(float), 1, f);
+		print_activ_param(f, current->activation_type, f_bin);
+	}
+	else
+	{
+		fprintf(f,"C");
+		fprintf(f, "%df%dx%dx%d.%dx%dx%ds%dx%dx%dp%dx%dx%dip%dx%dx%dx%didim%fd", c_param->nb_filters, c_param->f_size[0], c_param->f_size[1], c_param->f_size[2],
+			c_param->stride[0], c_param->stride[1], c_param->stride[2], c_param->padding[0], c_param->padding[1], c_param->padding[2],
+			c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2], c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
+			c_param->prev_depth, c_param->dropout_rate);
+		print_activ_param(f, current->activation_type, f_bin);
+		fprintf(f, "\n");
+	}
 	
 	if(current->c_network->compute_method == C_CUDA)
 	{
@@ -425,38 +451,58 @@ void conv_save(FILE *f, layer *current)
 		host_filters = c_param->filters;
 	}
 	
-	for(i = 0; i < c_param->nb_filters; i++)
+	if(f_bin)
 	{
-		for(j = 0; j < c_param->flat_f_size; j++)
-			fprintf(f, "%g ", ((float*)host_filters)[i*(c_param->flat_f_size+c_param->TC_padding) + j]);
-		fprintf(f,"\n");	
+		for(i = 0; i < c_param->nb_filters; i++)
+			fwrite(&((float*)host_filters)[i*(c_param->flat_f_size+c_param->TC_padding)], sizeof(float), c_param->flat_f_size, f);
 	}
-	fprintf(f, "\n");
+	else
+	{
+		for(i = 0; i < c_param->nb_filters; i++)
+		{
+			for(j = 0; j < c_param->flat_f_size; j++)
+				fprintf(f, "%g ", ((float*)host_filters)[i*(c_param->flat_f_size+c_param->TC_padding) + j]);
+			fprintf(f,"\n");	
+		}
+		fprintf(f, "\n");
+	}
 	
 	if(current->c_network->compute_method == C_CUDA)
 		free(host_filters);
 }
 
-void conv_load(network *net, FILE *f)
+void conv_load(network *net, FILE *f, int f_bin)
 {
 	int nb_filters;
 	int f_size[3], stride[3], padding[3], int_padding[3], input_shape[4];
-	float drop_rate;
+	float dropout_rate;
 	char activ_type[40];
 	layer *previous;
 	
 	printf("Loading conv layer, L:%d\n", net->nb_layers);
 	
-	fscanf(f, "%df%dx%dx%d.%dx%dx%ds%dx%dx%dp%dx%dx%dip%dx%dx%dx%didim%fd%s\n", &nb_filters, &f_size[0], &f_size[1], &f_size[2],
-	 	&stride[0], &stride[1], &stride[2], &padding[0], &padding[1], &padding[2], &int_padding[0], &int_padding[1], &int_padding[2],
-		&input_shape[0], &input_shape[1], &input_shape[2], &input_shape[3], &drop_rate, activ_type);
+	if(f_bin)
+	{
+		fread(&nb_filters, sizeof(int), 1, f);
+		fread(f_size, sizeof(int), 3, f);
+		fread(stride, sizeof(int), 3, f);
+		fread(padding, sizeof(int), 3, f);
+		fread(int_padding, sizeof(int), 3, f);
+		fread(input_shape, sizeof(int), 4, f);
+		fread(&dropout_rate, sizeof(float), 1, f);
+		fread(activ_type, sizeof(char), 40, f);
+	}
+	else
+		fscanf(f, "%df%dx%dx%d.%dx%dx%ds%dx%dx%dp%dx%dx%dip%dx%dx%dx%didim%fd%s\n", &nb_filters, &f_size[0], &f_size[1], &f_size[2],
+		 	&stride[0], &stride[1], &stride[2], &padding[0], &padding[1], &padding[2], &int_padding[0], &int_padding[1], &int_padding[2],
+			&input_shape[0], &input_shape[1], &input_shape[2], &input_shape[3], &dropout_rate, activ_type);
 
 	if(net->nb_layers <= 0)
 		previous = NULL;
 	else
 		previous = net->net_layers[net->nb_layers-1];
 	
-	conv_create(net, previous, f_size, nb_filters, stride, padding, int_padding, input_shape, load_activ_param(activ_type), drop_rate, f);
+	conv_create(net, previous, f_size, nb_filters, stride, padding, int_padding, input_shape, load_activ_param(activ_type), dropout_rate, f, f_bin);
 }
 
 
