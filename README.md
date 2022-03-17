@@ -50,8 +50,8 @@ More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/1
      - Add -D CUDA_OLD if using CUDA < 11.1
      - Add -D GEN_VOLTA (Volta, Pascal, Turing) or -D GEN_AMPERE (Ampere only) for various mixed precision type support)
 
-3. Use the *compile.cp* commande with the appropriate arguments in order to compile the source code.
-Each of the following optional argument adds support for a given compute methode
+3. Use the *compile.cp* command with the appropriate arguments in order to compile the source code.
+Each of the following optional argument adds support for a given compute method
    - CUDA 	   : compile additional cuda files
    - OPEN_MP   : add multi-thread for some operations (for C_NAIV and C_BLAS)
    - BLAS 	   : add OpenBLAS gemm (mutli-threaded) operations

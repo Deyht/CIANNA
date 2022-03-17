@@ -19,6 +19,7 @@ fwd_step_*.dat
 *.nvvp
 error.txt
 input.dat
+mnist_dat
 ./net_save
 ./fwd_res
 ./src/build
