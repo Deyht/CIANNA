@@ -24,6 +24,8 @@
 #include "prototypes.h"
 
 
+//Should be changed to a robust "Numerical recipes" random generator
+
 //return a random Real value between 0 <= x < 1
 float random_uniform(void)
 {
@@ -72,7 +74,9 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 		}
 	}
 	
-	if(bias_padding)
+	// depreciated the pivot value is now set back by the following layer in dense
+	// in other layer the bias is set during input transformation by the running layer 
+	if(bias_padding) 
 		f_tab[size-1] = bias_padding_value;
 
 }

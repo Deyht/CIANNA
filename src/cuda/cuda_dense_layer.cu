@@ -89,7 +89,6 @@ __global__ void init_block_state(unsigned int seed,  curandState_t* states)
               &states[blockIdx.x]);
 }
 
-
 __global__ void cuda_dropout_select(int* mask, int size, float drop_rate, curandState_t* states)
 {
 	int i = blockIdx.x;
@@ -265,7 +264,7 @@ size_t cuda_convert_dense_layer(layer *current)
 	vram_approx += cuda_convert_table(net, &(current->delta_o), (d_param->nb_neurons+1) 
 		* net->batch_size);
 		
-	if(d_param->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f)
 	{
 		vram_approx += cuda_convert_table_int(&(d_param->dropout_mask), d_param->nb_neurons);
 		cudaMalloc((void**) &d_param->block_state, (d_param->nb_neurons) * sizeof(curandState_t));
@@ -322,7 +321,6 @@ void cuda_forward_dense_layer(layer *current)
 				nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
 				nb_area_d = ((conv_param*)current->previous->param)->nb_area[2];
 				depth = ((conv_param*)current->previous->param)->nb_filters;
-				prev_drop_rate = ((conv_param*)current->previous->param)->dropout_rate;
 				break;
 			
 			case POOL:
@@ -331,7 +329,6 @@ void cuda_forward_dense_layer(layer *current)
 				nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
 				nb_area_d = ((pool_param*)current->previous->param)->nb_area[2];
 				depth = ((pool_param*)current->previous->param)->nb_maps;
-				prev_drop_rate = ((pool_param*)current->previous->param)->dropout_rate;
 				break;
 		}
 		
@@ -339,14 +336,14 @@ void cuda_forward_dense_layer(layer *current)
 			* net->batch_size + cu_threads - 1) / cu_threads;
 		
 		net->cu_inst.cu_dense_fcts.flat_dense_fct<<< cu_blocks, cu_threads >>>(current->input, 
-			d_param->flat_input, d_param->bias_value, nb_area_w * nb_area_h * nb_area_d ,
+			d_param->flat_input, current->bias_value, nb_area_w * nb_area_h * nb_area_d ,
 			nb_area_w * nb_area_h * nb_area_d * depth + 1, depth, net->batch_size, 
 			(nb_area_w * nb_area_h * nb_area_d * depth + 1) * net->batch_size);
 		
 		ref_input = d_param->flat_input;
 	}
-	else if(current->previous != NULL && current->previous->type == DENSE)
-		prev_drop_rate = ((dense_param*)current->previous->param)->dropout_rate;
+	prev_drop_rate = current->previous->dropout_rate;
+	
 	
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
@@ -371,12 +368,12 @@ void cuda_forward_dense_layer(layer *current)
 	
 	current->activation(current);
 
-	if(d_param->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		// Must check performance impact -> the present approach is due to the curand behavior
 		cu_blocks = (d_param->nb_neurons);
 		cuda_dropout_select<<<cu_blocks, 1>>>(d_param->dropout_mask, d_param->nb_neurons, 
-			d_param->dropout_rate, (curandState_t*) d_param->block_state);	
+			current->dropout_rate, (curandState_t*) d_param->block_state);	
 
 		dim3 threadsPerBlock(8, 32);
 		dim3 numBlocks((net->batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
@@ -397,7 +394,7 @@ void cuda_backward_dense_layer(layer* current)
 
 	d_param = (dense_param*) current->param;	
 	
-	if(d_param->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f)
 	{
 		dim3 threadsPerBlock(8, 32);
 		dim3 numBlocks((net->batch_size + threadsPerBlock.x - 1) / threadsPerBlock.x,

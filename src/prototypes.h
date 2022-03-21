@@ -67,20 +67,26 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 void define_activation(layer *current);
 void output_error(layer* current);
 void output_deriv_error(layer* current);
-void print_activ_param(FILE *f, int type, int f_bin);
-void get_string_activ_param(char* activ, int type);
-int load_activ_param(char *type);
+void print_activ_param(FILE *f, layer *current, int f_bin);
+void print_string_activ_param(layer *current, char* activ);
+void load_activ_param(layer *current, const char *activ);
+
+void set_linear_activ(layer *current, int size, int dim, int biased_dim);
+void set_relu_activ(layer *current, int size, int dim, int biased_dim, const char *activ);
+void set_logistic_activ(layer *current, int size, int dim, int biased_dim, const char *activ);
+void set_softmax_activ(layer *current, int dim, int biased_dim);
+void set_yolo_activ(layer *current);
 int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, float *yolo_noobj_prob_prior,
 	 int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts);
 
 //dense_layer.c
-void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, int strict_size, FILE *f_load, int f_bin);
+void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias, float drop_rate, int strict_size, FILE *f_load, int f_bin);
 void dense_save(FILE *f, layer *current, int f_bin);
 void dense_load(network *net, FILE* f, int f_bin);
 
 //conv_layer.c
 void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, 
-	int *int_padding, int *in_shape, int activation, float drop_rate, FILE *f_load, int f_bin);
+	int *int_padding, int *in_shape, const char *activation, float *bias, float drop_rate, FILE *f_load, int f_bin);
 void conv_save(FILE *f, layer *current, int f_bin);
 void conv_load(network *net, FILE *f, int f_bin);
 
@@ -188,6 +194,7 @@ Dataset cuda_create_dataset(network *net, int nb_elem);
 void cuda_free_dataset(Dataset *data);
 void cuda_create_table_FP32(void **tab, int size);
 void cuda_create_table(network* net, void **tab, int size);
+void cuda_set_mem_value(void* device_mem_loc, float value, size_t size);
 void cuda_master_weight_copy(network* net, float *master, void *copy, int size);
 void cuda_get_table_FP32(void *cuda_table, void *table, int size);
 void cuda_get_table_to_FP32(network* net, void *cuda_table, float *table, int size, void* buffer);

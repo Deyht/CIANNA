@@ -213,10 +213,8 @@ void forward_conv_layer(layer *current)
 	
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
-		if(current->previous->type == CONV)
-			c_dr = ((conv_param*)current->previous->param)->dropout_rate;
-		else if(current->previous->type == POOL)
-			c_dr = ((pool_param*)current->previous->param)->dropout_rate;
+		if(current->previous->type == CONV || current->previous->type == POOL)
+			c_dr = current->previous->dropout_rate;
 		else
 			c_dr = 0.0;
 		c_dr = 1.0 - (((c_param->flat_f_size-1)*(1.0-c_dr) + 1)/c_param->flat_f_size);
@@ -250,10 +248,10 @@ void forward_conv_layer(layer *current)
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
 	
-	if(c_param->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		dropout_select_conv(c_param->dropout_mask, c_param->nb_filters 
-			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), c_param->dropout_rate);	
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), current->dropout_rate);	
 		
 		dropout_apply_conv(current->output, net->batch_size, 
 			(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), c_param->dropout_mask, 
@@ -274,7 +272,7 @@ void backward_conv_layer(layer *current)
 	
 	c_param = (conv_param*) current->param;
 	
-	if(c_param->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f)
 	{
 		dropout_apply_conv(current->delta_o, net->batch_size, 
 			(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), c_param->dropout_mask, 

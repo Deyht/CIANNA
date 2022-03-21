@@ -78,7 +78,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-0.9.2.8 EXPERIMENTAL BUILD (09/2021), by D.Cornu\n\
+CIANNA V-0.9.2.9 EXPERIMENTAL BUILD (03/2022), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -1374,16 +1374,14 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 	{
 		#ifdef CUDA
 		cuda_create_table_FP32(&net->cu_inst.output_error_cuda, net->batch_size * net->out_size);
+		
+		if(net->cu_inst.dynamic_load)
+		{
+			cuda_create_table(net, &(net->input), net->batch_size*(net->input_dim+1));
+			cuda_create_table(net, &(net->target), net->batch_size*(net->output_dim));
+		}
 		#endif
 	}
-	
-	#ifdef CUDA
-	if(net->cu_inst.dynamic_load)
-	{
-		cuda_create_table(net, &(net->input), net->batch_size*(net->input_dim+1));
-		cuda_create_table(net, &(net->target), net->batch_size*(net->output_dim));
-	}
-	#endif
 	
 	if(train_step <= 0)
 	{

@@ -1648,11 +1648,6 @@ void cuda_define_activation(layer *current)
 			current->activation = cuda_ReLU_activation;
 			current->deriv_activation = cuda_ReLU_deriv;
 			break;
-			
-		case RELU_6:
-			current->activation = cuda_ReLU_activation;
-			current->deriv_activation = cuda_ReLU_deriv;
-			break;
 		
 		case LOGISTIC:
 			current->activation = cuda_logistic_activation;
@@ -1684,7 +1679,6 @@ void cuda_deriv_output_error(layer *current)
 	switch(current->activation_type)
 	{
 		case RELU:
-		case RELU_6:
 			cuda_ReLU_deriv_output_error(current);
 			break;
 		
@@ -1713,7 +1707,6 @@ void cuda_output_error_fct(layer* current)
 	switch(current->activation_type)
 	{
 		case RELU:
-		case RELU_6:
 			cuda_ReLU_output_error(current);
 			break;
 		

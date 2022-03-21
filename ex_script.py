@@ -44,7 +44,7 @@ print ("Done !", flush=True)
 
 #Details about the functions and parameters are given in the GitHub Wiki
 
-cnn.init_network(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10, \
+cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10, \
 		bias=0.1, b_size=24, comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP32C_FP32A") #Change to C_BLAS or C_NAIV
 
 
@@ -57,24 +57,24 @@ del (data_train, target_train, data_valid, target_valid, data_test, target_test)
 #Used to load a saved network at a given epoch
 load_step = 0
 if(load_step > 0):
-	cnn.load_network("net_save/net0_s%04d.dat"%(load_step), load_step)
+	cnn.load("net_save/net0_s%04d.dat"%(load_step), load_step)
 else:
-	cnn.conv_create(f_size=i_ar([5,5]), nb_filters=8, padding=i_ar([2,2]), activation="RELU")
-	cnn.pool_create(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.conv_create(f_size=i_ar([5,5]), nb_filters=16, padding=i_ar([2,2]), activation="RELU")
-	cnn.pool_create(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.dense_create(nb_neurons=256, activation="RELU", drop_rate=0.5)
-	cnn.dense_create(nb_neurons=128, activation="RELU", drop_rate=0.2)
-	cnn.dense_create(nb_neurons=10, activation="SOFTMAX")
+	cnn.conv(f_size=i_ar([5,5]), nb_filters=8, padding=i_ar([2,2]), activation="RELU")
+	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
+	cnn.conv(f_size=i_ar([5,5]), nb_filters=16, padding=i_ar([2,2]), activation="RELU")
+	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
+	cnn.dense(nb_neurons=256, activation="RELU", drop_rate=0.5)
+	cnn.dense(nb_neurons=128, activation="RELU", drop_rate=0.2)
+	cnn.dense(nb_neurons=10, activation="SMAX")
 
 
-cnn.train_network(nb_epoch=10, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=5)
+cnn.train(nb_epoch=5, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=0)
 #Change save_every in previous function to save network weights
 cnn.perf_eval()
 
 
 #Uncomment to save network prediction
-cnn.forward_network(repeat=1)
+cnn.forward(repeat=1)
 
 exit()
 

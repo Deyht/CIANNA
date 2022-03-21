@@ -305,7 +305,7 @@ size_t cuda_convert_pool_layer(layer *current)
 	vram_approx += cuda_convert_table(net, &(current->delta_o), p_param->nb_area[0] 
 		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size);
 		
-	if(p_param->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f)
 	{
 		vram_approx += cuda_convert_table_int(&(p_param->dropout_mask), p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
 		cudaMalloc((void**) &p_param->block_state, (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])) * sizeof(curandState_t));
@@ -355,11 +355,11 @@ void cuda_forward_pool_layer(layer* current)
 	//Linear == No activation
 	current->activation(current);
 
-	if(p_param->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
 		cuda_dropout_select_pool<<<cu_blocks, 1>>>(p_param->dropout_mask, p_param->nb_maps 
-			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), p_param->dropout_rate, (curandState_t*) p_param->block_state);	
+			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), current->dropout_rate, (curandState_t*) p_param->block_state);	
 		
 		dim3 threadsPerBlock(32, 8);
 		dim3 numBlocks((p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
@@ -378,7 +378,7 @@ void cuda_backward_pool_layer(layer* current)
 	
 	p_param = (pool_param*) current->param;
 	
-	if(p_param->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f)
 	{
 		dim3 threadsPerBlock(32, 8);
 		dim3 numBlocks((p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,

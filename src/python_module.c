@@ -328,63 +328,134 @@ static PyObject* py_swap_data_buffers(PyObject* self, PyObject* args)
 	return Py_None;
 }
 
+static PyObject* py_linear(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	char *string = NULL;
+	
+	string = (char*) malloc(40*sizeof(char));
+	string += sprintf(string, "LIN");
+	
+	return Py_BuildValue("s", string);
+}
+
+static PyObject* py_relu(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	double saturation = 0.0/0.0, leaking = 0.0/0.0;
+	static char *kwlist[] = {"saturation", "leaking", NULL};
+
+	char *string = NULL, *c_string = NULL;
+
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|dd", kwlist, &saturation, &leaking))
+		return Py_None;
+	
+	string = (char*) malloc(40*sizeof(char));
+	c_string = string;
+	c_string += sprintf(c_string, "RELU");
+	
+	if(!isnan(saturation))
+		c_string += sprintf(c_string, "_S%0.2f", (float) saturation);
+	if(!isnan(leaking))
+		c_string += sprintf(c_string, "_L%0.2f", (float) leaking);
+	
+	return Py_BuildValue("s", string);
+}
+
+
+static PyObject* py_logistic(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	double saturation = 0.0/0.0, beta = 0.0/0.0;
+	static char *kwlist[] = {"saturation", "beta", NULL};
+
+	char *string = NULL, *c_string = NULL;
+
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|dd", kwlist, &saturation, &beta))
+		return Py_None;
+	
+	string = (char*) malloc(40*sizeof(char));
+	c_string = string;
+	c_string += sprintf(c_string, "LOGI");
+	
+	if(!isnan(saturation))
+		c_string += sprintf(c_string, "_S%0.2f", (float) saturation);
+	if(!isnan(beta))
+		c_string += sprintf(c_string, "_B%0.2f", (float) beta);
+	
+	return Py_BuildValue("s", string);
+}
+
+static PyObject* py_softmax(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	char *string = NULL;
+	
+	string = (char*) malloc(40*sizeof(char));
+	string += sprintf(string, "SMAX");
+	
+	return Py_BuildValue("s", string);
+}
+
+
+static PyObject* py_yolo(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	char *string = NULL;
+	
+	string = (char*) malloc(40*sizeof(char));
+	string += sprintf(string, "YOLO");
+	
+	return Py_BuildValue("s", string);
+}
 
 // Layers functions
 //############################################################
-static PyObject* py_dense_create(PyObject* self, PyObject *args, PyObject *kwargs)
+static PyObject* py_dense(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
-	int nb_neurons, prev_layer = -1, i_activ = RELU, network_id = nb_networks-1, strict_size = 0;
+	int nb_neurons, prev_layer = -1, network_id = nb_networks-1, strict_size = 0;
 	const char *activation = "RELU";
-	double drop_rate = 0.0;
-	static char *kwlist[] = {"nb_neurons", "activation", "prev_layer", "drop_rate", "strict_size", "network", NULL};
+	double drop_rate = 0.0, py_bias = 0.0/0.0;
+	float *c_bias = NULL;
+	static char *kwlist[] = {"nb_neurons", "activation", "bias", "prev_layer", "drop_rate", "strict_size", "network", NULL};
 	layer* prev;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "i|sidii", kwlist, &nb_neurons, &activation, &prev_layer, &drop_rate, &strict_size, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "i|sdidii", kwlist, &nb_neurons, &activation, &py_bias, &prev_layer, &drop_rate, &strict_size, &network_id))
 	    return Py_None;
 
 	if(prev_layer == -1)
 		prev_layer = networks[network_id]->nb_layers - 1;
 	
-	if(strcmp(activation, "RELU") == 0)
-		i_activ = RELU;
-	else if(strcmp(activation, "RELU_6") == 0)
-		i_activ = RELU_6;
-	else if(strcmp(activation, "LINEAR") == 0)
-		i_activ = LINEAR;
-	else if(strcmp(activation, "LOGISTIC") == 0)
-		i_activ = LOGISTIC;
-	else if(strcmp(activation, "SOFTMAX") == 0)
-		i_activ = SOFTMAX;
-	else if(strcmp(activation, "YOLO") == 0)
-		i_activ = YOLO;
-	else
-		i_activ = RELU;
+	
+	//if(py_bias == py_bias) //portable but not compatible with fast math
+	if(!isnan(py_bias)) //work with math.h only for C99 and later
+	{
+		c_bias = (float*) calloc(1,sizeof(float));
+		*c_bias = (float) py_bias;
+	}
 	
 	if(prev_layer < 0)
 		prev = NULL;
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	dense_create(networks[network_id], prev, nb_neurons, i_activ, drop_rate, strict_size, NULL, 0);
+	dense_create(networks[network_id], prev, nb_neurons, activation, c_bias, drop_rate, strict_size, NULL, 0);
 	
 	return Py_None;
 }
 
-static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs)
+static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	int i;
-	int nb_filters, prev_layer = -1, i_activ = RELU, network_id = nb_networks-1;
+	int nb_filters, prev_layer = -1, network_id = nb_networks-1;
 	PyArrayObject *py_f_size = NULL, *py_stride = NULL, *py_padding = NULL, *py_int_padding = NULL, *py_input_shape = NULL;
 	int C_f_size[3] = {1,1,1}, C_stride[3] = {1,1,1}, C_padding[3] = {0,0,0}, C_int_padding[3] = {0,0,0}, C_input_shape[4];
 	const char *activation = "RELU";
-	double drop_rate = 0.0;
-	static char *kwlist[] = {"f_size", "nb_filters", "stride", "padding", "int_padding", "activation", "prev_layer", "input_shape", "drop_rate", "network", NULL};
+	double drop_rate = 0.0, py_bias = 0.0/0.0; //use nan as "non specified value"
+	float *c_bias = NULL;
+	
+	static char *kwlist[] = {"f_size", "nb_filters", "stride", "padding", "int_padding", "activation", "bias", "prev_layer", "input_shape", "drop_rate", "network", NULL};
 	layer* prev;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|OOOsiOdi", kwlist, &py_f_size, &nb_filters, &py_stride, &py_padding, 
-		&py_int_padding, &activation, &prev_layer, &py_input_shape, &drop_rate, &network_id))
-	    return Py_None;
-	    
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|OOOsdiOdi", kwlist, &py_f_size, &nb_filters, &py_stride, &py_padding, 
+		&py_int_padding, &activation, &py_bias, &prev_layer, &py_input_shape, &drop_rate, &network_id))
+	    return Py_None;   
+	
 	if(prev_layer == -1)
 	    prev_layer = networks[network_id]->nb_layers - 1;
 	    
@@ -404,34 +475,26 @@ static PyObject* py_conv_create(PyObject* self, PyObject *args, PyObject *kwargs
 	if(py_input_shape != NULL)
 		for(i = 0; i < 4; i++)
 			C_input_shape[i] = *(int *)(py_input_shape->data + i*py_input_shape->strides[0]);
-
-	if(strcmp(activation, "RELU") == 0)
-		i_activ = RELU;
-	else if(strcmp(activation, "RELU_6") == 0)
-		i_activ = RELU_6;
-	else if(strcmp(activation, "LINEAR") == 0)
-		i_activ = LINEAR;
-	else if(strcmp(activation, "LOGISTIC") == 0)
-		i_activ = LOGISTIC;
-	else if(strcmp(activation, "SOFTMAX") == 0)
-		i_activ = SOFTMAX;
-	else if(strcmp(activation, "YOLO") == 0)
-		i_activ = YOLO;
-	else
-		i_activ = RELU;
+	
+	//if(py_bias == py_bias) //portable but not compatible with fast math
+	if(!isnan(py_bias)) //work with math.h only for C99 and later
+	{
+		c_bias = (float*) calloc(1,sizeof(float));
+		*c_bias = (float) py_bias;
+	}
 	
 	if(prev_layer < 0)
 		prev = NULL;
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	conv_create(networks[network_id], prev, C_f_size, nb_filters, C_stride, C_padding, C_int_padding, C_input_shape, i_activ, drop_rate, NULL, 0);
+	conv_create(networks[network_id], prev, C_f_size, nb_filters, C_stride, C_padding, C_int_padding, C_input_shape, activation, c_bias, drop_rate, NULL, 0);
 	
 	return Py_None;
 }
 
 
-static PyObject* py_pool_create(PyObject* self, PyObject *args, PyObject *kwargs)
+static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	int i;
 	int prev_layer = -1, network_id = nb_networks-1, C_pool_type = MAX_pool;
@@ -696,21 +759,26 @@ static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
 //############################################################
 
 static PyMethodDef CIANNAMethods[] = {
-    { "init_network", (PyCFunction)py_init_network, METH_VARARGS | METH_KEYWORDS, "Initialize network basic shapes and properties" },
+    { "init", (PyCFunction)py_init_network, METH_VARARGS | METH_KEYWORDS, "Initialize network basic shapes and properties" },
     { "create_dataset", (PyCFunction)py_create_dataset, METH_VARARGS | METH_KEYWORDS, "Allocate dataset structure" },
     { "delete_dataset", (PyCFunction)py_delete_dataset, METH_VARARGS | METH_KEYWORDS, "Free dataset structure" },
     { "swap_data_buffers", py_swap_data_buffers, METH_VARARGS, "Put the selected buffered dataset as current dataset for training"},
     /*{ "write_formated_dataset", (PyCFunction)py_write_formated_dataset, METH_VARARGS | METH_KEYWORDS, "Write a proper numpy table onto a formated binary dataset file"},*/
     /*{ "load_formated_dataset", (PyCFunction)py_load_formated_dataset, METH_VARARGS | METH_KEYWORDS, "Read a formated binary dataset file and directly store it into a network dataset"},*/
     /*{ "set_normalize_factors", (PyCFunction)py_set_normalize_factors, METH_VARARGS | METH_KEYWORDS, "Set normalization factor for transformation on all the datasets subsequently loaded (with formated loading) in the C framework"},*/
-    { "dense_create", (PyCFunction)py_dense_create, METH_VARARGS | METH_KEYWORDS, "Add a dense layer to the network" },
-    { "conv_create",(PyCFunction)py_conv_create, METH_VARARGS | METH_KEYWORDS, "Add a convolutional layer to the network" },
+    { "linear", (PyCFunction)py_linear, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to Linear"},
+    { "relu", (PyCFunction)py_relu, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to ReLU"},
+    { "logistic", (PyCFunction)py_logistic, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to Logistic"},
+    { "softmax", (PyCFunction)py_softmax, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to Softmax"},
+    { "yolo", (PyCFunction)py_yolo, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to YOLO"},
+    { "dense", (PyCFunction)py_dense, METH_VARARGS | METH_KEYWORDS, "Add a dense layer to the network" },
+    { "conv",(PyCFunction)py_conv, METH_VARARGS | METH_KEYWORDS, "Add a convolutional layer to the network" },
     { "set_yolo_params",(PyCFunction)py_set_yolo_params, METH_VARARGS | METH_KEYWORDS, "Set parameters for YOLO output layout" },
-    { "pool_create",(PyCFunction)py_pool_create, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },
+    { "pool",(PyCFunction)py_pool, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },
     { "perf_eval", perf_eval, METH_VARARGS, "Display each layer time in ms and in percent of the total networj time" },
-    { "load_network", (PyCFunction)py_load_network, METH_VARARGS | METH_KEYWORDS, "Load a previous network structure pre-trained from a file" },
-    { "train_network", (PyCFunction)py_train_network, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
-    { "forward_network", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },
+    { "load", (PyCFunction)py_load_network, METH_VARARGS | METH_KEYWORDS, "Load a previous network structure pre-trained from a file" },
+    { "train", (PyCFunction)py_train_network, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
+    { "forward", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },
     #ifdef CUDA
     { "gan_train", (PyCFunction)py_gan_train, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
     #endif
@@ -732,7 +800,7 @@ PyMODINIT_FUNC PyInit_CIANNA(void)
 	import_array();
 	
 	printf("###################################################################\n\
-Importing CIANNA Python module V-p.0.6.1 , by D.Cornu\n\
+Importing CIANNA Python module V-p.0.6.2 , by D.Cornu\n\
 ###################################################################\n\n");
 
 	PyObject *m;

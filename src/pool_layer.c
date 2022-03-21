@@ -102,9 +102,9 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 
 	current->type = POOL;
 	//activation type not used for now but could be add for optimization
-	current->activation_type = LINEAR;
+	load_activ_param(current, NULL);
 	current->previous = previous;
-	p_param->dropout_rate = drop_rate;
+	current->dropout_rate = drop_rate;
 	
 	p_param->nb_area = (int*) calloc(3, sizeof(int));
 	p_param->prev_size = (int*) calloc(3, sizeof(int));
@@ -181,6 +181,8 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 	//Linear activation only = no activation
 	pool_define_activation_param(current);
 	
+	p_param = (pool_param*) current->param;
+	
 	//No weights initialization in a pool layer
 	
 	//associate the conv specific functions to the layer
@@ -210,7 +212,7 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 \t Approx layer RAM/VRAM requirement: %d MB\n",
 		net->nb_layers, s_pool_type, p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
 		p_param->prev_depth, p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
-		p_param->nb_maps, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->dropout_rate,
+		p_param->nb_maps, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], current->dropout_rate,
 		(int)(mem_approx/1000000));
 	
 }
@@ -224,12 +226,12 @@ void pool_save(FILE *f, layer *current, int f_bin)
 	{
 		fwrite(&layer_type, sizeof(char), 1, f);
 		fwrite(p_param->p_size, sizeof(int), 3, f);
-		fwrite(&p_param->dropout_rate, sizeof(float), 1, f);
+		fwrite(&current->dropout_rate, sizeof(float), 1, f);
 		print_pool_type(f, p_param->pool_type, f_bin);
 	}	
 	else
 	{
-		fprintf(f, "P%dx%dx%d_%fd", p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->dropout_rate);
+		fprintf(f, "P%dx%dx%d_%fd", p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], current->dropout_rate);
 		print_pool_type(f, p_param->pool_type, f_bin);
 		fprintf(f, "\n\n");
 	}

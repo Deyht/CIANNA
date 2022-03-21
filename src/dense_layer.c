@@ -32,53 +32,30 @@ static dense_param *d_param;
 //public are in "prototypes.h"
 
 
-//private
-void dense_define_activation_param(layer *current);
-
-
-void dense_define_activation_param(layer *current)
+void dense_define_activation_param(layer *current, const char* activ)
 {
+	int size, dim, biased_dim;
 	d_param = (dense_param*) current->param;
 	switch(current->activation_type)
 	{
 		case RELU:
-			current->activ_param = (ReLU_param*) malloc(sizeof(ReLU_param));
-			((ReLU_param*)current->activ_param)->size = (d_param->nb_neurons + 1) 
-				* current->c_network->batch_size;
-			((ReLU_param*)current->activ_param)->dim = d_param->nb_neurons;
-			((ReLU_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
-			((ReLU_param*)current->activ_param)->saturation = 1000.0;
-			((ReLU_param*)current->activ_param)->leaking_factor = 0.2;
-			d_param->bias_value = 0.1;
-			break;
-		
-		case RELU_6:
-			current->activ_param = (ReLU_param*) malloc(sizeof(ReLU_param));
-			((ReLU_param*)current->activ_param)->size = (d_param->nb_neurons + 1) 
-				* current->c_network->batch_size;
-			((ReLU_param*)current->activ_param)->dim = d_param->nb_neurons;
-			((ReLU_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
-			((ReLU_param*)current->activ_param)->saturation = 6.0;
-			((ReLU_param*)current->activ_param)->leaking_factor = 0.2;
-			d_param->bias_value = 0.1;
+			size = (d_param->nb_neurons + 1) * current->c_network->batch_size;
+			dim = d_param->nb_neurons;
+			biased_dim = d_param->nb_neurons+1;
+			set_relu_activ(current, size, dim, biased_dim, activ);
 			break;
 			
 		case LOGISTIC:
-			current->activ_param = (logistic_param*) malloc(sizeof(logistic_param));
-			((logistic_param*)current->activ_param)->size = (d_param->nb_neurons+1) 
-				* current->c_network->batch_size;
-			((logistic_param*)current->activ_param)->dim = d_param->nb_neurons;
-			((logistic_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
-			((logistic_param*)current->activ_param)->beta = 1.0;
-			((logistic_param*)current->activ_param)->saturation = 8.0;
-			d_param->bias_value = -1.0;
+			size = (d_param->nb_neurons+1) * current->c_network->batch_size;
+			dim = d_param->nb_neurons;
+			biased_dim = d_param->nb_neurons+1;
+			set_logistic_activ(current, size, dim, biased_dim, activ);
 			break;
 			
 		case SOFTMAX:
-			current->activ_param = (softmax_param*) malloc(sizeof(softmax_param));
-			((softmax_param*)current->activ_param)->dim = d_param->nb_neurons;
-			((softmax_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
-			d_param->bias_value = -1.0;
+			dim = d_param->nb_neurons;
+			biased_dim = d_param->nb_neurons+1;
+			set_softmax_activ(current, dim, biased_dim);
 			break;
 			
 		case YOLO:
@@ -88,22 +65,19 @@ void dense_define_activation_param(layer *current)
 			
 		case LINEAR:
 		default:
-			current->activ_param = (linear_param*) malloc(sizeof(linear_param));
-			((linear_param*)current->activ_param)->size = (d_param->nb_neurons + 1) 
-				* current->c_network->batch_size;
-			((linear_param*)current->activ_param)->dim = d_param->nb_neurons;
-			((linear_param*)current->activ_param)->biased_dim = d_param->nb_neurons+1;
-			//Change to expect output between 0 and 1
-			d_param->bias_value = 0.5;
+			size = (d_param->nb_neurons + 1) * current->c_network->batch_size;
+			dim = d_param->nb_neurons;
+			biased_dim = d_param->nb_neurons+1;
+			set_linear_activ(current, size, dim, biased_dim);
 			break;
 	}
 }
 
 
-void dense_create(network *net, layer* previous, int nb_neurons, int activation, float drop_rate, int strict_size, FILE *f_load, int f_bin)
+void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias, float drop_rate, int strict_size, FILE *f_load, int f_bin)
 {
 	int i, j;
-	float bias_padding_value;
+	//float bias_padding_value; //depreciated
 	long long int mem_approx = 0;
 	layer* current;
 	
@@ -120,10 +94,10 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	d_param = (dense_param*) malloc(sizeof(dense_param));
 	
 	current->type = DENSE;
-	current->activation_type = activation;
+	load_activ_param(current, activation);
 	current->frozen = 0;
 	d_param->nb_neurons = nb_neurons;
-	d_param->dropout_rate = drop_rate;
+	current->dropout_rate = drop_rate;
 	
 	current->previous = previous;
 	
@@ -185,26 +159,54 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 	current->delta_o = (float*) calloc((nb_neurons+1)*net->batch_size, sizeof(float));
 	mem_approx += (nb_neurons+1)*net->batch_size * sizeof(float);
 	
-	//must be before the association functions
+	//must be before the activation association function
 	current->param = d_param;
 	
-	dense_define_activation_param(current);
+	dense_define_activation_param(current, activation);
+	
+	d_param = (dense_param*)current->param;	
+	
+	if(bias != NULL)
+		current->bias_value = *bias;
 	
 	if(current->previous == NULL)
-		((dense_param*)current->param)->bias_value = net->input_bias;
+		current->bias_value = net->input_bias;
 	
 	if(f_load == NULL)
 	{
-		if(current->previous == NULL || current->previous->type != DENSE)
+		if(current->previous != NULL)
 		{
-			//need a modification to allow bias change in first layer
-			bias_padding_value = 1.0;
+			if(previous->type == DENSE)
+			{
+				if(net->compute_method == C_CUDA)
+				{
+					#ifdef CUDA
+					cuda_set_mem_value((void*)((float*)((dense_param*)previous->param)->weights + ((((dense_param*)previous->param)->nb_neurons+1)
+						*((dense_param*)previous->param)->in_size - 1)),
+						(float) current->bias_value/current->previous->bias_value, sizeof(float));
+					#endif
+				}
+				else
+				{
+					printf("In Other\n");
+					*((float*)((dense_param*)previous->param)->weights + ((((dense_param*)previous->param)->nb_neurons+1)
+						*((dense_param*)previous->param)->in_size - 1)) = 
+						(float) current->bias_value/current->previous->bias_value;
+				}
+			}
+			//For other previous layer types, the bias is added by the flatten (or similar) function
+				
+		}
+		//Should add a defaut weight init depending on the activation function
+		//Should add user control over the init
+		if(1)
+		{
+			xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0);
 		}
 		else
 		{
-			bias_padding_value = (float) d_param->bias_value/((dense_param*)current->previous->param)->bias_value;
+		
 		}
-		xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, bias_padding_value, 0);
 	}
 	else
 	{
@@ -249,13 +251,13 @@ void dense_create(network *net, layer* previous, int nb_neurons, int activation,
 			break;
 	}
 	
-		char activ[10];
-	get_string_activ_param(activ, current->activation_type);
+	char activ[40];
+	print_string_activ_param(current, activ);
 	printf("L:%d - Dense layer created:\n \
-\t Input: %d, Nb. Neurons: %d, Activation: %s, Dropout: %f\n\
+\t Input: %d, Nb. Neurons: %d, Activation: %s, Bias: %0.2f, Dropout: %0.2f\n\
 \t Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",
 		net->nb_layers, d_param->in_size,  d_param->nb_neurons, 
-		activ, d_param->dropout_rate,
+		activ, current->bias_value, current->dropout_rate,
 		(d_param->nb_neurons+1)*d_param->in_size, (int)(mem_approx/1000000));
 	
 	#ifdef CUDA
@@ -287,14 +289,15 @@ void dense_save(FILE *f, layer *current, int f_bin)
 	{
 		fwrite(&layer_type, sizeof(char), 1, f);
 		fwrite(&d_param->nb_neurons, sizeof(int), 1, f);
-		fwrite(&d_param->dropout_rate, sizeof(float), 1, f);
-		print_activ_param(f, current->activation_type, f_bin);
+		fwrite(&current->dropout_rate, sizeof(float), 1, f);
+		fwrite(&current->bias_value, sizeof(float), 1, f);
+		print_activ_param(f, current, f_bin);
 	}
 	else
 	{	
 		fprintf(f,"D");
-		fprintf(f, "%dn%fd", d_param->nb_neurons, d_param->dropout_rate);
-		print_activ_param(f, current->activation_type, f_bin);
+		fprintf(f, "%dn%fd%fb", d_param->nb_neurons, current->dropout_rate, current->bias_value);
+		print_activ_param(f, current, f_bin);
 		fprintf(f,"\n");
 	}
 	
@@ -353,6 +356,7 @@ void dense_load(network *net, FILE* f, int f_bin)
 {
 	int nb_neurons;
 	float dropout_rate;
+	float bias;
 	char activ_type[40];
 	layer *previous;
 	
@@ -362,17 +366,18 @@ void dense_load(network *net, FILE* f, int f_bin)
 	{
 		fread(&nb_neurons, sizeof(int), 1, f);
 		fread(&dropout_rate, sizeof(float), 1, f);
+		fread(&bias, sizeof(float), 1, f);
 		fread(activ_type, sizeof(char), 40, f);
 	}
 	else
-		fscanf(f, "%dn%fd%s\n", &nb_neurons, &dropout_rate, activ_type);
+		fscanf(f, "%dn%fd%fb%s\n", &nb_neurons, &dropout_rate, &bias, activ_type);
 	
 	if(net->nb_layers <= 0)
 		previous = NULL;
 	else
 		previous = net->net_layers[net->nb_layers-1];
 
-	dense_create(net, previous, nb_neurons, load_activ_param(activ_type), dropout_rate, 1, f, f_bin);
+	dense_create(net, previous, nb_neurons, activ_type, &bias, dropout_rate, 1, f, f_bin);
 }
 
 

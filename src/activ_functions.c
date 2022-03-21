@@ -29,11 +29,13 @@ void linear_deriv(layer *previous);
 void linear_deriv_output_error(layer* current);
 void linear_output_error(layer* current);
 
+void print_relu_activ_param(layer *current, char *activ);
 void ReLU_activation(layer *current);
 void ReLU_deriv(layer *previous);
 void ReLU_deriv_output_error(layer* current);
 void ReLU_output_error(layer* current);
 
+void print_logistic_activ_param(layer *current, char *activ);
 void logistic_activation(layer *current);
 void logistic_deriv(layer *previous);
 void logistic_deriv_output_error(layer* current);
@@ -69,7 +71,6 @@ void define_activation(layer *current)
 	switch(current->activation_type)
 	{
 		case RELU:
-		case RELU_6:
 			current->activation = ReLU_activation;
 			current->deriv_activation = ReLU_deriv;
 			break;
@@ -105,7 +106,6 @@ void deriv_output_error(layer *current)
 	switch(current->activation_type)
 	{
 		case RELU:
-		case RELU_6:
 			ReLU_deriv_output_error(current);
 			break;
 		
@@ -135,7 +135,6 @@ void output_error_fct(layer* current)
 	switch(current->activation_type)
 	{
 		case RELU:
-		case RELU_6:
 			ReLU_output_error(current);
 			break;
 		
@@ -202,38 +201,36 @@ void output_error(layer* current)
 	}	
 }
 
+void print_string_activ_param(layer *current, char* activ)
+{
+	switch(current->activation_type)
+	{
+		case LOGISTIC:
+			print_logistic_activ_param(current, activ);
+			break;
+		case SOFTMAX:
+			sprintf(activ,"SMAX");
+			break;
+		case YOLO:
+			sprintf(activ,"YOLO");
+			break;
+		case RELU:
+			print_relu_activ_param(current, activ);
+			break;
+		case LINEAR:
+		default:
+			sprintf(activ,"LIN");
+			break;
+		
+			
+	}
+}
 
-void print_activ_param(FILE *f, int type, int f_bin)
+void print_activ_param(FILE *f, layer *current, int f_bin)
 {
 	char temp_string[40];
 
-	switch(type)
-	{
-		case LOGISTIC:
-			sprintf(temp_string, "(LOGI)");
-			break;
-		
-		case SOFTMAX:
-			sprintf(temp_string,"(SMAX)");
-			break;
-	
-		case LINEAR:
-			sprintf(temp_string,"(LIN)");
-			break;
-			
-		case YOLO:
-			sprintf(temp_string,"(YOLO)");
-			break;
-			
-		case RELU_6:
-			sprintf(temp_string,"(RELU_6)");
-			break;
-	
-		case RELU:
-		default:
-			sprintf(temp_string,"(RELU)");
-			break;
-	}
+	print_string_activ_param(current, temp_string);
 	
 	if(f_bin)
 		fwrite(temp_string, sizeof(char), 40, f);
@@ -241,59 +238,44 @@ void print_activ_param(FILE *f, int type, int f_bin)
 		fprintf(f, "%s", temp_string);
 }
 
-void get_string_activ_param(char* activ, int type)
-{
-	switch(type)
-	{
-		case LOGISTIC:
-			sprintf(activ,"(LOGI)");
-			break;
-		
-		case SOFTMAX:
-			sprintf(activ,"(SMAX)");
-			break;
-	
-		case LINEAR:
-			sprintf(activ,"(LIN)");
-			break;
-			
-		case YOLO:
-			sprintf(activ,"(YOLO)");
-			break;
-			
-		case RELU_6:
-			sprintf(activ,"(RELU_6)");
-			break;
-	
-		case RELU:
-		default:
-			sprintf(activ,"(RELU)");
-			break;
-	}
-}
 
-int load_activ_param(char *type)
+void load_activ_param(layer *current, const char *activ)
 {
-	if(strcmp(type, "(SMAX)") == 0)
-		return SOFTMAX;
-	else if(strcmp(type, "(LIN)") == 0)
-		return LINEAR;
-	else if(strcmp(type, "(LOGI)") == 0)
-		return LOGISTIC;
-	else if(strcmp(type, "(YOLO)") == 0)
-		return YOLO;
-	else if(strcmp(type, "(RELU_6)") == 0)
-		return RELU_6;
-	else if(strcmp(type, "(RELU)") == 0)
-		return RELU;
+	if(activ == NULL)
+	{
+		current->activation_type = LINEAR;
+		return;
+	}
+
+	if(strncmp(activ, "SMAX", 4) == 0)
+		current->activation_type = SOFTMAX;
+	else if(strncmp(activ, "LIN", 3) == 0)
+		current->activation_type = LINEAR;
+	else if(strncmp(activ, "LOGI", 4) == 0)
+		current->activation_type = LOGISTIC;
+	else if(strncmp(activ, "YOLO", 4) == 0)
+		current->activation_type = YOLO;
+	else if(strncmp(activ, "RELU", 4) == 0)
+		current->activation_type = RELU;
 	else
-		return RELU;
+		current->activation_type = LINEAR;
 }
 
 
 //#####################################################
 //		 Linear activation related functions
 //#####################################################
+
+void set_linear_activ(layer *current, int size, int dim, int biased_dim)
+{
+	current->activ_param = (linear_param*) malloc(sizeof(linear_param));
+	linear_param *param = (linear_param*)current->activ_param;	
+	
+	param->size = size;
+	param->dim = dim;
+	param->biased_dim = biased_dim;
+	current->bias_value = 0.5f;
+}
 
 void linear_activation(layer *current)
 {
@@ -331,6 +313,34 @@ void linear_output_error(layer *current)
 //		  ReLU activation related functions
 //#####################################################
 
+void set_relu_activ(layer *current, int size, int dim, int biased_dim, const char *activ)
+{
+	char *temp = NULL;
+
+	current->activ_param = (ReLU_param*) malloc(sizeof(ReLU_param));
+	ReLU_param *param = (ReLU_param*)current->activ_param;	
+	
+	param->size = size;
+	param->dim = dim;
+	param->biased_dim = biased_dim;
+	param->saturation = 200.0f;
+	param->leaking_factor = 0.1f;
+	current->bias_value = 0.1f;
+	
+	temp = strstr(activ, "_S");
+	if(temp != NULL)
+		sscanf(temp, "_S%f", &param->saturation);
+	temp = strstr(activ, "_L");
+	if(temp != NULL)
+		sscanf(temp, "_L%f", &param->leaking_factor);
+	
+}
+
+void print_relu_activ_param(layer *current, char *activ)
+{
+	ReLU_param *param = (ReLU_param*)current->activ_param;
+	sprintf(activ,"RELU_S%0.2f_L%0.2f", param->saturation, param->leaking_factor);
+}
 
 void ReLU_activation(layer *current)
 {
@@ -467,10 +477,39 @@ void quadratic_output_error(void *output_error, void *output, void *target, int 
 //#####################################################
 
 
+void set_logistic_activ(layer *current, int size, int dim, int biased_dim, const char *activ)
+{
+	char *temp = NULL;
+
+	current->activ_param = (logistic_param*) malloc(sizeof(logistic_param));
+	logistic_param *param = (logistic_param*)current->activ_param;	
+	
+	param->size = size;
+	param->dim = dim;
+	param->biased_dim = biased_dim;
+	param->saturation = 8.0f;
+	param->beta = 1.0f;
+	current->bias_value = -1.0f;
+	
+	temp = strstr(activ, "_S");
+	if(temp != NULL)
+		sscanf(temp, "_S%f", &param->saturation);
+	temp = strstr(activ, "_B");
+	if(temp != NULL)
+		sscanf(temp, "_B%f", &param->beta);
+	
+}
+
+
+void print_logistic_activ_param(layer *current, char *activ)
+{
+	logistic_param *param = (logistic_param*)current->activ_param;
+	sprintf(activ,"LOGI_S%0.2f_B%0.2f", param->saturation, param->beta);
+}
+
 void logistic_activation(layer *current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
-	
 	logistic_activation_fct(current->output, param->beta, param->saturation, (param->biased_dim)*current->c_network->length,  param->dim, param->size);
 }
 
@@ -552,6 +591,17 @@ void logistic_output_error(layer* current)
 //#####################################################
 //		  Soft-Max activation related functions
 //#####################################################
+
+
+void set_softmax_activ(layer *current, int dim, int biased_dim)
+{
+	current->activ_param = (softmax_param*) malloc(sizeof(softmax_param));
+	softmax_param *param = (softmax_param*)current->activ_param;	
+	
+	param->dim = dim;
+	param->biased_dim = dim;
+	current->bias_value = -1.0f;
+}
 
 
 void softmax_activation(layer *current)
@@ -686,6 +736,39 @@ void cross_entropy_output_error(void *output_error, void *output, void *target, 
 //#####################################################
 //		  YOLO activation related functions
 //#####################################################
+
+//conv only activation, so most of elements can be extracted from c_param directly
+void set_yolo_activ(layer *current)
+{
+	current->activ_param = (yolo_param*) malloc(sizeof(yolo_param));
+	yolo_param *param = (yolo_param*)current->activ_param;
+	conv_param *c_param = (conv_param*)current->param;
+	
+	if(current->c_network->y_param->nb_box*(8+current->c_network->y_param->nb_class
+			+ current->c_network->y_param->nb_param) != c_param->nb_filters)
+	{
+		printf("%d %d\n", current->c_network->y_param->nb_box*(8+current->c_network->y_param->nb_class
+			+ current->c_network->y_param->nb_param), c_param->nb_filters);
+		printf("ERROR: Nb filters size mismatch in YOLO dimensions!\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	printf("Nb_elem IoU monitor %d\n", 2 * current->c_network->y_param->nb_box
+		* c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
+	//real copy to keep network properties accessible
+	*param = *(current->c_network->y_param);	
+	param->size = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] 
+		* c_param->nb_filters * current->c_network->batch_size;
+	printf(" %d %d %d %d\n", c_param->nb_filters, c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2]);
+	param->dim = ((yolo_param*)current->activ_param)->size;
+	param->biased_dim = ((yolo_param*)current->activ_param)->dim;
+	param->cell_w = current->c_network->in_dims[0] / c_param->nb_area[0];
+	param->cell_h = current->c_network->in_dims[1] / c_param->nb_area[1];
+	param->cell_d = current->c_network->in_dims[2] / c_param->nb_area[2];
+	param->IoU_monitor = (float*) calloc(2 * current->c_network->y_param->nb_box * c_param->nb_area[0] 
+		* c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, sizeof(float));
+	current->bias_value = 0.1;
+}
 
 float IoU_fct(float* output, float* target)
 {

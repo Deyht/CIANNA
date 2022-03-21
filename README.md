@@ -17,7 +17,7 @@ See Copyight (C) and [License](#License) terms.
 
 &nbsp;
 
-##          /!\ /!\ /!\ WARNING /!\ /!\ /!\
+## /!\ /!\ /!\ WARNING /!\ /!\ /!\
 
 CIANNA is not in a "released" / "stable" state. The framework itself and the associated interface are subject to significant changes between versions (no guaranteed forward or backward compatibility for now). One must pay attention to what has been changed before performing updates.
 
@@ -25,7 +25,7 @@ CIANNA is not in a "released" / "stable" state. The framework itself and the ass
 
 &nbsp;
 
-##                         Installation
+## Installation
 
 #### Dependencies
 
@@ -87,7 +87,7 @@ Then, the interface can be build automatically by adding the PY_INTERF argument 
 
 &nbsp;
 
-##                   Various Recommandations
+## Various Recommandations
 
 Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface)) Wiki page. The Wiki page containing all the interface functions details is under construction.
 Also "Troubleshooting" and "F.A.Q" pages will be added soon.

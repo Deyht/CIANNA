@@ -317,7 +317,7 @@ size_t cuda_convert_conv_layer(layer *current)
 		net->batch_size * ((size_t)c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]) 
 		* (c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters));
 	
-	if(c_param->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f)
 	{
 		vram_approx += cuda_convert_table_int(&(c_param->dropout_mask), c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
 		cudaMalloc((void**) &c_param->block_state, (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t));
@@ -415,10 +415,8 @@ void cuda_forward_conv_layer(layer *current)
 
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
-		if(current->previous->type == CONV)
-			c_dr = ((conv_param*)current->previous->param)->dropout_rate;
-		else if(current->previous->type == POOL)
-			c_dr = ((pool_param*)current->previous->param)->dropout_rate;
+		if(current->previous->type == CONV || current->previous->type == POOL)
+			c_dr = current->previous->dropout_rate;
 		else
 			c_dr = 0.0f;
 			
@@ -460,12 +458,12 @@ void cuda_forward_conv_layer(layer *current)
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
 	
-	if(c_param->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		cu_blocks = (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
 		cuda_dropout_select_conv<<<cu_blocks, 1>>>(c_param->dropout_mask, c_param->nb_filters 
 			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), 
-			c_param->dropout_rate, (curandState_t*) c_param->block_state);	
+			current->dropout_rate, (curandState_t*) c_param->block_state);	
 		
 		dim3 threadsPerBlock(32, 8);
 		dim3 numBlocks((c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])
@@ -493,7 +491,7 @@ void cuda_backward_conv_layer(layer *current)
 
 	c_param = (conv_param*) current->param;
 	
-	if(c_param->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f)
 	{
 		dim3 threadsPerBlock(32, 8);
 		dim3 numBlocks((c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,

@@ -156,6 +156,17 @@ void cuda_create_table_##name(void **tab, int size)																	\
 	cudaMemset(*tab, 0, size*sizeof(type));																			\
 }
 
+void cuda_set_mem_value(void* device_mem_loc, float value, size_t size)
+{
+	void *temp;
+	
+	temp = (void*) &value;
+	//cudaMemset(device_mem_loc, value, size);
+	cudaMemcpy(device_mem_loc, temp, size, cudaMemcpyHostToDevice);
+}
+
+
+
 void cuda_create_table(network* net, void **tab, int size)
 {
 	net->cu_inst.cu_auxil_fcts.cu_create_table_fct(tab, size);

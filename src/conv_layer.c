@@ -35,7 +35,6 @@ static conv_param *c_param;
 
 //private
 int nb_area_comp(int size, int f_size, int padding, int int_padding, int stride);
-void conv_define_activation_param(layer *current);
 
 
 //compute the number of area to convolve regarding the filters parameters
@@ -51,94 +50,45 @@ This might produce unstable results !\n\n");
 }
 
 
-void conv_define_activation_param(layer *current)
+void conv_define_activation_param(layer *current, const char *activ)
 {
+	int size;
 	c_param = (conv_param*) current->param;
 	
 	switch(current->activation_type)
 	{
 		case RELU:
-			current->activ_param = (ReLU_param*) malloc(sizeof(ReLU_param));
-			((ReLU_param*)current->activ_param)->size = c_param->nb_area[0] * 
-				c_param->nb_area[1] * c_param->nb_area[2] * c_param->nb_filters * current->c_network->batch_size;
-			((ReLU_param*)current->activ_param)->dim = ((ReLU_param*)current->activ_param)->size;
-			((ReLU_param*)current->activ_param)->biased_dim = ((ReLU_param*)current->activ_param)->dim;
-			((ReLU_param*)current->activ_param)->saturation = 1000.0;
-			((ReLU_param*)current->activ_param)->leaking_factor = 0.2;
-			c_param->bias_value = 0.1;
-			break;
-			
-		case RELU_6:
-			current->activ_param = (ReLU_param*) malloc(sizeof(ReLU_param));
-			((ReLU_param*)current->activ_param)->size = c_param->nb_area[0] * 
-				c_param->nb_area[1] * c_param->nb_area[2] * c_param->nb_filters * current->c_network->batch_size;
-			((ReLU_param*)current->activ_param)->dim = ((ReLU_param*)current->activ_param)->size;
-			((ReLU_param*)current->activ_param)->biased_dim = ((ReLU_param*)current->activ_param)->dim;
-			((ReLU_param*)current->activ_param)->saturation = 6.0;
-			((ReLU_param*)current->activ_param)->leaking_factor = 0.2;
-			c_param->bias_value = 0.1;
+			size = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * c_param->nb_filters * current->c_network->batch_size;
+			set_relu_activ(current, size, size, size, activ);
 			break;
 			
 		case LOGISTIC:
-			current->activ_param = (logistic_param*) malloc(sizeof(logistic_param));
-			((logistic_param*)current->activ_param)->size = c_param->nb_area[0]
-				* c_param->nb_area[1] * c_param->nb_area[2] *  c_param->nb_filters * current->c_network->batch_size;
-			((logistic_param*)current->activ_param)->dim = ((logistic_param*)current->activ_param)->size;
-			((logistic_param*)current->activ_param)->biased_dim = ((logistic_param*)current->activ_param)->dim;
-			((logistic_param*)current->activ_param)->beta = 1.0;
-			((logistic_param*)current->activ_param)->saturation = 8.0;
-			c_param->bias_value = -1.0;
+			size = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] *  c_param->nb_filters * current->c_network->batch_size;
+			set_logistic_activ(current, size, size, size, activ);
 			break;
 			
 		case SOFTMAX:
 			//could add a dedicated cuda kernel or conversion to compute it
-			printf("Softmax activation function must not be used for conv layer\n");
+			printf("Softmax activation not compatible with conv layer\n");
 			exit(EXIT_FAILURE);
 			break;
 			
 		case YOLO:
-			current->activ_param = (yolo_param*) malloc(sizeof(yolo_param));
-			if(current->c_network->y_param->nb_box*(8+current->c_network->y_param->nb_class
-					+ current->c_network->y_param->nb_param) != c_param->nb_filters)
-			{
-				printf("%d %d\n", current->c_network->y_param->nb_box*(8+current->c_network->y_param->nb_class
-					+ current->c_network->y_param->nb_param), c_param->nb_filters);
-				printf("ERROR: Nb filters size mismatch in YOLO dimensions!\n");
-				exit(EXIT_FAILURE);
-			}
-			
-			printf("Nb_elem IoU monitor %d\n", 2 * current->c_network->y_param->nb_box
-				* c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
-			//real copy to keep network properties accessible
-			*((yolo_param*)current->activ_param) = *(current->c_network->y_param);	
-			((yolo_param*)current->activ_param)->size = c_param->nb_area[0] 
-				* c_param->nb_area[1] * c_param->nb_area[2] *  c_param->nb_filters * current->c_network->batch_size;
-			printf(" %d %d %d %d\n", c_param->nb_filters, c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2]);
-			((yolo_param*)current->activ_param)->dim = ((yolo_param*)current->activ_param)->size;
-			((yolo_param*)current->activ_param)->biased_dim = ((yolo_param*)current->activ_param)->dim;
-			((yolo_param*)current->activ_param)->cell_w = current->c_network->in_dims[0] / c_param->nb_area[0];
-			((yolo_param*)current->activ_param)->cell_h = current->c_network->in_dims[1] / c_param->nb_area[1];
-			((yolo_param*)current->activ_param)->cell_d = current->c_network->in_dims[2] / c_param->nb_area[2];
-			c_param->bias_value = 0.1;
-			((yolo_param*)current->activ_param)->IoU_monitor = (float*) calloc(2 * current->c_network->y_param->nb_box
-				* c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, sizeof(float));
+			set_yolo_activ(current);
 			break;
 			
 		case LINEAR:
 		default:
-			current->activ_param = (linear_param*) malloc(sizeof(linear_param));
-			((linear_param*)current->activ_param)->size = c_param->nb_area[0] * 
-				c_param->nb_area[1] * c_param->nb_area[2] * c_param->nb_filters * current->c_network->batch_size;
-			((linear_param*)current->activ_param)->dim = ((linear_param*)current->activ_param)->size;
-			((linear_param*)current->activ_param)->biased_dim = ((linear_param*)current->activ_param)->dim;
-			c_param->bias_value = 0.5;
+			size = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * c_param->nb_filters * current->c_network->batch_size;
+			set_linear_activ(current, size, size, size);
 			break;
 	}
 }
 
 
 //Used to allocate a convolutionnal layer
-void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, int *int_padding, int *in_shape, int activation, float drop_rate, FILE *f_load, int f_bin)
+void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, 
+	int *int_padding, int *in_shape, const char* activation, float *bias, float drop_rate, FILE *f_load, int f_bin)
 {
 	int i, j, k;
 	long long int mem_approx = 0;
@@ -154,7 +104,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	
 	//define the parameters values
 	current->type = CONV;
-	current->activation_type = activation;
+	load_activ_param(current, activation);
 	current->frozen = 0;
 	c_param->nb_area = (int*) calloc(3, sizeof(int));
 	c_param->prev_size = (int*) calloc(3, sizeof(int));
@@ -171,7 +121,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 		c_param->int_padding[k] = int_padding[k];
 	}
 	c_param->nb_filters = nb_filters;
-	c_param->dropout_rate = drop_rate;
+	current->dropout_rate = drop_rate;
 	
 	current->previous = previous;
 	
@@ -285,28 +235,33 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 		/* flat_filter*/(f_size[0]*f_size[1]*f_size[2]*c_param->nb_filters)) *  sizeof(float);
 
 	current->param = c_param;
-
-	conv_define_activation_param(current);
+	
+	conv_define_activation_param(current, activation);
+	
+	c_param = (conv_param*)current->param;
+	
+	if(bias != NULL)
+		current->bias_value = *bias;
 	
 	if(current->previous == NULL)
-		((conv_param*)current->param)->bias_value = net->input_bias;
+		current->bias_value = net->input_bias;
 	
 	//set bias value for the current layer, this value will not move during training
 	for(i = 0; i < c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * net->batch_size; i++)
-		((float*)c_param->im2col_input)[i*(c_param->flat_f_size+c_param->TC_padding) + c_param->flat_f_size - 1] = c_param->bias_value;
+		((float*)c_param->im2col_input)[i*(c_param->flat_f_size+c_param->TC_padding) + c_param->flat_f_size - 1] = current->bias_value;
 	
 	if(f_load == NULL)
 	{	
-		//if(activation == RELU)
+		//Should add a defaut weight init depending on the activation function
+		//Should add user control over the init
 		if(1)
 		{
 			//printf("Xavier normal init\n");
 			xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding);
 		}
-		else if(activation == RELU_6)
+		else
 		{
-			//printf("Xavier uniform init\n");
-			xavier_uniform(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding);
+		
 		}
 	}
 	else
@@ -350,18 +305,20 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 			break;
 	}
 	
-	char activ[10];
-	get_string_activ_param(activ, current->activation_type);
+	char activ[40];
+	print_string_activ_param(current, activ);
 	printf("L:%d - Convolutional layer created:\n\
 \t Input: %dx%dx%dx%d, Filters: %df %dx%dx%dx%d, Output: %dx%dx%dx%d \n\
-\t Activation: %s, Stride: %dx%dx%d, padding: %dx%dx%d, int_padding: %dx%dx%d, dropout rate: %0.2f\n\
+\t Stride: %dx%dx%d, padding: %dx%dx%d, int_padding: %dx%dx%d,  \n\
+\t Activation: %s, Bias: %0.2f, dropout rate: %0.2f\n\
 \t Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",
 		net->nb_layers, c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
 		c_param->prev_depth, c_param->nb_filters, c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], c_param->prev_depth, 
 		c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], c_param->nb_filters,
-		activ, c_param->stride[0], c_param->stride[1], c_param->stride[2], 
+		c_param->stride[0], c_param->stride[1], c_param->stride[2], 
 		c_param->padding[0], c_param->padding[1],  c_param->padding[2],
-		c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2], c_param->dropout_rate,
+		c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2],
+		activ, current->bias_value, current->dropout_rate,
 		nb_filters * c_param->flat_f_size, (int)(mem_approx/1000000));
 	
 	#ifdef CUDA
@@ -405,17 +362,18 @@ void conv_save(FILE *f, layer *current, int f_bin)
 		fwrite(c_param->int_padding, sizeof(int), 3, f);
 		fwrite(c_param->prev_size, sizeof(int), 3, f);
 		fwrite(&c_param->prev_depth, sizeof(int), 1, f);
-		fwrite(&c_param->dropout_rate, sizeof(float), 1, f);
-		print_activ_param(f, current->activation_type, f_bin);
+		fwrite(&current->dropout_rate, sizeof(float), 1, f);
+		fwrite(&current->bias_value, sizeof(float), 1, f);
+		print_activ_param(f, current, f_bin);
 	}
 	else
 	{
 		fprintf(f,"C");
-		fprintf(f, "%df%dx%dx%d.%dx%dx%ds%dx%dx%dp%dx%dx%dip%dx%dx%dx%didim%fd", c_param->nb_filters, c_param->f_size[0], c_param->f_size[1], c_param->f_size[2],
+		fprintf(f, "%df%dx%dx%d.%dx%dx%ds%dx%dx%dp%dx%dx%dip%dx%dx%dx%didim%fd%fb", c_param->nb_filters, c_param->f_size[0], c_param->f_size[1], c_param->f_size[2],
 			c_param->stride[0], c_param->stride[1], c_param->stride[2], c_param->padding[0], c_param->padding[1], c_param->padding[2],
 			c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2], c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
-			c_param->prev_depth, c_param->dropout_rate);
-		print_activ_param(f, current->activation_type, f_bin);
+			c_param->prev_depth, current->dropout_rate, current->bias_value);
+		print_activ_param(f, current, f_bin);
 		fprintf(f, "\n");
 	}
 	
@@ -476,6 +434,7 @@ void conv_load(network *net, FILE *f, int f_bin)
 	int nb_filters;
 	int f_size[3], stride[3], padding[3], int_padding[3], input_shape[4];
 	float dropout_rate;
+	float bias;
 	char activ_type[40];
 	layer *previous;
 	
@@ -490,19 +449,20 @@ void conv_load(network *net, FILE *f, int f_bin)
 		fread(int_padding, sizeof(int), 3, f);
 		fread(input_shape, sizeof(int), 4, f);
 		fread(&dropout_rate, sizeof(float), 1, f);
+		fread(&bias, sizeof(float), 1, f);
 		fread(activ_type, sizeof(char), 40, f);
 	}
 	else
-		fscanf(f, "%df%dx%dx%d.%dx%dx%ds%dx%dx%dp%dx%dx%dip%dx%dx%dx%didim%fd%s\n", &nb_filters, &f_size[0], &f_size[1], &f_size[2],
+		fscanf(f, "%df%dx%dx%d.%dx%dx%ds%dx%dx%dp%dx%dx%dip%dx%dx%dx%didim%fd%fb%s\n", &nb_filters, &f_size[0], &f_size[1], &f_size[2],
 		 	&stride[0], &stride[1], &stride[2], &padding[0], &padding[1], &padding[2], &int_padding[0], &int_padding[1], &int_padding[2],
-			&input_shape[0], &input_shape[1], &input_shape[2], &input_shape[3], &dropout_rate, activ_type);
+			&input_shape[0], &input_shape[1], &input_shape[2], &input_shape[3], &dropout_rate, &bias, activ_type);
 
 	if(net->nb_layers <= 0)
 		previous = NULL;
 	else
 		previous = net->net_layers[net->nb_layers-1];
 	
-	conv_create(net, previous, f_size, nb_filters, stride, padding, int_padding, input_shape, load_activ_param(activ_type), dropout_rate, f, f_bin);
+	conv_create(net, previous, f_size, nb_filters, stride, padding, int_padding, input_shape, activ_type, &bias, dropout_rate, f, f_bin);
 }
 
 

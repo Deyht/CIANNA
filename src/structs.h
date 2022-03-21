@@ -30,7 +30,7 @@
 //############################################
 
 enum layer_type{CONV, POOL, DENSE};
-enum activation_functions{RELU, RELU_6, LOGISTIC, SOFTMAX, YOLO, LINEAR};
+enum activation_functions{RELU, LOGISTIC, SOFTMAX, YOLO, LINEAR};
 enum initializers{N_XAVIER, U_XAVIER, N_LECUN, U_LECUN, U_RAND, N_RAND};
 enum inference_modes{AVG_MODEL, MC_MODEL};
 enum batch_param{OFF, SGD, FULL};
@@ -245,6 +245,9 @@ struct layer
 	int frozen;
 	layer *previous;
 	
+	float bias_value;
+	float dropout_rate;
+	
 	void (*forward)(layer *parent);
 	void (*backprop)(layer *parent);
 	
@@ -332,7 +335,6 @@ struct dense_param
 	int* dropout_mask;
 	void* block_state;
 	
-	float bias_value;
 	float dropout_rate;
 };
 
@@ -361,9 +363,6 @@ struct conv_param
 	void *update;
 	int  *dropout_mask;
 	void *block_state;
-	
-	float bias_value;
-	float dropout_rate;
 };
 
 
@@ -378,7 +377,6 @@ struct pool_param
 	
 	int* dropout_mask;
 	void* block_state;
-	float dropout_rate;
 	
 	int next_layer_type;
 	
