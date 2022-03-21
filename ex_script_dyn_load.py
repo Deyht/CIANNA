@@ -1,9 +1,10 @@
 
 import numpy as np
+import time
 from threading import Thread
 #Uncomment to access a locally compiled version
-#import sys
-#sys.path.insert(0,'./src/build/lib.linux-x86_64-3.8')
+import sys
+sys.path.insert(0,'/home/dcornu/Development/CIANNA/src/build/lib.linux-x86_64-3.8')
 import CIANNA as cnn
 
 ############################################################################
@@ -41,8 +42,8 @@ def roll_zeropad(a, shift, axis=None):
 
 def create_augm_batch(data_raw, targ_raw, augm_size):
 	
-	data_augm = np.zeros((augm_size,np.shape(data_raw)[1]), dtype="float32")
-	targ_augm  = np.zeros((augm_size,np.shape(targ_raw)[1]), dtype="float32")
+	data_batch = np.zeros((augm_size,np.shape(data_raw)[1]), dtype="float32")
+	targ_batch  = np.zeros((augm_size,np.shape(targ_raw)[1]), dtype="float32")
 	
 	for i in range(0,augm_size):
 		i_d = int(np.random.random()*np.shape(data_raw)[0])
@@ -52,18 +53,19 @@ def create_augm_batch(data_raw, targ_raw, augm_size):
 		patch = roll_zeropad(patch, np.random.randint(0,4), axis=0)
 		patch = roll_zeropad(patch, np.random.randint(0,4), axis=1)
 		
-		data_augm[i] = np.copy(patch.flatten())
-		targ_augm[i] = targ_raw[i_d]
+		data_batch[i] = np.copy(patch.flatten())
+		targ_batch[i] = targ_raw[i_d]
 	
-	return data_augm, targ_augm
+	return data_batch, targ_batch
 
-def data_augm_fct(data_raw, targ_raw, augm_size):
-	data_augm, targ_augm = create_augm_batch(data_raw, targ_raw, augm_size)
-	cnn.delete_dataset("TRAIN_buf")
-	cnn.create_dataset("TRAIN_buf", 20000, data_augm, targ_augm)
+
+global data_train, target_train
+
+def data_augm():
+	data_batch, targ_batch = create_augm_batch(data_train, target_train, 20000)
+	cnn.delete_dataset("TRAIN_buf", silent = 1)
+	cnn.create_dataset("TRAIN_buf", 20000, data_batch, targ_batch, silent = 1)
 	return
-
-
 
 print ("Reading inputs ... ", end = "", flush=True)
 
@@ -94,34 +96,35 @@ print ("Done !", flush=True)
 
 #Details about the functions and parameters are given in the GitHub Wiki
 
-cnn.init_network(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10, \
+cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10, \
 		bias=0.1, b_size=24, comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP32C_FP32A") #Change to C_BLAS or C_NAIV
 
-data_augm, target_augm = create_augm_batch(data_train, target_train, 20000)
-cnn.create_dataset("TRAIN", size=20000, input=data_augm, target=target_augm)
+data_batch, target_batch = create_augm_batch(data_train, target_train, 20000)
+cnn.create_dataset("TRAIN", size=20000, input=data_batch, target=target_batch)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)
 cnn.create_dataset("TEST", size=10000, input=data_test, target=target_test)
+
 
 #Used to load a saved network at a given epoch
 load_step = 0
 if(load_step > 0):
 	cnn.load_network("net_save/net0_s%04d.dat"%(load_step), load_step)
 else:
-	cnn.conv_create(f_size=i_ar([5,5]), nb_filters=8, padding=i_ar([2,2]), activation="RELU")
-	cnn.pool_create(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.conv_create(f_size=i_ar([5,5]), nb_filters=16, padding=i_ar([2,2]), activation="RELU")
-	cnn.pool_create(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.dense_create(nb_neurons=256, activation="RELU", drop_rate=0.5)
-	cnn.dense_create(nb_neurons=128, activation="RELU", drop_rate=0.2)
-	cnn.dense_create(nb_neurons=10, activation="SOFTMAX")
+	cnn.conv(f_size=i_ar([5,5]), nb_filters=8, padding=i_ar([2,2]), activation="RELU")
+	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
+	cnn.conv(f_size=i_ar([5,5]), nb_filters=16, padding=i_ar([2,2]), activation="RELU")
+	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
+	cnn.dense(nb_neurons=256, activation="RELU", drop_rate=0.5)
+	cnn.dense(nb_neurons=128, activation="RELU", drop_rate=0.2)
+	cnn.dense(nb_neurons=10, activation="SMAX")
+	
 
+for k in range(0,40):
 
-for k in range(0,20):
-
-	t = Thread(target=data_augm_fct(data_train, target_train, 20000))
+	t = Thread(target=data_augm)
 	t.start()
 	
-	cnn.train_network(nb_epoch=2, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=0, silent=1)
+	cnn.train(nb_epoch=1, learning_rate=0.0004, momentum=0.9, control_interv=10 , confmat=1, shuffle_every=0, save_every=0, silent=1)
 	
 	t.join()
 		
@@ -131,7 +134,7 @@ for k in range(0,20):
 cnn.perf_eval()
 
 #Uncomment to save network prediction
-cnn.forward_network(repeat=1)
+cnn.forward(repeat=1)
 
 exit()
 

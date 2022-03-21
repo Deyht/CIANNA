@@ -1146,7 +1146,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*net->epoch);
 		net->epoch++;
 	
-		if((net->epoch+1) % shuffle_every == 0 && net->batch_param != SGD)
+		if(shuffle_every > 0 && (net->epoch+1) % shuffle_every == 0 && net->batch_param != SGD)
 		{
 			if(net->compute_method == C_CUDA)
 			{

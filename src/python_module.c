@@ -21,6 +21,7 @@
 
 #define NPY_NO_DEPRECATED_API 0
 
+#define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <numpy/arrayobject.h>
 
@@ -159,6 +160,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	
 	struct timeval time;
 	init_timing(&time);
+	
 	*data = create_dataset(networks[network_id], size);
 	//printf("Time raw create %f\n",ellapsed_time(time));
 	
@@ -288,6 +290,7 @@ static PyObject* py_delete_dataset(PyObject* self, PyObject *args, PyObject *kwa
 
 	if(data != NULL)
 		free_dataset(data);
+	
 	Py_END_ALLOW_THREADS
 
 	return Py_None;
@@ -665,6 +668,7 @@ static PyObject* py_load_network(PyObject* self, PyObject *args, PyObject *kwarg
 
 static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	
 	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_every = 0, network_id = nb_networks-1;
 	int shuffle_gpu = 1, shuffle_every = 1, silent = 0, save_bin = 0;
 	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 1.0;
@@ -681,7 +685,7 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 		
 	// GIL MACRO : Allow to serialize C thread with python threads
 	Py_BEGIN_ALLOW_THREADS
-		
+	
 	train_network(networks[network_id], py_nb_epoch, py_control_interv, 
 		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_every, save_bin, shuffle_gpu, shuffle_every, py_TC_scale_factor);
 		
