@@ -21,20 +21,26 @@ See Copyight (C) and [License](#License) terms.
 
 CIANNA is not in a "released" / "stable" state. The framework itself and the associated interface are subject to significant changes between versions (no guaranteed forward or backward compatibility for now). One must pay attention to what has been changed before performing updates.
 
-**SKA Science Data Challenge 2 information** ([SDC2](https://sdc2.astronomers.skatelescope.org/)): *The present dev branch of CIANNA includes the work that was done by the [MINERVA](https://vm-weblerma.obspm.fr/minerva/ska-data-challenges/) team of implementing a 3D-YOLO network. However, this is **not** a participation to the SDC2 reproducibility award and does not contain the actual training procedure we used for the challenge. This last point will come in a few weeks along with papers dedicated to our approach. Still, the present CIANNA_dev contains all the necessary functions (un-documented) to construct a 3D-YOLO network.*
+**SKA Science Data Challenge 2 information** ([SDC2](https://sdc2.astronomers.skatelescope.org/)): *The present dev branch of CIANNA includes the work that was done by the [MINERVA](https://vm-weblerma.obspm.fr/minerva/ska-data-challenges/) team of implementing a 3D-YOLO network in the context of the SKA-SDC2. However, this is **not** a participation to the SDC2 reproducibility award and does not contain the actual training procedure we used for the challenge. This last point will come in a near future along with papers dedicated to our approach. Still, the present CIANNA_dev contains all the necessary functions (un-documented) to construct a 3D-YOLO network.*
 
 &nbsp;
 
 ## Installation
 
+#### 
+
+A full step-by-step installation guide of CIANNA and its dependencies from a fresh Ubuntu 20.04 is in construction and will be accessible [here](https://github.com/Deyht/CIANNA/wiki/Step-by-step-installation-guide-\(Ubuntu-20.04\)).
+
 #### Dependencies
 
 CIANNA is codded in C99 and requires at least a C compiler to be used. Additionally, it supports several compute methods:
 - **C_NAIV**: No dependency, very simple CPU implementation (mainly for pedagogical purpose). Support basic multi-CPU with OpenMP.
-- **C_BLAS**: Require OpenBLAS, much more optimized multi-CPU implementation. Non-matrix operations can also be multi-threaded with OpenMP. (An OpenMP installation for OpenBLAS is advised)
-- **C_CUDA**: (Recommended) Most efficient implementation relying on Nvidia GPUs. It should work on GPUs from Maxwell to Ampere architecture, and can be compiled using CUDA 9.0 to CUDA 11.6, most recent being recommended.
+- **C_BLAS**: Require [OpenBLAS](https://github.com/xianyi/OpenBLAS), much more optimized multi-CPU implementation. Non-matrix operations can also be multi-threaded with OpenMP. An OpenMP installation for OpenBLAS is advised, **compilation with the USE_OPENMP=1 option**.
+- **C_CUDA**: (Recommended) Most efficient implementation relying on Nvidia GPUs. It should work on GPUs from Maxwell to Ampere architecture, and can be compiled using CUDA 9.0 to [CUDA 11.6](https://developer.nvidia.com/cuda-downloads), most recent being recommended.
 
-More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/1\)-System-Requirements) page
+More details are provided on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/1\)-System-Requirements) wiki page.
+
+*Note: verify that you updated your PATH and LD\_LIBRARY\_PATH with the appropriate elements for OpenBLAS and CUDA before compiling CIANNA.*
 
 #### How to install and compile
 
@@ -44,7 +50,7 @@ More details on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/1
    - Check the various paths (GCC, OpenBLAS, CUDA, ...)
 
    CUDA Only:
-   - Check all the references to **cublas** and **nvcc**  
+   - Check all the references to **cublas** and **nvcc**
      Edit cuda_arg="...":
      - Update the -arch parameter to fit your GPU architecture
      - Add -D CUDA_OLD if using CUDA < 11.1
@@ -70,29 +76,29 @@ The C interface works by editing *src/main.c* and recompile using *compile.cp*. 
 
 5. Build the Python interface.
 
-    First, check if any path or compile option need to be adapted for your need in *src/python_module_setup.py* (GCC, CUDA, OpenBLAS, ...).
+    First, check if any **path or compile option** need to be adapted for your need in *src/python_module_setup.py* (GCC, CUDA, OpenBLAS, ...).
 Then, the interface can be build automatically by adding the PY_INTERF argument to the *compile.cp* command (re-compile with all arguments), or manually by going into the *src* directory and execute:
    ```
    python3 python_module_setup.py build
    ```
-   To used the locally built interface the explicit build path must be given to the Python script (see [example](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface))).
+   To use the locally built interface the explicit build path must be given to the Python script (see [example](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface))).
    
    To provide system-wide access to the framework (must also be done when using the PY_INTERF option), execute into the *src* directory:
    ```
    sudo python3 python_module_setup.py install
    ```
 
-   The created Python interface module has no dependency with *main.c*. Any Python code invoking CIANNA can be written with no need for new compilation.
+   The created Python interface module has no dependency with *main.c*. Any Python code invoking CIANNA can be written with no need for a new compilation.
 
 
 &nbsp;
 
 ## Various Recommandations
 
-Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface)) Wiki page. The Wiki page containing all the interface functions details is under construction.
+Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface)) Wiki page. The Wiki page containing all the interface functions details is under construction. You might also want to consult the Step-by-step installation guide to verify that everything was installed properly.
 Also "Troubleshooting" and "F.A.Q" pages will be added soon.
 
-This framework take into account various modern neural network optimizations. 
+This framework takes into account various modern neural network optimizations. 
 However, since there is no fancy automated gradient optimization, it might happen that the network gradient "explode" or "vanish" on specific conditions. 
 Users must be aware of those issues and able to identify them in order to make proper use of the framework.
 
