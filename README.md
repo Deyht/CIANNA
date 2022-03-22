@@ -76,6 +76,8 @@ The C interface works by editing *src/main.c* and recompile using *compile.cp*. 
 
 5. Build the Python interface.
 
+	**Python dependencies :** building the python interface requires to have *distutils* and *distuilts-extra* packages installes. It also requires the numpy library.
+
     First, check if any **path or compile option** need to be adapted for your need in *src/python_module_setup.py* (GCC, CUDA, OpenBLAS, ...).
 Then, the interface can be build automatically by adding the PY_INTERF argument to the *compile.cp* command (re-compile with all arguments), or manually by going into the *src* directory and execute:
    ```

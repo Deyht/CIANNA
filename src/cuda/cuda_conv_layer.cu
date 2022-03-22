@@ -275,9 +275,8 @@ size_t cuda_convert_conv_layer(layer *current)
 			#endif
 			break;
 		
-		
-		#if defined (GEN_AMPERE)
 		case BF16C_FP32A:
+			#if defined (GEN_AMPERE)
 			temp_tab = (float*)c_param->filters;
 			cudaMalloc(&(c_param->FP32_filters), c_param->nb_filters 
 				* (c_param->flat_f_size + c_param->TC_padding)*sizeof(float));
