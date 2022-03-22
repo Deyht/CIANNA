@@ -52,7 +52,7 @@ More details are provided on the [System Requirements](https://github.com/Deyht/
    CUDA Only:
    - Check all the references to **cublas** and **nvcc**
      Edit cuda_arg="...":
-     - Update the -arch parameter to fit your GPU architecture
+     - Update the -arch parameter to fit your GPU architecture (sm_35 and bellow are not supported)
      - Add -D CUDA_OLD if using CUDA < 11.1
      - Add -D GEN_VOLTA (Volta, Pascal, Turing) or -D GEN_AMPERE (Ampere only) for various mixed precision type support)
 
@@ -76,7 +76,7 @@ The C interface works by editing *src/main.c* and recompile using *compile.cp*. 
 
 5. Build the Python interface.
 
-	**Python dependencies :** building the python interface requires to have *distutils* and *distuilts-extra* packages installes. It also requires the numpy library.
+	**Python dependencies :** building the python interface requires to have *distutils* and *distutils-extra* packages installed. It also requires the numpy library.
 
     First, check if any **path or compile option** need to be adapted for your need in *src/python_module_setup.py* (GCC, CUDA, OpenBLAS, ...).
 Then, the interface can be build automatically by adding the PY_INTERF argument to the *compile.cp* command (re-compile with all arguments), or manually by going into the *src* directory and execute:
