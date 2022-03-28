@@ -1,4 +1,5 @@
 
+
 <p align="center">
 <img src="cianna_logo_v2.2.png" alt="drawing" width="80%"/>
 </p>
@@ -29,7 +30,7 @@ CIANNA is not in a "released" / "stable" state. The framework itself and the ass
 
 #### 
 
-A full step-by-step installation guide of CIANNA and its dependencies from a fresh Ubuntu 20.04 is in construction and will be accessible [here](https://github.com/Deyht/CIANNA/wiki/Step-by-step-installation-guide-\(Ubuntu-20.04\)).
+A full **step-by-step installation guide** of CIANNA and its dependencies from a fresh Ubuntu 20.04 is accessible [here](https://github.com/Deyht/CIANNA/wiki/Step-by-step-installation-guide-\(Ubuntu-20.04\)).
 
 #### Dependencies
 
@@ -54,13 +55,13 @@ More details are provided on the [System Requirements](https://github.com/Deyht/
      Edit cuda_arg="...":
      - Update the -arch parameter to fit your GPU architecture (sm_35 and bellow are not supported)
      - Add -D CUDA_OLD if using CUDA < 11.1
-     - Add -D GEN_VOLTA (Volta, Pascal, Turing) or -D GEN_AMPERE (Ampere only) for various mixed precision type support)
+     - Add -D GEN_VOLTA (Volta, Pascal, Turing) or -D GEN_AMPERE (Ampere only) for various mixed precision type support
 
 3. Use the *compile.cp* command with the appropriate arguments in order to compile the source code.
 Each of the following optional argument adds support for a given compute method
-   - CUDA 	   : compile additional cuda files
+   - CUDA 	   : compile additional CUDA files
    - OPEN_MP   : add multi-thread for some operations (for C_NAIV and C_BLAS)
-   - BLAS 	   : add OpenBLAS gemm (mutli-threaded) operations
+   - BLAS 	   : add OpenBLAS gemm (multi-threaded) operations
    - PY_INTERF : build the Python interface at the end (need modifications described in step 5)
 
    Multiple parameters can be used at the same time:
@@ -70,11 +71,11 @@ Each of the following optional argument adds support for a given compute method
    NB: These parameters ***allow*** the use of specific features, they do not ***enable*** it. For example: one can compile with all the parameters and choose to use CUDA or BLAS at execution time.
 
 4. The previous compilation script creates a *main* executable which is a simple example performing MNIST classification by default.
-The C interface works by editing *src/main.c* and recompile using *compile.cp*. (A more convenient C interface is at work.)
+The C interface works by editing *src/main.c* and recompile using *compile.cp*.
 
 #### Optional step
 
-5. Build the Python interface.
+5. Build the Python interface
 
 	**Python dependencies :** building the python interface requires to have *distutils* and *distutils-extra* packages installed. It also requires the numpy library.
 
@@ -95,7 +96,7 @@ Then, the interface can be build automatically by adding the PY_INTERF argument 
 
 &nbsp;
 
-## Various Recommandations
+## Various Recommendations
 
 Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface)) Wiki page. The Wiki page containing all the interface functions details is under construction. You might also want to consult the Step-by-step installation guide to verify that everything was installed properly.
 Also "Troubleshooting" and "F.A.Q" pages will be added soon.
@@ -126,3 +127,10 @@ These files are Copyright &copy; 2020 [David Cornu](https://vm-weblerma.obspm.fr
 - *To the fullest extent permitted, you agree not to assert, all of your “moral rights” in or relating to your contributions for the benefit of the present CIANNA framework.*
 
 - *Your contribution was created in whole or in part by you and you have the right to submit it under the open source license indicated in the LICENSE file; or the contribution is based upon previous work that, to the best of your knowledge, is covered under an appropriate open source license and you have the right to submit that work with modifications.*
+
+
+
+
+
+
+
