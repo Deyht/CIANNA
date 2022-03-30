@@ -663,6 +663,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		if(f_save == NULL)
 		{
 			printf("ERROR: can not oppen %s !\n", f_save_name);
+			exit(EXIT_FAILURE);
 		}
 	}
 	
@@ -960,6 +961,11 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				f_err = fopen("error.txt", "w+");
 			else
 				f_err = fopen("error.txt", "a");
+			if(f_err == NULL)
+			{
+				printf("ERROR: can not oppen error.txt !\n");
+				exit(EXIT_FAILURE);
+			}
 			
 			printf("Cumulated error: \t %g\n", total_error/data.size);
 			if(net->net_layers[net->nb_layers-1]->type == CONV)

@@ -23,8 +23,8 @@
 - Unification of the bias behavior (more aligned with other widely adopted frameworks) => now every layer bias value defines the bias that is added to its own input matrix. This was already the case for conv layer but not for dense layers. Following the bias propagation through pivot method, a dense layer now update the bias of the previous dense layer weight matrix (instead of its own). In all cases the "in_bias" parameter in init_network function remains mandatory and will ALWAYS OVERWRITE any bias value specified locally for the first layer. Saves, load, and interfaces functions have been updated accordingly.
 - bias_value and dropout are now members of the default layer structure (and no more related to the layer type structure).
 - Correction of an error (sigfault) that was occurring when forwarding the test dataset using compute_method = BLAS or NAIV while CIANNA was also compiled with the CUDA option.
-- Fix an error for when shuffle every was set to 0 (now only shuffle if shuffle_every > 0 and do nothing otherwise)
-
+- Fix an error for when shuffle every was set to 0 (now only shuffle if shuffle_every > 0 and do nothing otherwise).
+- Add an error info display and a proper program termination if the error.txt external monitoring file cannot be open.
 
 
 
