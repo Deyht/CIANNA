@@ -441,7 +441,9 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, int 
 	/*Default values are in activ_function.c (set_yolo_params)*/																				\
 	float **sm_tab = y_param.slopes_and_maxes_tab;																								\
 																																				\
-	int col, in_col;																															\
+	int k, col, in_col;																															\
+	float sum, val;																																\
+	type vmax;																																	\
 																																				\
 	col = i / flat_offset;																														\
 	in_col = col%(8+nb_class+nb_param);																											\
@@ -490,10 +492,42 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, int 
 	/*Classes*/																																	\
 	if(in_col >= 8 && in_col < 8+nb_class)																										\
 	{																																			\
+		/*if(in_col == 8)																														*/\
+		/*{																																		*/\
+		/*	for(k = 0; k < nb_class; k++)																										*/\
+		/*	{																																	*/\
+		/*		tab[i+k*flat_offset] = (type)sm_tab[4][0]*tab[i+k*flat_offset];																	*/\
+		/*		if(tab[i+k*flat_offset] > (type)sm_tab[4][1])																					*/\
+		/*			tab[i+k*flat_offset] = (type)sm_tab[4][1];																					*/\
+		/*	}																																	*/\
+		/*																																		*/\
+		/*	vmax = tab[i];																														*/\
+		/*	for(k = 1; k < nb_class; k++)																										*/\
+		/*	{																																	*/\
+		/*		if(tab[i+k*flat_offset] > vmax)																									*/\
+		/*			vmax = tab[i+k*flat_offset];																								*/\
+		/*	}																																	*/\
+		/*																																		*/\
+		/*	sum = 0.0000001f;																													*/\
+		/*	for(k = 0; k < nb_class; k++)																										*/\
+		/*	{																																	*/\
+		/*		val = expf((float)(tab[i+k*flat_offset] - vmax));																				*/\
+		/*		tab[i+k*flat_offset] = (type) val;																								*/\
+		/*		sum += val;																														*/\
+		/*	}																																	*/\
+		/*																																		*/\
+		/*	for(k = 0; k < nb_class; k++)																										*/\
+		/*	{																																	*/\
+		/*		tab[i+k*flat_offset] = (type)((float)tab[i+k*flat_offset]/sum);																	*/\
+		/*		if(tab[i+k*flat_offset] < (type) 0.00001f)																						*/\
+		/*			tab[i+k*flat_offset] = (type) 0.00001f;																						*/\
+		/*	}																																	*/\
+		/*}																																		*/\
 		tab[i] = -(type)sm_tab[4][0]*tab[i];																									\
 		if(tab[i] > (type)sm_tab[4][1])																											\
 			tab[i] = (type)sm_tab[4][1];																										\
 		tab[i] = 1.0f/(1.0f + exp_fct(tab[i]));																									\
+																																				\
 		return;																																	\
 	}																																			\
 																																				\
@@ -774,7 +808,9 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 				delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = (type)(																	\
 								TC_scale_factor*sm_tab[2][0]*prob_scale*(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]				\
 								*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset])												\
-								*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f));											\
+								*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f));											\
+				/*delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = (type)(TC_scale_factor*sm_tab[2][0]*prob_scale							*/\
+				/*				*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset])-1.0f);											*/\
 			else																																\
 				delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = (type)(0.0f);															\
 																																				\
@@ -795,18 +831,26 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 			{																																	\
 				for(k = 0; k < nb_class; k++)																									\
 				{																																\
+					/*if(k == (int) target[j*(7+nb_param)]-1)																					*/\
+					/*	delta_o[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 																*/\
+					/*		(type) ((1.0f/nb_class)*TC_scale_factor*sm_tab[4][0]*class_scale													*/\
+					/*		*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-1.0f));												*/\
+					/*else																														*/\
+					/*	delta_o[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 																*/\
+					/*		(type) ((1.0f/nb_class)*TC_scale_factor*sm_tab[4][0]*class_scale													*/\
+					/*		*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.0f));												*/\
 					if(k == (int) target[j*(7+nb_param)]-1)																						\
 						delta_o[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 																\
 							(type) (TC_scale_factor*sm_tab[4][0]*class_scale																	\
 							*(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]														\
 							*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset])												\
-							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.999f));											\
+							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.99f));												\
 					else																														\
 						delta_o[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 																\
 							(type) (TC_scale_factor*sm_tab[4][0]*class_scale																	\
 							*(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]														\
 							*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset])												\
-							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.001f));											\
+							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f));												\
 				}																																\
 			}																																	\
 			else																																\
@@ -853,7 +897,10 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 						TC_scale_factor*sm_tab[3][0]*(lambda_noobj_prior[j])*prob_scale															\
 						*(float)output[(j*(8+nb_class+nb_param)+6)*f_offset]																	\
 						*(1.0f-(float)output[(j*(8+nb_class+nb_param)+6)*f_offset])																\
-						*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f));															\
+						*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f));														\
+					/*delta_o[(j*(8+nb_class+nb_param)+6)*f_offset] = (type)(																	*/\
+					/*	TC_scale_factor*sm_tab[3][0]*(lambda_noobj_prior[j])*prob_scale															*/\
+					/*	*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]));																*/\
 				else																															\
 					delta_o[(j*(8+nb_class+nb_param)+6)*f_offset] = (type)(0.0f);																\
 																																				\
@@ -1025,9 +1072,9 @@ __global__ void YOLO_error_kernel_##name																										\
 			IoU_monitor[resp_box*2] = 1.0f;																										\
 			IoU_monitor[resp_box*2+1] = max_IoU*(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset];										\
 																																				\
-			obj_in_offset[0] = ((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;												\
-			obj_in_offset[1] = ((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;												\
-			obj_in_offset[2] = ((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d;												\
+			obj_in_offset[0] = fmaxf(0.01f,fminf(0.99,((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w));						\
+			obj_in_offset[1] = fmaxf(0.01f,fminf(0.99,((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h));						\
+			obj_in_offset[2] = fmaxf(0.01f,fminf(0.99,((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d));						\
 			obj_in_offset[3] = (targ_w)/(float)prior_w[resp_box];																				\
 			if(obj_in_offset[3] < size_min_sat)																									\
 				obj_in_offset[3] = logf(size_min_sat);																							\
@@ -1062,8 +1109,10 @@ __global__ void YOLO_error_kernel_##name																										\
 																																				\
 			if(max_IoU > min_prob_IoU_lim)																										\
 				output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] =																		\
-								0.5f*prob_scale*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f)								\
-								*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f);											\
+								0.5f*prob_scale*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f)								\
+								*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f);											\
+				/*output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = 																	*/\
+				/*	prob_scale*(-logf((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]));												*/\
 			else																																\
 				output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = 0.0f;																\
 																																				\
@@ -1083,14 +1132,20 @@ __global__ void YOLO_error_kernel_##name																										\
 			{																																	\
 				for(k = 0; k < nb_class; k++)																									\
 				{																																\
+				/*	if(k == (int) target[j*(7+nb_param)]-1)																						*/\
+				/*		output_error[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 															*/\
+				/*			(type) (-(1.0f/nb_class)*class_scale*logf(((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset])));			*/\
+				/*	else																														*/\
+				/*		output_error[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 															*/\
+				/*			(type) (-(1.0f/nb_class)*class_scale*0.0f*logf(((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset])));	*/\
 					if(k == (int)target[j*(7+nb_param)]-1)																						\
 						output_error[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 0.5f*class_scale											\
-							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.999f)												\
-							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.999f);												\
+							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.99f)												\
+							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.99f);												\
 					else																														\
 						output_error[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 0.5f*class_scale											\
-							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.001f)												\
-							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.001f);												\
+							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f)												\
+							*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f);												\
 				}																																\
 			}																																	\
 			else																																\
@@ -1104,7 +1159,7 @@ __global__ void YOLO_error_kernel_##name																										\
 			{																																	\
 				for(k = 0; k < nb_param; k++)																									\
 					output_error[(resp_box*(8+nb_class+nb_param)+8+nb_class+k)*f_offset] = 														\
-						(param_ind_scale[k]*0.5f*param_scale*((float)output[(resp_box*(8+nb_class+nb_param)										\
+						(param_ind_scale[k]*0.5f*param_scale*((float)output[(resp_box*(8+nb_class+nb_param)											\
 						+8+nb_class+k)*f_offset] - (float) target[j*(7+nb_param)+7+k])															\
 						*((float)output[(resp_box*(8+nb_class+nb_param)																			\
 						+8+nb_class+k)*f_offset] - (float) target[j*(7+nb_param)+7+k]));														\
@@ -1134,8 +1189,10 @@ __global__ void YOLO_error_kernel_##name																										\
 			else																																\
 			{																																	\
 				output_error[(j*(8+nb_class+nb_param)+6)*f_offset] =																			\
-					0.5f*(lambda_noobj_prior[j])*prob_scale*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f)						\
-					*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f);																\
+					0.5f*(lambda_noobj_prior[j])*prob_scale*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f)							\
+					*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f);																\
+				/*output_error[(j*(8+nb_class+nb_param)+6)*f_offset] = 																			*/\
+				/*	-(lambda_noobj_prior[j])*prob_scale*logf(1.0f-(float)output[(j*(8+nb_class+nb_param)+6)*f_offset]);							*/\
 																																				\
 				output_error[(j*(8+nb_class+nb_param)+7)*f_offset] = 0.0f;																		\
 			}																																	\
@@ -1300,7 +1357,7 @@ void cuda_ReLU_deriv(layer *previous)
 }
 
 
-// Should re write a output function to take into account ReLU for Conv output format
+// Should re write an output function to take into account ReLU for Conv output format
 void cuda_ReLU_deriv_output_error(layer* current)
 {
 	ReLU_param *param = (ReLU_param*)current->activ_param;

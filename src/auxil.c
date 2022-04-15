@@ -329,6 +329,10 @@ int argmax(float *tab, int size)
 	return imax;
 }
 
+float clip(float n, float lower, float upper) 
+{
+	return fmax(lower, fmin(n, upper));
+}
 
 void save_network(network *net, char *filename, int f_bin)
 {

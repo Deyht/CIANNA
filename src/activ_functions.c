@@ -922,7 +922,7 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 			break;
 	}
 	
-	printf("\nYOLO layer set with:\nn Nboxes = %d\n Ndimensions = %d\n Nclasses = %d\n Nparams = %d\n IoU type = %s\n",
+	printf("\nYOLO layer set with:\n Nboxes = %d\n Ndimensions = %d\n Nclasses = %d\n Nparams = %d\n IoU type = %s\n",
 			net->y_param->nb_box, 3, net->y_param->nb_class, net->y_param->nb_param, IoU_type_char);
 	printf(" W priors = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
@@ -1182,9 +1182,9 @@ void YOLO_deriv_error_fct
 				
 				box_locked[resp_box] = 2;
 		
-				obj_in_offset[0] = ((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
-				obj_in_offset[1] = ((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
-				obj_in_offset[2] = ((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d;
+				obj_in_offset[0] = clip(((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w, 0.01f, 0.99f);
+				obj_in_offset[1] = clip(((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h, 0.01f, 0.99f);
+				obj_in_offset[2] = clip(((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d, 0.01f, 0.99f);
 				obj_in_offset[3] = (targ_w)/(float)prior_w[resp_box];
 				if(obj_in_offset[3] < size_min_sat)
 					obj_in_offset[3] = logf(size_min_sat);
@@ -1231,7 +1231,7 @@ void YOLO_deriv_error_fct
 					delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = 
 									(sm_tab[2][0]*prob_scale*(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]
 									*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset])
-									*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f));
+									*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f));
 				else
 					delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = (0.0f);
 					
@@ -1257,13 +1257,13 @@ void YOLO_deriv_error_fct
 								 (sm_tab[4][0]*class_scale
 								*(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]
 								*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset])
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.999f));
+								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.99f));
 						else
 							delta_o[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 
 								 (sm_tab[4][0]*class_scale
 								*(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]
 								*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset])
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.001f));
+								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f));
 					}
 				}
 				else
@@ -1310,7 +1310,7 @@ void YOLO_deriv_error_fct
 							(sm_tab[3][0]*(lambda_noobj_prior[j])*prob_scale
 							*(float)output[(j*(8+nb_class+nb_param)+6)*f_offset]
 							*(1.0f-(float)output[(j*(8+nb_class+nb_param)+6)*f_offset])
-							*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f));
+							*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f));
 					else
 						delta_o[(j*(8+nb_class+nb_param)+6)*f_offset] = (0.0f);
 		
@@ -1482,9 +1482,9 @@ void YOLO_error_fct
 				IoU_monitor[resp_box*2] = 1.0f;
 				IoU_monitor[resp_box*2+1] = max_IoU*(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset];
 		
-				obj_in_offset[0] = ((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
-				obj_in_offset[1] = ((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
-				obj_in_offset[2] = ((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d;
+				obj_in_offset[0] = clip(((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w, 0.01f, 0.99f);
+				obj_in_offset[1] = clip(((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h, 0.01f, 0.99f);
+				obj_in_offset[2] = clip(((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d, 0.01f, 0.99f);
 				obj_in_offset[3] = (targ_w)/(float)prior_w[resp_box];
 				if(obj_in_offset[3] < size_min_sat)
 						obj_in_offset[3] = logf(size_min_sat);
@@ -1519,8 +1519,8 @@ void YOLO_error_fct
 		
 				if(max_IoU > min_prob_IoU_lim)
 					output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] =
-									0.5f*prob_scale*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f)
-									*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.999f);
+									0.5f*prob_scale*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f)
+									*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f);
 				else
 					output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = 0.0f;
 		
@@ -1542,12 +1542,12 @@ void YOLO_error_fct
 					{
 						if(k == (int)target[j*(7+nb_param)]-1)
 							output_error[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 0.5f*class_scale
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.999f)
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.999f);
+								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.99f)
+								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.99f);
 						else
 							output_error[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 0.5f*class_scale
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.001f)
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.001f);
+								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f)
+								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f);
 					}
 				}
 				else
@@ -1591,8 +1591,8 @@ void YOLO_error_fct
 				else
 				{
 					output_error[(j*(8+nb_class+nb_param)+6)*f_offset] =
-						0.5f*(lambda_noobj_prior[j])*prob_scale*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f)
-						*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.001f);
+						0.5f*(lambda_noobj_prior[j])*prob_scale*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f)
+						*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f);
 		
 					output_error[(j*(8+nb_class+nb_param)+7)*f_offset] = 0.0f;
 				}

@@ -1,5 +1,6 @@
 
 import numpy as np
+import matplotlib.pyplot as plt
 #Uncomment to access a locally compiled version
 import sys
 sys.path.insert(0,'./src/build/lib.linux-x86_64-3.8')
@@ -52,7 +53,7 @@ cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)
 cnn.create_dataset("TEST", size=10000, input=data_test, target=target_test)
 
-del (data_train, target_train, data_valid, target_valid, data_test, target_test)
+#del (data_train, target_train, data_valid, target_valid, data_test, target_test)
 
 #Used to load a saved network at a given epoch
 load_step = 0
@@ -74,9 +75,23 @@ cnn.perf_eval()
 
 
 #Uncomment to save network prediction
-cnn.forward(repeat=1)
+cnn.forward(repeat=1, drop_mode="AVG_MODEL")
+
+
+
+prediction = np.loadtxt("fwd_res/net0_0005.dat")
+
+for i in range(0,10):
+	im = data_test[i]
+	plt.imshow(np.reshape(im, (28,28)))
+	plt.show()
+	print("Pred %f, Prob %f, Targ "%(np.argmax(prediction[i]), np.max(prediction[i])), target_test[i])
+	
 
 exit()
+
+
+
 
 
 
