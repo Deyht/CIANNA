@@ -441,9 +441,7 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, int 
 	/*Default values are in activ_function.c (set_yolo_params)*/																				\
 	float **sm_tab = y_param.slopes_and_maxes_tab;																								\
 																																				\
-	int k, col, in_col;																															\
-	float sum, val;																																\
-	type vmax;																																	\
+	int col, in_col;																															\
 																																				\
 	col = i / flat_offset;																														\
 	in_col = col%(8+nb_class+nb_param);																											\
