@@ -551,10 +551,10 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 	float *error_scales = NULL, **slopes_and_maxes = NULL, *param_ind_scales = NULL, *IoU_limits = NULL;
 	int *fit_parts = NULL;
 	float* temp;
-	static char *kwlist[] = {"nb_box", "prior_w", "prior_h", "prior_noobj_prob", "nb_class", "nb_param", "error_scales", "slopes_and_maxes", "param_ind_scales", "IoU_limits", "fit_parts", "prior_d", "IoU_type", "strict_box_size_association", "network", NULL};
+	static char *kwlist[] = {"nb_box", "nb_class", "nb_param", "prior_w", "prior_h", "prior_d", "prior_noobj_prob", "error_scales", "slopes_and_maxes", "param_ind_scales", "IoU_limits", "fit_parts", "IoU_type", "strict_box_size", "network", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iOOOii|OOOOOOsii", kwlist, 
-			&nb_box, &py_prior_w, &py_prior_h, &py_prior_noobj_prob, &nb_class, &nb_param, &py_error_scales, &py_slopes_and_maxes, &py_param_ind_scales, &py_IoU_limits, &py_fit_parts, &py_prior_d, &IoU_type_char, &strict_box_size_association, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiiO|OOOOOOOOsii", kwlist, 
+			&nb_box, &nb_class, &nb_param, &py_prior_w, &py_prior_h, &py_prior_d, &py_prior_noobj_prob, &py_error_scales, &py_slopes_and_maxes, &py_param_ind_scales, &py_IoU_limits, &py_fit_parts, &IoU_type_char, &strict_box_size_association, &network_id))
 	    return PyLong_FromLong(0);
 
 	C_prior_w = (float*) calloc(nb_box,sizeof(float));
@@ -574,12 +574,22 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 		IoU_type = DIOU;
 	}
 	
+	printf("Test 1\n");
+	
 	for(i = 0; i < nb_box; i++)
 	{ 
 		C_prior_w[i] = *((float*)(py_prior_w->data + i * py_prior_w->strides[0]));
-		C_prior_h[i] = *((float*)(py_prior_h->data + i * py_prior_h->strides[0]));
-		C_prior_noobj_prob[i] = *((float *)(py_prior_noobj_prob->data 
-									 + i * py_prior_noobj_prob->strides[0]));
+	}
+	
+	if(py_prior_h != NULL)
+	{
+		for(i = 0; i < nb_box; i++)
+			C_prior_h[i] = *((float*)(py_prior_h->data + i * py_prior_h->strides[0]));
+	}
+	else
+	{
+		for(i = 0; i < nb_box; i++)
+			C_prior_h[i] = *((float*)(py_prior_w->data + i * py_prior_w->strides[0]));
 	}
 	
 	if(py_prior_d != NULL)
@@ -591,6 +601,18 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 	{
 		for(i = 0; i < nb_box; i++)
 			C_prior_d[i] = 1.0f;
+	}
+	
+	if(py_prior_noobj_prob != NULL)
+	{
+		for(i = 0; i < nb_box; i++)
+			C_prior_noobj_prob[i] = *((float *)(py_prior_noobj_prob->data 
+									 + i * py_prior_noobj_prob->strides[0]));
+	}
+	else
+	{
+		for(i = 0; i < nb_box; i++)
+			C_prior_noobj_prob[i] = 0.1f;
 	}
 	
 	if(py_error_scales != NULL)

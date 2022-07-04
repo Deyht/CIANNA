@@ -848,8 +848,9 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	if(scale_tab == NULL)
 	{
 		scale_tab = (float*) calloc(6, sizeof(float));
-		for(i = 0; i < 6; i++)
-			scale_tab[i] = 1.0f;
+		scale_tab[0] = 2.0f; /*Pos  */ scale_tab[1] = 2.0f; /*Size */
+		scale_tab[2] = 1.0f; /*Proba*/ scale_tab[3] = 4.0f; /*Objct*/
+		scale_tab[4] = 1.0f; /*Class*/ scale_tab[5] = 1.0f; /*Param*/
 	}
 	
 	if(slopes_and_maxes_tab == NULL)
@@ -878,16 +879,40 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	if(IoU_limits == NULL)
 	{
 		IoU_limits = (float*) calloc(5,sizeof(float));
-		IoU_limits[0] = 0.3f;
-		IoU_limits[1] = 0.0f; IoU_limits[2] = 0.3f;
-		IoU_limits[3] = 0.3f; IoU_limits[4] = 0.3f;
+		switch(IoU_type)
+		{
+			case IOU:
+				IoU_limits[0] = 0.5f;
+				IoU_limits[1] = 0.3f; IoU_limits[2] = 0.3f;
+				IoU_limits[3] = 0.5f; IoU_limits[4] = 0.5f;
+				break;
+			case GIOU:
+				IoU_limits[0] = 0.4f;
+				IoU_limits[1] = 0.1f; IoU_limits[2] = 0.1f;
+				IoU_limits[3] = 0.4f; IoU_limits[4] = 0.4f;
+				break;
+			default:
+			case DIOU:
+				IoU_limits[0] = 0.3f;
+				IoU_limits[1] = 0.0f; IoU_limits[2] = 0.2f;
+				IoU_limits[3] = 0.3f; IoU_limits[4] = 0.3f;
+				break;
+		}
 	}
 	
 	if(fit_parts == NULL)
 	{
 		fit_parts = (int*) calloc(5,sizeof(int));
-		for(i = 0; i < 5; i++)
-			fit_parts[i] = 1;
+		fit_parts[0] = 1; /*Size  */ fit_parts[1] = 1; /*Prob */
+		fit_parts[2] = 1; /*Object*/
+		if(nb_class > 0)  /*Class*/
+			fit_parts[3] = 1;
+		else
+			fit_parts[3] = 0; 
+		if(nb_param > 0) /*Param*/
+			fit_parts[4] = 1;
+		else
+			fit_parts[4] = 0;
 	}
 	
 	net->y_param->nb_box = nb_box;
