@@ -767,7 +767,7 @@ void set_yolo_activ(layer *current)
 	param->cell_d = current->c_network->in_dims[2] / c_param->nb_area[2];
 	param->IoU_monitor = (float*) calloc(2 * current->c_network->y_param->nb_box * c_param->nb_area[0] 
 		* c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, sizeof(float));
-	current->bias_value = 0.1;
+	current->bias_value = 0.5;
 }
 
 float IoU_fct(float* output, float* target)

@@ -1,4 +1,14 @@
 
+********************************************
+===== V-0.9.3.0 =====
+ (interface V-0.6.2)
+
+- Add more (and better) default values to the YOLO parameters. More optional keyword in set_yolo_params.
+- Change default bias value for YOLO layer to 0.5 
+  (better for paramter regression with LIN activation, no apparent negative impact on other parameters)
+
+- Various small updates to wiki and readme
+
 
 ********************************************
 ===== V-0.9.2.9 =====
