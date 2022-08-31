@@ -61,10 +61,10 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
            &GGB##&&&@@@@@&#PJ?B#&B                                                                                           \n\
           .&#&@@@@@@@@@@@@@@@B##&G                                                                                           \n\
         ^G@@@@BJ^.   .~?P&@@@@@&&G                                                                                           \n\
-      !&@@@B^   :!???^^..:7&@@@@&G      .~~~         :~~:         ~~~^        ~~~    ~~~^        ~~~         ^~~.            \n\
+      &&@@@B^   :!???^^..:7&@@@@&G      .~~~         :~~:         ~~~^        ~~~    ~~~^        ~~~         ^~~.            \n\
     .B@@@&^  !#@@@@@@@@&?^~J&@@@@B ^    !@@@.       :@@@@^       .@@@@G      .@@@:  .@@@@P      .@@@:       ~@@@@.           \n\
    .&@@@#  .J@@@#GP55PB&@&JJ5@@@@B ^G   !@@@.       &@@@@@.      .@@@@@&:     @@@:  .@@@@@&:    .@@@.      :@@@@@&           \n\
-   #@@@@.  ?@@&Y?JJJJJJJP@5JY@@@@B ^@:  !@@@       #@@PY@@&      .@@@P@@@7    @@@:  .@@@P@@@7   .@@@.      &@@JG@@B          \n\
+   &@@@@.  ?@@&Y?JJJJJJJP@5JY@@@@B ^@:  !@@@       #@@PY@@&      .@@@P@@@7    @@@:  .@@@P@@@7   .@@@.      &@@JG@@B          \n\
   :@@@@#  .@@@YJJJJJJJJJJGY?#@@@@B 5@!  !@@@      P@@#  G@@B     .@@@.:&@@G   @@@:  .@@@.:&@@P  .@@@.     #@@P  &@@5         \n\
   ~@Y&@#  .@@@P?JJJJJJJJJ?J#@@@@@G.@@~  !@@@     ?@@@:  .&@@5    .@@@.  G@@&. @@@:  .@@@.  G@@&. @@@.    P@@&.  :@@@7        \n\
   .@:#@@.  B@@@P5JJJJJJJ5B@@@@@@&#&@&   !@@@    ~@@@@@@@@@@@@7   .@@@.   ?@@@J@@@:  .@@@.   ?@@@J@@@.   ?@@@@@@@@@@@@^       \n\
@@ -73,7 +73,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
        G@@@&?. .~5B&GJ7^:::7B@@@@&      .YJ?  ^YJ7          !JY~  ?JJ        !YJJ    JJJ        !YJJ  !YY!          ?JY^     \n\
         7&@@@@&G?~^^~!Y5G&@@@@@&&G                                                                                           \n\
           ?@@@@@@@@@@@@@@@&#GY##&G                                                                                           \n\
-           #PB&@@@@&&##BGP5J??B#&B                                                                                           \n\
+           &PB&@@@@&&##BGP5J??B#&B                                                                                           \n\
            Y55PGB##&&&#BGPP55Y#&#!                                                                                           \n\
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
@@ -165,6 +165,7 @@ CIANNA V-0.9.3.0 EXPERIMENTAL BUILD (07/2022), by D.Cornu\n\
 	net->inference_drop_mode = AVG_MODEL;
 	net->no_error = 0;
 	net->perf_eval = 1;
+	net->memory_footprint = 0;
 	
 	net->train_buf.localization = NO_LOC;
 	net->test_buf.localization = NO_LOC;
@@ -569,6 +570,9 @@ void perf_eval_display(network *net)
 	
 	if (net->perf_eval == 0)
 		return;
+	
+	printf("\nTotal Network RAM/VRAM usage : %d MB\n", (int)(net->memory_footprint/1000000));
+	printf("(without datasets, and prop.to batch_size)\n");
 	
 	for(i = 0; i < net->nb_layers; i++)
 	{
@@ -1040,17 +1044,17 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			rapp_err[j] = mat[j][j]/rapp_err[j]*100.0;
 			rapp_err_rec[j] = mat[j][j]/rapp_err_rec[j]*100.0;
 		}
-		printf("%*s\n", (o)*12+22, "Recall");
+		printf("%*s\n", (o)*10+22, "Recall");
 		for(j = 0; j < o; j++)
 		{
 			printf("%*s", 10, " ");
 			for(k = 0; k < o; k++)
-				printf("%10d |", (int) mat[j][k]);
+				printf("%8d |", (int) mat[j][k]);
 			printf("%11.2f%%\n", rapp_err[j]);
 		}
 		printf("%10s", "Precision  ");
 		for(j = 0; j < o; j++)
-			printf("%9.2f%%  ", rapp_err_rec[j]);
+			printf("%7.2f%%  ", rapp_err_rec[j]);
 		
 		count = 0.0;
 		for(j = 0; j < o; j++)

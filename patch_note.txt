@@ -3,11 +3,16 @@
 ===== V-0.9.3.0 =====
  (interface V-0.6.2)
 
+====    Interface related    ====
+
+- Various small updates to wiki and readme
+
+==== Low level modifications ====
+
 - Add more (and better) default values to the YOLO parameters. More optional keyword in set_yolo_params.
 - Change default bias value for YOLO layer to 0.5 
   (better for paramter regression with LIN activation, no apparent negative impact on other parameters)
-
-- Various small updates to wiki and readme
+- Refine the probability derivative error compute to avoid impossible targets with low bit count datatypes.
 
 
 ********************************************
@@ -67,6 +72,7 @@
 - Fix a discrepancy between CUDA and CPU implementation in dropout for dense layers (errors in both compute methods might remain for the AVG_MODEL inference).
 - Fix an import issue that could occur in specific environment when compiling the python interface.
 - Added interrupt signal handling in the C code when called from the Python interface. This solve the issue with CUDA not freeing up GPU memory when using ctrl-C to abort training. (Works to be done on a graceful memory clean in this context).
+
 
 
 ********************************************

@@ -848,7 +848,7 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	if(scale_tab == NULL)
 	{
 		scale_tab = (float*) calloc(6, sizeof(float));
-		scale_tab[0] = 2.0f; /*Pos  */ scale_tab[1] = 2.0f; /*Size */
+		scale_tab[0] = 2.0f; /*Pos  */ scale_tab[1] = 1.0f; /*Size */
 		scale_tab[2] = 1.0f; /*Proba*/ scale_tab[3] = 4.0f; /*Objct*/
 		scale_tab[4] = 1.0f; /*Class*/ scale_tab[5] = 1.0f; /*Param*/
 	}
@@ -862,10 +862,10 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	
 		sm = slopes_and_maxes_tab;
 		sm[0][0] = 1.0f; sm[0][1] = 8.0f; sm[0][2] = 0.0f;
-		sm[1][0] = 1.0f; sm[1][1] = 1.8f; sm[1][2] = -1.4f;
-		sm[2][0] = 1.0f; sm[2][1] = 8.0f; sm[2][2] = 0.0f;
+		sm[1][0] = 1.0f; sm[1][1] = 1.2f; sm[1][2] = -1.0f;
+		sm[2][0] = 2.0f; sm[2][1] = 8.0f; sm[2][2] = 0.0f;
 		sm[3][0] = 1.0f; sm[3][1] = 8.0f; sm[3][2] = 0.0f;
-		sm[4][0] = 1.0f; sm[4][1] = 8.0f; sm[4][2] = 0.0f;
+		sm[4][0] = 2.0f; sm[4][1] = 8.0f; sm[4][2] = 0.0f;
 		sm[5][0] = 1.0f; sm[5][1] = 2.0f; sm[5][2] = -0.2f;
 	}
 	
@@ -888,13 +888,13 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 				break;
 			case GIOU:
 				IoU_limits[0] = 0.4f;
-				IoU_limits[1] = 0.1f; IoU_limits[2] = 0.1f;
+				IoU_limits[1] = 0.1f; IoU_limits[2] = 0.2f;
 				IoU_limits[3] = 0.4f; IoU_limits[4] = 0.4f;
 				break;
 			default:
 			case DIOU:
 				IoU_limits[0] = 0.3f;
-				IoU_limits[1] = 0.0f; IoU_limits[2] = 0.2f;
+				IoU_limits[1] = 0.0f; IoU_limits[2] = 0.1f;
 				IoU_limits[3] = 0.3f; IoU_limits[4] = 0.3f;
 				break;
 		}

@@ -258,7 +258,6 @@ struct layer
 	//utility
 	float time_fwd;
 	float time_back;
-	
 };
 
 struct network
@@ -292,6 +291,7 @@ struct network
 	int perf_eval;
 	float *fwd_perf, *back_perf;
 	int *fwd_perf_n, *back_perf_n;
+	long long int memory_footprint;
 	
 	void* input;
 	void* target;
