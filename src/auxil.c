@@ -1318,8 +1318,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		{
 			printf("\n%*s", 14, " ");
 			printf("Average Training perf: %0.2f it/s |", items_per_s);
-			printf(" Mean Loss: %.5g\n", total_error/net->train.size);
-			printf(" Learning rate : %.5g | ", net->learning_rate);
+			printf(" Mean Loss: %.5g |", total_error/net->train.size);
+			printf(" Learning rate : %.5g\n", net->learning_rate);
 			net->is_inference = 1;
 			net->no_error = 0;
 			compute_error(net, net->valid, 0, show_confmat, 1);
