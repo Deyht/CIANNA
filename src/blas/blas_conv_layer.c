@@ -86,6 +86,7 @@ void forward_conv_layer(layer *current)
 	
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
+		// Must check if this condition is still required after experimental GAN update 
 		if(current->previous->type == CONV || current->previous->type == POOL)
 			c_dr = current->previous->dropout_rate;
 		else

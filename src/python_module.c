@@ -43,7 +43,7 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	double bias = 0.1;
 	int dims[4] = {1,1,1,1}, nb_channels = 1, out_dim, b_size, comp_int = C_CUDA, network_id = nb_networks;
 	int dynamic_load = 0, c_mixed_precision = 0, no_logo = 0;
-	char string_comp[10];
+	char string_comp[50];
 	const char *py_mixed_precision = "off";
 	const char *comp_meth = "C_CUDA";
 	static char *kwlist[] = {"in_dim", "in_nb_ch", "out_dim", "bias", "b_size", "comp_meth", "network_id", "dynamic_load", "mixed_precision", "no_logo", NULL};
@@ -63,7 +63,44 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	if(strcmp(comp_meth,"C_CUDA") == 0)
 	{
 		comp_int = C_CUDA;
-		sprintf(string_comp, "CUDA");
+		sprintf(string_comp, "CUDA ");
+		#ifdef CUDA
+		if(strcmp(py_mixed_precision,"off") == 0)
+		{
+			c_mixed_precision = FP32C_FP32A;
+			sprintf(string_comp+5, "(FP32C_FP32A)");
+		}
+		else if(strcmp(py_mixed_precision,"on") == 0)
+		{
+			c_mixed_precision = FP16C_FP32A;
+			sprintf(string_comp+5, "(FP16C_FP32A)");
+		}
+		else if(strcmp(py_mixed_precision,"FP32C_FP32A") == 0)
+		{
+			c_mixed_precision = FP32C_FP32A;
+			sprintf(string_comp+5, "(FP32C_FP32A)");
+		}
+		else if(strcmp(py_mixed_precision,"TF32C_FP32A") == 0)
+		{
+			c_mixed_precision = TF32C_FP32A;
+			sprintf(string_comp+5, "(TF32C_FP32A)");
+		}
+		else if(strcmp(py_mixed_precision,"FP16C_FP32A") == 0)
+		{
+			c_mixed_precision = FP16C_FP32A;
+			sprintf(string_comp+5, "(FP16C_FP32A)");
+		}
+		else if(strcmp(py_mixed_precision,"FP16C_FP16A") == 0)
+		{
+			c_mixed_precision = FP16C_FP16A;
+			sprintf(string_comp+5, "(FP16C_FP16A)");
+		}
+		else if(strcmp(py_mixed_precision,"BF16C_FP32A") == 0)
+		{
+			c_mixed_precision = BF16C_FP32A;
+			sprintf(string_comp+5, "(BF16C_FP32A)");
+		}
+		#endif
 	}
 	else if(strcmp(comp_meth,"C_BLAS") == 0)
 	{
@@ -76,26 +113,14 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 		sprintf(string_comp, "NAIV");
 	}
 	
-	#ifdef CUDA
-	if(strcmp(py_mixed_precision,"off") == 0)
-		c_mixed_precision = FP32C_FP32A;
-	else if(strcmp(py_mixed_precision,"on") == 0)
-		c_mixed_precision = FP16C_FP32A;
-	else if(strcmp(py_mixed_precision,"FP32C_FP32A") == 0)
-		c_mixed_precision = FP32C_FP32A;
-	else if(strcmp(py_mixed_precision,"TF32C_FP32A") == 0)
-		c_mixed_precision = TF32C_FP32A;
-	else if(strcmp(py_mixed_precision,"FP16C_FP32A") == 0)
-		c_mixed_precision = FP16C_FP32A;
-	else if(strcmp(py_mixed_precision,"FP16C_FP16A") == 0)
-		c_mixed_precision = FP16C_FP16A;
-	else if(strcmp(py_mixed_precision,"BF16C_FP32A") == 0)
-		c_mixed_precision = BF16C_FP32A;
-	#endif
-	
     init_network(network_id, dims, out_dim, bias, b_size, comp_int, dynamic_load, c_mixed_precision, no_logo);
     
-	printf("Network have been initialized with : \nInput dimensions: %dx%dx%dx%d \nOutput dimension: %d \nBatch size: %d \nUsing %s compute methode\n\n", dims[0], dims[1], dims[2], dims[3], out_dim, b_size, string_comp);
+	printf("Network (id: %d) initialized with : \n\
+Input dimensions: %dx%dx%dx%d \n\
+Output dimension: %d \n\
+Batch size: %d \n\
+Using %s compute method\n\n",
+			network_id, dims[0], dims[1], dims[2], dims[3], out_dim, b_size, string_comp);
 	if(dynamic_load)
 		printf("Dynamic load ENABLED\n\n");
 	
@@ -543,24 +568,25 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 {
 	int i,j;
 	int nb_box, nb_class, nb_param, IoU_type;
-	int strict_box_size_association = 0, network_id = 0;
+	int strict_box_size_association = 0, fit_dim = 0, rand_startup = -1, network_id = 0;
+	float rand_prob_best_box_assoc = -1.0f, min_prior_forced_scaling = -1.0f;
 	PyArrayObject *py_prior_w = NULL, *py_prior_h = NULL, *py_prior_d = NULL, *py_prior_noobj_prob = NULL;
-	float *C_prior_w, *C_prior_h, *C_prior_d, *C_prior_noobj_prob;
+	float *C_prior_w = NULL, *C_prior_h = NULL, *C_prior_d = NULL, *C_prior_noobj_prob = NULL;
 	PyArrayObject *py_error_scales = NULL, *py_slopes_and_maxes = NULL, *py_param_ind_scales = NULL, *py_IoU_limits = NULL, *py_fit_parts = NULL;
 	const char* IoU_type_char = "empty";
 	float *error_scales = NULL, **slopes_and_maxes = NULL, *param_ind_scales = NULL, *IoU_limits = NULL;
 	int *fit_parts = NULL;
 	float* temp;
-	static char *kwlist[] = {"nb_box", "nb_class", "nb_param", "prior_w", "prior_h", "prior_d", "prior_noobj_prob", "error_scales", "slopes_and_maxes", "param_ind_scales", "IoU_limits", "fit_parts", "IoU_type", "strict_box_size", "network", NULL};
+	static char *kwlist[] = {"nb_box", "nb_class", "nb_param", "prior_w", "prior_h", "prior_d", "prior_noobj_prob", "error_scales", "slopes_and_maxes", "param_ind_scales", "IoU_limits", "fit_parts", "IoU_type", "strict_box_size", "fit_dim", "rand_startup", "rand_prob_best_box_assoc", "min_prior_forced_scaling", "network", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiiO|OOOOOOOOsii", kwlist, 
-			&nb_box, &nb_class, &nb_param, &py_prior_w, &py_prior_h, &py_prior_d, &py_prior_noobj_prob, &py_error_scales, &py_slopes_and_maxes, &py_param_ind_scales, &py_IoU_limits, &py_fit_parts, &IoU_type_char, &strict_box_size_association, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiiO|OOOOOOOOsiiiddi", kwlist, 
+			&nb_box, &nb_class, &nb_param, &py_prior_w, &py_prior_h, &py_prior_d, &py_prior_noobj_prob, 
+			&py_error_scales, &py_slopes_and_maxes, &py_param_ind_scales, &py_IoU_limits, &py_fit_parts, 
+			&IoU_type_char, &strict_box_size_association, &fit_dim, &rand_startup, &rand_prob_best_box_assoc,
+			&min_prior_forced_scaling, &network_id))
 	    return PyLong_FromLong(0);
 
-	C_prior_w = (float*) calloc(nb_box,sizeof(float));
-	C_prior_h = (float*) calloc(nb_box,sizeof(float));
-	C_prior_d = (float*) calloc(nb_box,sizeof(float));
-	C_prior_noobj_prob = (float*) calloc(nb_box,sizeof(float));
+	// All default values are defined in activ_functions.c
 	
 	if(strcmp(IoU_type_char, "IoU") == 0)
 		IoU_type = IOU;
@@ -574,45 +600,35 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 		IoU_type = DIOU;
 	}
 	
-	printf("Test 1\n");
-	
-	for(i = 0; i < nb_box; i++)
-	{ 
-		C_prior_w[i] = *((float*)(py_prior_w->data + i * py_prior_w->strides[0]));
+	if(py_prior_w != NULL)
+	{
+		C_prior_w = (float*) calloc(nb_box,sizeof(float));
+		for(i = 0; i < nb_box; i++)
+		{ 
+			C_prior_w[i] = *((float*)(py_prior_w->data + i * py_prior_w->strides[0]));
+		}
 	}
 	
 	if(py_prior_h != NULL)
 	{
+		C_prior_h = (float*) calloc(nb_box,sizeof(float));
 		for(i = 0; i < nb_box; i++)
 			C_prior_h[i] = *((float*)(py_prior_h->data + i * py_prior_h->strides[0]));
-	}
-	else
-	{
-		for(i = 0; i < nb_box; i++)
-			C_prior_h[i] = *((float*)(py_prior_w->data + i * py_prior_w->strides[0]));
 	}
 	
 	if(py_prior_d != NULL)
 	{
+		C_prior_d = (float*) calloc(nb_box,sizeof(float));
 		for(i = 0; i < nb_box; i++)
 			C_prior_d[i] = *((float*)(py_prior_d->data + i * py_prior_d->strides[0]));
-	}
-	else
-	{
-		for(i = 0; i < nb_box; i++)
-			C_prior_d[i] = 1.0f;
 	}
 	
 	if(py_prior_noobj_prob != NULL)
 	{
+		C_prior_noobj_prob = (float*) calloc(nb_box,sizeof(float));
 		for(i = 0; i < nb_box; i++)
 			C_prior_noobj_prob[i] = *((float *)(py_prior_noobj_prob->data 
 									 + i * py_prior_noobj_prob->strides[0]));
-	}
-	else
-	{
-		for(i = 0; i < nb_box; i++)
-			C_prior_noobj_prob[i] = 0.1f;
 	}
 	
 	if(py_error_scales != NULL)
@@ -642,8 +658,8 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 	
 	if(py_IoU_limits != NULL)
 	{
-		IoU_limits = (float*) calloc(5, sizeof(float));
-		for(i = 0; i < 5; i++)
+		IoU_limits = (float*) calloc(6, sizeof(float));
+		for(i = 0; i < 6; i++)
 			IoU_limits[i] = *(float *)(py_IoU_limits->data + i*py_IoU_limits->strides[0]);
 	}
 	
@@ -654,8 +670,9 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 			fit_parts[i] = *(int *)(py_fit_parts->data + i*py_fit_parts->strides[0]);
 	}
 	
-	return PyLong_FromLong(set_yolo_params(networks[network_id], nb_box, IoU_type, C_prior_w, C_prior_h, C_prior_d, C_prior_noobj_prob, 
-					nb_class, nb_param, strict_box_size_association, error_scales, slopes_and_maxes, param_ind_scales, IoU_limits, fit_parts));
+	return PyLong_FromLong(set_yolo_params(networks[network_id], nb_box, IoU_type, C_prior_w, C_prior_h, C_prior_d, C_prior_noobj_prob,
+		nb_class, nb_param, fit_dim, strict_box_size_association, rand_startup, rand_prob_best_box_assoc, min_prior_forced_scaling, 
+		error_scales, slopes_and_maxes, param_ind_scales, IoU_limits, fit_parts));
 }
 
 static PyObject* perf_eval(PyObject* self, PyObject* args)
@@ -826,7 +843,7 @@ PyMODINIT_FUNC PyInit_CIANNA(void)
 	import_array();
 	
 	printf("###################################################################\n\
-Importing CIANNA Python module V-p.0.6.2 , by D.Cornu\n\
+Importing CIANNA Python module V-p.0.6.3 , by D.Cornu\n\
 ###################################################################\n\n");
 
 	PyObject *m;

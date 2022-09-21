@@ -865,7 +865,7 @@ __global__ void cuda_create_gan_target_kernel_##name																\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
 																													\
 	type* targ = (type*) i_targ;																					\
-	/*type* true_targ = (type*) i_true_targ;*/																			\
+	/*type* true_targ = (type*) i_true_targ;*/																		\
 																													\
 	if(i < len)																										\
 	{																												\

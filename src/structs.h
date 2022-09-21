@@ -184,7 +184,7 @@ struct cuda_YOLO_activ_fcts
 	void (*activ_fct)(void *i_tab, int flat_offset, int len, yolo_param y_param, int size);
 	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target, 
 		int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, int nb_area_d,
-		yolo_param y_param, int size, float TC_scale_factor);
+		yolo_param y_param, int size, float TC_scale_factor, int nb_im_epoch, void *block_sate);
 	void (*output_error_fct)(float *output_error, void *i_output, void *i_target, 
 		int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, int nb_area_d,
 		yolo_param y_param, int size);
@@ -291,6 +291,7 @@ struct network
 	int perf_eval;
 	float *fwd_perf, *back_perf;
 	int *fwd_perf_n, *back_perf_n;
+	long long int total_nb_param;
 	long long int memory_footprint;
 	
 	void* input;
@@ -430,6 +431,7 @@ struct yolo_param
 	int nb_box;
 	int nb_class;
 	int nb_param;
+	int fit_dim;
 	int IoU_type;
 	float (*c_IoU_fct)(float*, float*);
 	float *prior_w;
@@ -437,16 +439,22 @@ struct yolo_param
 	float *prior_d;
 	float *noobj_prob_prior;
 
+	//Association related parameters
 	int strict_box_size_association;
+	int rand_startup;
+	float rand_prob_best_box_assoc;
+	float min_prior_forced_scaling;
+	
 	//Error scaling, 6 elements
 	float *scale_tab;
 	//activation slopes, 6 times 3 elements
 	float **slopes_and_maxes_tab;
-	//minimum IoU required before elements fit
 	float *param_ind_scale;
+	//Various IoU thresholds (Good but not best, low IoU re-association, fit limits ...)
 	float *IoU_limits;
 	//use to disable the fit of given loss parts
 	int *fit_parts;
+	
 	
 	//monitoring
 	float *IoU_monitor;

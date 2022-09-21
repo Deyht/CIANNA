@@ -319,11 +319,11 @@ size_t cuda_convert_conv_layer(layer *current)
 	if(current->dropout_rate > 0.01f)
 	{
 		vram_approx += cuda_convert_table_int(&(c_param->dropout_mask), c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
-		cudaMalloc((void**) &c_param->block_state, (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t));
 		vram_approx += (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t);
-		cu_blocks = (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
-		init_block_state_conv<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)c_param->block_state);
 	}
+	cudaMalloc((void**) &c_param->block_state, (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t));
+	cu_blocks = (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
+	init_block_state_conv<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)c_param->block_state);
 	
 	return vram_approx;
 }
@@ -352,6 +352,7 @@ void cuda_forward_conv_layer(layer *current)
 		return;
 	c_param = (conv_param*) current->param;
 	
+	//Warning, dense then conv expansion possibility only verified for CUDA for now
 	if(current->previous == NULL || current->previous->type == DENSE)
 	{
 		//if previous layer is input layer then remove the added bias on the image
@@ -414,6 +415,7 @@ void cuda_forward_conv_layer(layer *current)
 
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
+		// Must check if this condition is still required after experimental GAN update 
 		if(current->previous->type == CONV || current->previous->type == POOL)
 			c_dr = current->previous->dropout_rate;
 		else

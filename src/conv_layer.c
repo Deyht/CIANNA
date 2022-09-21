@@ -320,6 +320,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 		c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2],
 		activ, current->bias_value, current->dropout_rate,
 		nb_filters * c_param->flat_f_size, (int)(mem_approx/1000000));
+	net->total_nb_param += nb_filters * c_param->flat_f_size;
 	net->memory_footprint += mem_approx;
 	
 	#ifdef CUDA

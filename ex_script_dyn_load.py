@@ -3,8 +3,8 @@ import numpy as np
 import time
 from threading import Thread
 #Uncomment to access a locally compiled version
-import sys
-sys.path.insert(0,'/home/dcornu/Development/CIANNA/src/build/lib.linux-x86_64-3.8')
+#import sys
+#sys.path.insert(0,'/home/dcornu/Development/CIANNA/src/build/lib.linux-x86_64-3.8')
 import CIANNA as cnn
 
 ############################################################################
@@ -41,7 +41,8 @@ def roll_zeropad(a, shift, axis=None):
         return res
 
 def create_augm_batch(data_raw, targ_raw, augm_size):
-	
+	# Example augmentation, not really useful here
+	# Update this function using any augmentation library or functions
 	data_batch = np.zeros((augm_size,np.shape(data_raw)[1]), dtype="float32")
 	targ_batch  = np.zeros((augm_size,np.shape(targ_raw)[1]), dtype="float32")
 	
@@ -134,9 +135,8 @@ for k in range(0,40):
 cnn.perf_eval()
 
 #Uncomment to save network prediction
-cnn.forward(repeat=1)
+#cnn.forward(repeat=1, drop_mode="AVG_MODEL")
 
-exit()
 
 
 

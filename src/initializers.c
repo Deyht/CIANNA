@@ -27,13 +27,13 @@
 //Should be changed to a robust "Numerical recipes" random generator
 
 //return a random Real value between 0 <= x < 1
-float random_uniform(void)
+double random_uniform(void)
 {
-	return  rand()/(float)RAND_MAX;
+	return  rand()/(double)RAND_MAX;
 }
 
 //return a real value following normal distribution with 0 mean and 1 standard deviation
-float random_normal(void)
+double random_normal(void)
 {
 	// non optimized box muller normal distribution generator
 	double U1, U2;

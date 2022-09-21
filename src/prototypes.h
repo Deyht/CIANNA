@@ -77,11 +77,14 @@ void set_relu_activ(layer *current, int size, int dim, int biased_dim, const cha
 void set_logistic_activ(layer *current, int size, int dim, int biased_dim, const char *activ);
 void set_softmax_activ(layer *current, int dim, int biased_dim);
 void set_yolo_activ(layer *current);
-int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, float *yolo_noobj_prob_prior,
-	 int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts);
+int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, 
+	float *yolo_noobj_prob_prior, int nb_class, int nb_param, int fit_dim, int strict_box_size, int rand_startup, 
+	float rand_prob_best_box_assoc, float min_prior_forced_scaling, float *scale_tab, float **slopes_and_maxes_tab, 
+	float *param_ind_scale, float *IoU_limits, int *fit_parts);
 
 //dense_layer.c
-void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias, float drop_rate, int strict_size, FILE *f_load, int f_bin);
+void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias, float drop_rate, 
+	int strict_size, FILE *f_load, int f_bin);
 void dense_save(FILE *f, layer *current, int f_bin);
 void dense_load(network *net, FILE* f, int f_bin);
 
@@ -96,8 +99,8 @@ void pool_save(FILE *f, layer *current, int f_bin);
 void pool_load(network *net, FILE *f, int f_bin);
 
 //initializers.c
-float random_uniform(void);
-float random_normal(void);
+double random_uniform(void);
+double random_normal(void);
 void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding);
 void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding);
 

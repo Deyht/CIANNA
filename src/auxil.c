@@ -78,7 +78,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-0.9.3.0 EXPERIMENTAL BUILD (07/2022), by D.Cornu\n\
+CIANNA V-0.9.3.0 EXPERIMENTAL BUILD (09/2022), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -93,7 +93,7 @@ CIANNA V-0.9.3.0 EXPERIMENTAL BUILD (07/2022), by D.Cornu\n\
 	net->cu_inst.dynamic_load = u_dynamic_load;
 	net->cu_inst.use_cuda_TC= u_use_cuda_TC;
 	
-	//Additional security, but all call to use_cuda_TC should be safe on its own
+	//Additional security, but all call to use_cuda_TC should be safe on their own
 	if(u_compute_method != C_CUDA)
 		networks[network_number]->cu_inst.use_cuda_TC = FP32C_FP32A;
 	#endif
@@ -165,6 +165,7 @@ CIANNA V-0.9.3.0 EXPERIMENTAL BUILD (07/2022), by D.Cornu\n\
 	net->inference_drop_mode = AVG_MODEL;
 	net->no_error = 0;
 	net->perf_eval = 1;
+	net->total_nb_param = 0;
 	net->memory_footprint = 0;
 	
 	net->train_buf.localization = NO_LOC;
@@ -187,6 +188,13 @@ CIANNA V-0.9.3.0 EXPERIMENTAL BUILD (07/2022), by D.Cornu\n\
 	net->y_param->fit_parts = NULL;
 	net->y_param->nb_class = 0;
 	net->y_param->nb_param = 0;
+	net->y_param->fit_dim = 0;
+	
+	net->y_param->strict_box_size_association = 0;
+	net->y_param->rand_startup = 0;
+	net->y_param->rand_prob_best_box_assoc = 0.0f;
+	net->y_param->min_prior_forced_scaling = 0.0f;
+	
 
 }
 
@@ -256,19 +264,23 @@ void print_table(float* tab, int column_size, int nb_column)
 	printf("\n");
 }
 
-void print_epoch_advance(int c_batch, int nb_batch, float loss)
+void print_epoch_advance(network *net, int c_batch, int nb_batch, float loss, float c_perf, int is_training)
 {
 	int i;
-	int size = 60;
+	int size = 50, l_size = 0;
 	
 	//Must check for case where the total number of tick change
 	printf("\e[?25l");
-	printf("\r[");
-	for(i = 0; i < size*((float)c_batch/nb_batch); i++)
+	if(is_training)
+		printf("\rEpoch: %5d  [", net->epoch);
+	else
+		printf("\rFwd  : %5d  [", net->epoch);
+	l_size = size*((float)c_batch/nb_batch);
+	for(i = 0; i < l_size; i++)
 		printf("#");
-	for(i = size*((float)c_batch/nb_batch); i < size; i++)
+	for(i = l_size; i < size; i++)
 		printf("-");
-	printf("] %d/%d    Loss: %f", c_batch, nb_batch, loss);
+	printf("] %4d / %4d | B.Loss: %.5f | B.perf.: %.0f it/s ", c_batch, nb_batch, loss, c_perf);
 	printf("\e[?25h");
 }
 
@@ -461,7 +473,7 @@ void host_only_shuffle(network *net, Dataset data)
 
 	for(i = 0; i < data.size - 1; i++)
 	{
-		j = i + (int)((rand() / ((double)RAND_MAX) ) * (double)(data.size-i));
+		j = i + random_uniform() * (double)(data.size-i);
 		pos = i%net->batch_size;
 		batch = i/net->batch_size;
 		pos2 = j%net->batch_size;
@@ -571,8 +583,9 @@ void perf_eval_display(network *net)
 	if (net->perf_eval == 0)
 		return;
 	
-	printf("\nTotal Network RAM/VRAM usage : %d MB\n", (int)(net->memory_footprint/1000000));
-	printf("(without datasets, and prop.to batch_size)\n");
+	printf("\nTotal Net. nb weights: %lld \nTotal Network RAM/VRAM usage : %d MB\n", 
+		net->total_nb_param, (int)(net->memory_footprint/1000000));
+	printf("(without datasets, and prop. to batch_size)\n");
 	
 	for(i = 0; i < net->nb_layers; i++)
 	{
@@ -586,15 +599,16 @@ void perf_eval_display(network *net)
 			printf("Warning: some layers were not benchmarked\n");
 	}
 	
-	printf("\n   Layer         Forward            Backprop           Cumulated\n");
-	printf("       N       [ms] / [%%]          [ms] / [%%]         [ms] / [%%]\n");	
+	printf("\n   Layer           Forward             Backprop             Cumulated\n");
+	printf("       N        [ms]  /  [%%]         [ms]  /  [%%]         [ms]  /  [%%]\n");	
 	printf("  -------------------------------------------------------------------\n");
 	for(i = 0; i < net->nb_layers; i++)
-		printf("   %5d      %5.3f / %4.1f        %5.3f / %4.1f       %5.3f / %4.1f\n", i+1,
+		printf("   %5d     %8.3f / %4.1f      %8.3f / %4.1f      %8.3f / %4.1f\n", i+1,
 			fwd_time[i], fwd_time[i]/total_fwd*100.0, back_time[i], back_time[i]/total_back*100.0,
 			cumul_time[i], cumul_time[i]/total_cumul*100.0);
 	
-	printf("  -------------------------------------------------------------------\n\n");
+	printf("  -------------------------------------------------------------------\n");
+	printf("   Total    %9.3f ms         %9.3f ms         %9.3f ms       \n\n", total_fwd, total_back, total_cumul);
 	
 	free(fwd_time);
 	free(back_time);
@@ -610,13 +624,13 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	int arg1, arg2;
 	float count;
 	float *rapp_err = NULL, *rapp_err_rec = NULL;
-	int o, pos, in_col;
+	int o, pos, in_col, width_conf;
 	double total_error, batch_error = 0.0f;
 	double pos_error = 0.0f, size_error = 0.0f, prob_error = 0.0f;
 	double objectness_error = 0.0f, class_error = 0.0f, param_error = 0.0f;
 	void* output_save = NULL;
 	void* output_buffer = NULL;
-	struct timeval ep_timer;
+	struct timeval ep_timer, local_timer;
 	float items_per_s = 0.0f;
 	conv_param *c_param;
 	yolo_param *a_param;
@@ -676,12 +690,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	}
 	
 	for(r = 0; r < repeat; r++)
-	{
-		if(r == 0)
-			printf("Forward: %d\n", net->epoch);
-		if(repeat > 1)
-			printf("Forward repeat step: %d /%d\n", r+1, repeat);
-		
+	{	
 		total_error = 0.0;
 		pos_error = 0.0, size_error = 0.0, prob_error = 0.0;
 		objectness_error = 0.0, class_error = 0.0, param_error = 0.0;
@@ -692,7 +701,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		
 		for(j = 0; j < data.nb_batch; j++)
 		{
-		
+			init_timing(&local_timer);
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
@@ -738,11 +747,11 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				net->net_layers[k]->forward(net->net_layers[k]);
 				perf_eval_out(net, k,net->fwd_perf, net->fwd_perf_n);
 			}
-			
+
 			output_error(net->net_layers[net->nb_layers-1]);
-				
-			//##########################################################
 			
+
+			//##########################################################
 			
 			if(net->compute_method == C_CUDA)
 			{
@@ -938,7 +947,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 						for(k = 0; k < 2*a_param->nb_box*batch_offset*net->batch_size; k += 2)
 						{
 							nb_IoU += host_IoU_monitor[k];
-							sum_IoU += host_IoU_monitor[k]*host_IoU_monitor[k+1];
+							if(host_IoU_monitor[k] > 0)
+								sum_IoU += host_IoU_monitor[k+1];
 						}
 						#ifdef CUDA
 						if(net->compute_method == C_CUDA)
@@ -951,8 +961,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					break;
 			}
 			batch_error /= net->length;
-			print_epoch_advance(j+1, data.nb_batch, batch_error);
-
+			print_epoch_advance(net, j+1, data.nb_batch, batch_error, net->length/ellapsed_time(local_timer), 0);
 			if(confusion_matrix && net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
@@ -962,7 +971,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		}
 		
 		items_per_s = data.size/ellapsed_time(ep_timer);
-		printf("\nNet. forward perf.: %0.2f items/s\n", items_per_s);
+		printf("\n%*s", 14, " ");
+		printf("Average forward perf : %0.2f it/s ", items_per_s);
 		if(net->no_error != 1)
 		{
 			if(net->epoch == 1)
@@ -975,12 +985,12 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				exit(EXIT_FAILURE);
 			}
 			
-			printf("Cumulated error: \t %g\n", total_error/data.size);
+			printf("| Mean Loss: %.5g", total_error/data.size);
 			if(net->net_layers[net->nb_layers-1]->type == CONV)
 			{
 				if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
 				{
-					printf("Error dist - Pos: %f, Size: %f, Prob: %f, Objct: %f, Class: %f, Param: %f  - Mean Prob. Max IoU = %f\n",
+					printf("\nLoss dist. ||Pos: %.5f |Size: %.5f |Prob: %.5f |Obj: %.5f |Class: %.5f |Param: %.5f ||M.Prob Max IoU = %.5f",
 					pos_error/data.size, size_error/data.size, prob_error/data.size, 
 					objectness_error/data.size, class_error/data.size, param_error/data.size, sum_IoU/nb_IoU);
 				}
@@ -988,7 +998,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			
 			if(isnan(total_error))
 			{
-				printf("ERROR: Network divergence detected (Nan)!\n\n");
+				printf("\nERROR: Network divergence detected (Nan)!\n\n");
 				exit(EXIT_FAILURE);
 			}
 			
@@ -1009,6 +1019,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			fprintf(f_err, "\n");
 			fclose(f_err);
 		}
+		printf("\n");
 		
 	}
 	
@@ -1031,7 +1042,12 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 
 	if(confusion_matrix && net->no_error == 0)
 	{
-		printf("\nConfMat (valid set)\n");
+		printf("\n   ");
+		width_conf = (o*10) / 2;
+		for(j = 0; j < width_conf - 3; j++)printf("*");
+		printf("  ConfMat  ");
+		for(j = 0; j < width_conf - 3; j++)printf("*");
+		printf("   Recall\n");
 		for(j = 0; j < o; j++)
 		{
 			rapp_err[j] = 0.0;
@@ -1044,15 +1060,14 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			rapp_err[j] = mat[j][j]/rapp_err[j]*100.0;
 			rapp_err_rec[j] = mat[j][j]/rapp_err_rec[j]*100.0;
 		}
-		printf("%*s\n", (o)*10+22, "Recall");
 		for(j = 0; j < o; j++)
 		{
-			printf("%*s", 10, " ");
+			printf("%*s", 5, " ");
 			for(k = 0; k < o; k++)
 				printf("%8d |", (int) mat[j][k]);
 			printf("%11.2f%%\n", rapp_err[j]);
 		}
-		printf("%10s", "Precision  ");
+		printf("%6s", "Prec. ");
 		for(j = 0; j < o; j++)
 			printf("%7.2f%%  ", rapp_err_rec[j]);
 		
@@ -1076,9 +1091,9 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	float begin_learn_rate;
 	float end_learn_rate;
 	float decay;
-	double batch_error = 0.0;
+	double batch_error = 0.0, total_error = 0.0;
 	char net_save_file_name[200];
-	struct timeval ep_timer;
+	struct timeval ep_timer, local_timer;
 	float items_per_s = 0.0;
 	int batch_loc;
 	int pos;
@@ -1154,9 +1169,9 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		#endif
 	}
 	
-	
 	for(i = 0; i < nb_epochs; i++)
 	{
+		printf("\n");
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*net->epoch);
 		net->epoch++;
 	
@@ -1184,12 +1199,12 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		init_timing(&ep_timer);
 		
 		//Loop on all batch for one epoch
-		printf("\nEpoch: %d\n", net->epoch);
+		total_error = 0.0;
 		net->is_inference = 0;
         net->inference_drop_mode = AVG_MODEL;
 		for(j = 0; j < net->train.nb_batch; j++)
 		{
-		
+			init_timing(&local_timer);
 			if(j == net->train.nb_batch-1 && net->train.size%net->batch_size > 0)
 				net->length = net->train.size%net->batch_size;
 			else
@@ -1228,17 +1243,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				perf_eval_out(net, k,net->fwd_perf, net->fwd_perf_n);
 			}
 			
-			//print_table(net->net_layers[net->nb_layers-1]->output, 8*8*16*14, net->batch_size);
-			
 			perf_eval_in(net); //Include output deriv error in the last layer performance metric
 			output_deriv_error(net->net_layers[net->nb_layers-1]);
-			
-			//cuda_print_table(net, net->net_layers[net->nb_layers-1]->output, 28*28, net->batch_size);
-			//cuda_print_table(net, net->net_layers[net->nb_layers-1]->delta_o, 28*28, net->batch_size);
-			//if(j == 0)
-			//	exit(1);
-			
-			//printf("After\n");
 			
 			//Propagate error through all layers
 			for(k = 0; k < net->nb_layers; k++)
@@ -1260,9 +1266,6 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			// Live loss monitoring
 			output_error(net->net_layers[net->nb_layers-1]);
 			
-			//cuda_print_table_FP32(net->output_error, 28*28, net->batch_size);
-			//if(j == 0)
-			//	exit(1);
 			
 			if(net->compute_method == C_CUDA)
 			{
@@ -1283,6 +1286,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 						{
 							pos++;
 							batch_error += ((float*)net->output_error)[pos];
+							total_error += ((float*)net->output_error)[pos];
 						}
 					}
 					break;
@@ -1295,13 +1299,16 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 						for(l = 0; l < c_param->nb_filters; l++)
 						{
 							for(m = 0; m < batch_offset; m++)
+							{
 								batch_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+								total_error += ((float*)net->output_error)[k*batch_offset + l*filter_offset + m];
+							}
 						}
 					}
 					break;
 			}
 			batch_error /= net->length;
-			print_epoch_advance(j+1, net->train.nb_batch, batch_error);
+			print_epoch_advance(net, j+1, net->train.nb_batch, batch_error, net->length/ellapsed_time(local_timer), 1);
 
 		}
 		
@@ -1309,8 +1316,10 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		
 		if(((net->epoch) % control_interv == 0))
 		{
-			printf("\nNet. training perf.: %0.2f items/s\n", items_per_s);
-			printf("Learning rate : %g\n", net->learning_rate);
+			printf("\n%*s", 14, " ");
+			printf("Average Training perf: %0.2f it/s |", items_per_s);
+			printf(" Mean Loss: %.5g\n", total_error/net->train.size);
+			printf(" Learning rate : %.5g | ", net->learning_rate);
 			net->is_inference = 1;
 			net->no_error = 0;
 			compute_error(net, net->valid, 0, show_confmat, 1);
@@ -1355,7 +1364,10 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 
 void forward_testset(network *net, int train_step, int saving, int repeat, int drop_mode)
 {
-	printf("Forwarding testset\n");
+	printf("Forwarding testset");
+	if(repeat > 1)
+		printf(", with repeat %d", repeat);
+	printf("\n");
 
 	perf_eval_init(net);
 
@@ -1430,7 +1442,7 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 
 
 #ifdef CUDA
-// Experimental function for now, only for development purpose
+// Experimental function for now, for development purposes only
 void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, float gen_disc_learn_rate_ratio, int save_every, int save_bin, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor)
 {
 	//1)Generate data or use data provided in the form of a dataset
@@ -1452,9 +1464,9 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 	float begin_learn_rate;
 	float end_learn_rate;
 	float decay;
-	double batch_error = 0.0;
+	double batch_error = 0.0, total_error;
 	char net_save_file_name[200];
-	struct timeval ep_timer;
+	struct timeval ep_timer, local_timer;
 	float items_per_s = 0.0;
 	int batch_loc = 0;
 	int pos;
@@ -1555,6 +1567,7 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 	
 	for(i = 0; i < nb_epochs; i++)
 	{
+		printf("\n");
 		gen->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*gen->epoch);
 		//gen->learning_rate = 0.0f;
 		gen->epoch++;
@@ -1585,12 +1598,12 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 		}
 		
 		init_timing(&ep_timer);
-		
+		total_error = 0.0;
 		//Loop on all batch for one epoch
-		printf("\nEpoch: %d\n", gen->epoch);
+		//printf("\nEpoch: %d\n", gen->epoch);
 		for(j = 0; j < gen->train.nb_batch/2; j++)
 		{
-			
+			init_timing(&local_timer);
 			if(j*2 == gen->train.nb_batch-1 && gen->train.size%gen->batch_size > 0)
 				continue;
 			else
@@ -1860,12 +1873,13 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 						{
 							pos++;
 							batch_error += ((float*)disc->output_error)[pos];
+							total_error += ((float*)disc->output_error)[pos];
 						}
 					}
 					break;
 			}
 			batch_error /= disc->length;
-			print_epoch_advance(j+1, disc->train.nb_batch, batch_error);
+			print_epoch_advance(disc, j+1, disc->train.nb_batch, batch_error, gen->length/ellapsed_time(local_timer), 1);
 
 		}
 		
@@ -1876,8 +1890,10 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 		if(((gen->epoch) % control_interv == 0))
 		{
 			//printf("\nControl step epoch: %d\n", net->epoch);
-			printf("\nNet. training perf.: %0.2f items/s\n", items_per_s);
-			printf("Learning rate : %g\n", gen->learning_rate);
+			printf("\n%*s", 14, " ");
+			printf("Average Training perf: %0.2f it/s |", items_per_s);
+			printf(" Mean Loss: %g\n", total_error/gen->train.size);
+			printf(" Learning rate : %g | ", gen->learning_rate);
 			gen->is_inference = 1;
 			gen->no_error = 0;
 			//Could be updated, but not really usefull
@@ -1943,6 +1959,8 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 
 
 
+
+//Some old functions that might be repurposed at some point
 
 /*
 void write_formated_dataset(network *net, const char *filename, Dataset *data, int input_data_type, int output_data_type)

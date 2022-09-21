@@ -87,14 +87,17 @@ void blas_forward_dense_layer(layer *current)
 		
 		ref_input = d_param->flat_input;
 	}
-	prev_drop_rate = current->previous->dropout_rate;
-	
 	
 	//bias weight is included in drop, should change this behavior ?
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
+	{
+		prev_drop_rate = current->previous->dropout_rate;
 		w_alpha = (1.0f/(1.0f + prev_drop_rate));
+	}
 	else
+	{
 		w_alpha = 1.0f;
+	}
 	
 	cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, d_param->nb_neurons+1, 
 		net->batch_size, d_param->in_size, w_alpha, d_param->weights, 

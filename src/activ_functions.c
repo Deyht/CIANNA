@@ -310,7 +310,7 @@ void linear_output_error(layer *current)
 
 
 //#####################################################
-//		  ReLU activation related functions
+//		 ReLU activation related functions
 //#####################################################
 
 void set_relu_activ(layer *current, int size, int dim, int biased_dim, const char *activ)
@@ -323,7 +323,7 @@ void set_relu_activ(layer *current, int size, int dim, int biased_dim, const cha
 	param->size = size;
 	param->dim = dim;
 	param->biased_dim = biased_dim;
-	param->saturation = 200.0f;
+	param->saturation = 400.0f;
 	param->leaking_factor = 0.1f;
 	current->bias_value = 0.1f;
 	
@@ -377,7 +377,7 @@ void ReLU_deriv(layer *previous)
 
 
 //should be adapted for both conv and dense layer if dim is properly defined
-void ReLU_deriv_fct(void *deriv, void *value, int len, int dim,  float saturation, float leaking_factor, int size)
+void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, float saturation, float leaking_factor, int size)
 {
 	int i;
 	float *f_deriv = (float*) deriv;
@@ -473,7 +473,7 @@ void quadratic_output_error(void *output_error, void *output, void *target, int 
 
 
 //#####################################################
-//		  Logistic activation related functions
+//		 Logistic activation related functions
 //#####################################################
 
 
@@ -510,7 +510,7 @@ void print_logistic_activ_param(layer *current, char *activ)
 void logistic_activation(layer *current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
-	logistic_activation_fct(current->output, param->beta, param->saturation, (param->biased_dim)*current->c_network->length,  param->dim, param->size);
+	logistic_activation_fct(current->output, param->beta, param->saturation, (param->biased_dim)*current->c_network->length, param->dim, param->size);
 }
 
 void logistic_activation_fct(void *tab, float beta, float saturation, int len, int dim, int size)
@@ -554,7 +554,7 @@ void logistic_deriv_fct(void *deriv, void* value, float beta, int len, int dim, 
 	float *f_value = (float*) value;
 	
 	#pragma omp parallel for schedule(guided,4)
-	for(i = 0; i < size;  i++)
+	for(i = 0; i < size; i++)
 	{
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
@@ -589,7 +589,7 @@ void logistic_output_error(layer* current)
 
 
 //#####################################################
-//		  Soft-Max activation related functions
+//		 Soft-Max activation related functions
 //#####################################################
 
 
@@ -657,7 +657,7 @@ void softmax_activation_fct(void *tab, int len, int dim, int size)
 
 void softmax_deriv(layer *previous)
 {
-	printf("Error : Softmax can not be used in the middle of the network !\n");
+	printf("Error : Softmax can not be used in the middle of the network !n");
 	exit(EXIT_FAILURE);
 }
 
@@ -734,7 +734,7 @@ void cross_entropy_output_error(void *output_error, void *output, void *target, 
 
 
 //#####################################################
-//		  YOLO activation related functions
+//		 YOLO activation related functions
 //#####################################################
 
 //conv only activation, so most of elements can be extracted from c_param directly
@@ -749,7 +749,7 @@ void set_yolo_activ(layer *current)
 	{
 		printf("%d %d\n", current->c_network->y_param->nb_box*(8+current->c_network->y_param->nb_class
 			+ current->c_network->y_param->nb_param), c_param->nb_filters);
-		printf("ERROR: Nb filters size mismatch in YOLO dimensions!\n");
+		printf("ERROR: Nb filters size mismatch in YOLO dimensions!n");
 		exit(EXIT_FAILURE);
 	}
 	
@@ -779,7 +779,7 @@ float IoU_fct(float* output, float* target)
 	inter_d = fmaxf(0.0f, fminf(output[5], target[5]) - fmaxf(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d =  abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
+	uni_3d = abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
 			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2])
 			- inter_3d;
 	
@@ -796,7 +796,7 @@ float GIoU_fct(float* output, float* target)
 	inter_d = fmaxf(0.0f, fminf(output[5], target[5]) - fmaxf(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d =  abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
+	uni_3d = abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
 			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2])
 			- inter_3d;
 	enclose_w = (fmaxf(output[3], target[3]) - fminf(output[0], target[0]));
@@ -818,7 +818,7 @@ float DIoU_fct(float* output, float* target)
 	inter_d = fmaxf(0.0f, fminf(output[5], target[5]) - fmaxf(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d =  abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
+	uni_3d = abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
 			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2])
 			- inter_3d;
 	enclose_w = (fmaxf(output[3], target[3]) - fminf(output[0], target[0]));
@@ -835,21 +835,84 @@ float DIoU_fct(float* output, float* target)
 }
 
 
-int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, float *yolo_noobj_prob_prior, int nb_class, int nb_param, int strict_box_size, float *scale_tab, float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts)
+int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, 
+	float *yolo_noobj_prob_prior, int nb_class, int nb_param, int fit_dim, int strict_box_size, int rand_startup, 
+	float rand_prob_best_box_assoc, float min_prior_forced_scaling, float *scale_tab, float **slopes_and_maxes_tab, 
+	float *param_ind_scale, float *IoU_limits, int *fit_parts)
 {
 	int i;
 	float *temp;
 	float **sm;
 	char IoU_type_char[40];
 	
+	if(net->y_param->fit_dim > 0)
+	{
+		printf("\n ERROR: Trying to update existing YOLO layer setup \n Not supported yet \n");
+	}
+	
 	net->y_param->IoU_type = IoU_type;
 	net->y_param->strict_box_size_association = strict_box_size;
+	
+	if(rand_startup < 0)
+		net->y_param->rand_startup = 64000;
+	else
+		net->y_param->rand_startup = rand_startup;
+	
+	if(rand_prob_best_box_assoc < 0.0f)
+		net->y_param->rand_prob_best_box_assoc = 0.05f;
+	else
+		net->y_param->rand_prob_best_box_assoc = rand_prob_best_box_assoc;
+	
+	if(min_prior_forced_scaling < 0.0f)
+		net->y_param->min_prior_forced_scaling = 1.5f;
+	else
+		net->y_param->min_prior_forced_scaling = min_prior_forced_scaling;
+		
+	if(fit_dim <= 0)
+	{
+		fit_dim = 0;
+		if(prior_w != NULL)
+			fit_dim++;
+		if(prior_h != NULL)
+			fit_dim++;
+		if(prior_d != NULL)
+			fit_dim++;
+	}
+	net->y_param->fit_dim = fit_dim;
+	
+	if(prior_w == NULL)
+	{
+		prior_w = (float*) calloc(nb_box,sizeof(float));
+		for(i = 0; i < nb_box; i++)
+			prior_w[i] = 1.0f;
+	}
+	
+	if(prior_h == NULL)
+	{
+		prior_h = (float*) calloc(nb_box,sizeof(float));
+		for(i = 0; i < nb_box; i++)
+			prior_h[i] = 1.0f;
+	}
+	
+	if(prior_d == NULL)
+	{
+		prior_d = (float*) calloc(nb_box,sizeof(float));
+		for(i = 0; i < nb_box; i++)
+			prior_d[i] = 1.0f;
+	}
+	
+	if(yolo_noobj_prob_prior == NULL)
+	{
+		yolo_noobj_prob_prior = (float*) calloc(nb_box,sizeof(float));
+		for(i = 0; i < nb_box; i++)
+			yolo_noobj_prob_prior[i] = 0.2f;
+	}
 	
 	if(scale_tab == NULL)
 	{
 		scale_tab = (float*) calloc(6, sizeof(float));
-		scale_tab[0] = 2.0f; /*Pos  */ scale_tab[1] = 1.0f; /*Size */
-		scale_tab[2] = 1.0f; /*Proba*/ scale_tab[3] = 4.0f; /*Objct*/
+		scale_tab[0] = 2.0f; /*Pos */ scale_tab[1] = 2.0f; /*Size */
+		scale_tab[2] = 1.0f; /*Proba*/ scale_tab[3] = 2.0f; /*Objct*/
 		scale_tab[4] = 1.0f; /*Class*/ scale_tab[5] = 1.0f; /*Param*/
 	}
 	
@@ -861,11 +924,11 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 			slopes_and_maxes_tab[i] = &temp[i*3];
 	
 		sm = slopes_and_maxes_tab;
-		sm[0][0] = 1.0f; sm[0][1] = 8.0f; sm[0][2] = 0.0f;
-		sm[1][0] = 1.0f; sm[1][1] = 1.2f; sm[1][2] = -1.0f;
-		sm[2][0] = 2.0f; sm[2][1] = 8.0f; sm[2][2] = 0.0f;
-		sm[3][0] = 1.0f; sm[3][1] = 8.0f; sm[3][2] = 0.0f;
-		sm[4][0] = 2.0f; sm[4][1] = 8.0f; sm[4][2] = 0.0f;
+		sm[0][0] = 1.0f; sm[0][1] = 4.5f; sm[0][2] = -4.5f;
+		sm[1][0] = 1.0f; sm[1][1] = 1.2f; sm[1][2] = -1.4f;
+		sm[2][0] = 1.0f; sm[2][1] = 4.5f; sm[2][2] = -4.5f;
+		sm[3][0] = 1.0f; sm[3][1] = 4.5f; sm[3][2] = -4.5f;
+		sm[4][0] = 1.0f; sm[4][1] = 4.5f; sm[4][2] = -4.5f;
 		sm[5][0] = 1.0f; sm[5][1] = 2.0f; sm[5][2] = -0.2f;
 	}
 	
@@ -878,24 +941,24 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 
 	if(IoU_limits == NULL)
 	{
-		IoU_limits = (float*) calloc(5,sizeof(float));
+		IoU_limits = (float*) calloc(6,sizeof(float));
 		switch(IoU_type)
 		{
 			case IOU:
-				IoU_limits[0] = 0.5f;
-				IoU_limits[1] = 0.3f; IoU_limits[2] = 0.3f;
-				IoU_limits[3] = 0.5f; IoU_limits[4] = 0.5f;
+				IoU_limits[0] = 0.5f; IoU_limits[1] = 0.1f;
+				IoU_limits[2] = 0.0f; IoU_limits[3] = 0.0f;
+				IoU_limits[4] = 0.2f; IoU_limits[5] = 0.2f;
 				break;
 			case GIOU:
-				IoU_limits[0] = 0.4f;
-				IoU_limits[1] = 0.1f; IoU_limits[2] = 0.2f;
-				IoU_limits[3] = 0.4f; IoU_limits[4] = 0.4f;
+				IoU_limits[0] = 0.4f; IoU_limits[1] = -0.5f;
+				IoU_limits[2] = -1.0f; IoU_limits[3] = -1.0f;
+				IoU_limits[4] = -0.3f; IoU_limits[5] = -0.3f;
 				break;
 			default:
 			case DIOU:
-				IoU_limits[0] = 0.3f;
-				IoU_limits[1] = 0.0f; IoU_limits[2] = 0.1f;
-				IoU_limits[3] = 0.3f; IoU_limits[4] = 0.3f;
+				IoU_limits[0] = 0.3f; IoU_limits[1] = -0.5f;
+				IoU_limits[2] = -1.0f; IoU_limits[3] = -1.0f;
+				IoU_limits[4] = -0.4f; IoU_limits[5] = -0.4f;
 				break;
 		}
 	}
@@ -903,9 +966,9 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 	if(fit_parts == NULL)
 	{
 		fit_parts = (int*) calloc(5,sizeof(int));
-		fit_parts[0] = 1; /*Size  */ fit_parts[1] = 1; /*Prob */
+		fit_parts[0] = 1; /*Size */ fit_parts[1] = 1; /*Prob */
 		fit_parts[2] = 1; /*Object*/
-		if(nb_class > 0)  /*Class*/
+		if(nb_class > 0) /*Class*/
 			fit_parts[3] = 1;
 		else
 			fit_parts[3] = 0; 
@@ -947,31 +1010,62 @@ int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, floa
 			break;
 	}
 	
-	printf("\nYOLO layer set with:\n Nboxes = %d\n Ndimensions = %d\n Nclasses = %d\n Nparams = %d\n IoU type = %s\n",
-			net->y_param->nb_box, 3, net->y_param->nb_class, net->y_param->nb_param, IoU_type_char);
+	printf("\n YOLO layer setup \n");
+	printf(" -------------------------------------------------------------------\n");
+	printf(" Nboxes = %d\n Nclasses = %d\n Nparams = %d\n IoU type = %s\n",
+			net->y_param->nb_box, net->y_param->nb_class, net->y_param->nb_param, IoU_type_char);
 	printf(" W priors = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
-		printf("%7.3f ", net->y_param->prior_w[i]);
+		printf("%7.2f ", net->y_param->prior_w[i]);
 	printf("]\n H priors = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
-		printf("%7.3f ", net->y_param->prior_h[i]);
+		printf("%7.2f ", net->y_param->prior_h[i]);
 	printf("]\n D priors = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
-		printf("%7.3f ", net->y_param->prior_d[i]);
+		printf("%7.2f ", net->y_param->prior_d[i]);
 	printf("]\n");
-	if(net->y_param->strict_box_size_association)
-		printf(" Strict box size association is ENABLED\n");
-	printf(" No obj. prob. priors\n      = [");
+	printf(" Nb dim fitted : %d\n",net->y_param->fit_dim);
+	printf(" No obj. prob. priors\n          = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
-		printf("%7.6f ", net->y_param->noobj_prob_prior[i]);
+		printf("%7.3f ", net->y_param->noobj_prob_prior[i]);
 	printf("]\n");
-	printf(" Error scales: Posit.   Size   Proba.  Objct.  Class.  Param.\n      = [");
-	for(i = 0; i < 6; i++)
-		printf("  %5.3f ",net->y_param->scale_tab[i]);
-	printf("]\n IoU lim. = [");
+	printf(" Fit parts: (Size, Prob., Obj., Class., Param.)\n   = [");
 	for(i = 0; i < 5; i++)
+		printf(" %d ",net->y_param->fit_parts[i]);
+	printf("]\n");
+	printf(" Error scales: (Pos., Size, Prob., Obj., Class., Param.)\n   = [");
+	for(i = 0; i < 6; i++)
+		printf(" %5.3f ",net->y_param->scale_tab[i]);
+	printf("]\n");
+	printf(" IoU lim.: (GdNotBest, LowBest, Prob., Obj., Class., Param.)\n   = [");
+	for(i = 0; i < 6; i++)
 		printf("%7.3f ", net->y_param->IoU_limits[i]);
 	printf("]\n");
+	// Lots of new (and some old) arguments not displayed !
+	
+	if(net->y_param->nb_param > 0)
+	{
+		printf(" Individual param. error scaling: \n   = [");
+		for(i = 0; i < net->y_param->nb_param; i++)
+			printf("%7.3f ", net->y_param->param_ind_scale[i]);
+		printf("]\n");
+	}
+	printf("\n *** Association process parameters ***\n");
+	if(net->y_param->strict_box_size_association > 0)
+	{
+		printf("  Strict box size association is ENABLED\n");
+		printf("  Strict association Nb. good priors = %d\n", 
+			net->y_param->strict_box_size_association);
+	}
+	else
+	{	
+		printf("  Strict box size association is DISABLED\n");
+	}
+	printf("  Startup random association Nb. item : %d\n", net->y_param->rand_startup);
+	printf("  Low best IoU threshold for best prior assoc.: %5.3f\n", net->y_param->IoU_limits[1]);
+	printf("  Random proportion of best prior assoc.: %5.3f\n", net->y_param->rand_prob_best_box_assoc);
+	printf("  Forced smallest prior association scaling : %6.3f\n", net->y_param->min_prior_forced_scaling);
+	printf("\n -------------------------------------------------------------------\n\n");
 	
 	return (nb_box*(8+nb_class+nb_param));
 }
@@ -984,7 +1078,7 @@ void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_par
 	int nb_class = y_param.nb_class, nb_param = y_param.nb_param;
 	/*Default values are in activ_function.c (set_yolo_params)*/
 	float **sm_tab = y_param.slopes_and_maxes_tab;
-	
+	int fit_dim = y_param.fit_dim;	
 	int i, col, in_col;
 	
 	#pragma omp parallel for private(col, in_col) schedule(guided,4)
@@ -994,100 +1088,121 @@ void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_par
 		in_col = col%(8+nb_class+nb_param);
 		
 		/*Position*/
-		if(in_col >= 0 && in_col < 3)
+		if(in_col >= 0 && in_col < 3)	
 		{
-			tab[i] = -sm_tab[0][0]*tab[i];
-			if(tab[i] > sm_tab[0][1])
-				tab[i] = sm_tab[0][1];
-			tab[i] = 1.0f/(1.0f + expf(tab[i]));
+			if(fit_dim > in_col)
+			{	
+				tab[i] = -sm_tab[0][0]*tab[i];
+				if(tab[i] > sm_tab[0][1])
+					tab[i] = sm_tab[0][1];	
+				else if(tab[i] < sm_tab[0][2])
+					tab[i] = sm_tab[0][2];	
+				tab[i] = 1.0f/(1.0f + expf(tab[i]));
+			}	
+			else
+				tab[i] = 0.5f; /*Center of the cell*/
 			continue;
 		}
-		
+	
 		/*Box size*/
-		if(in_col >= 3 && in_col < 6)
+		if(in_col >= 3 && in_col < 6)	
 		{
-			tab[i] = sm_tab[1][0]*tab[i];
-			if(tab[i] > sm_tab[1][1])
-				tab[i] = sm_tab[1][1];
-			else if(tab[i] < (sm_tab[1][2]))
-				tab[i] = (sm_tab[1][2]);
+			if(fit_dim > in_col-3)
+			{	
+				tab[i] = sm_tab[1][0]*tab[i];	
+				if(tab[i] > sm_tab[1][1])
+					tab[i] = sm_tab[1][1];	
+				else if(tab[i] < (sm_tab[1][2]))
+					tab[i] = (sm_tab[1][2]);
+			}	
+			else
+				tab[i] = 0.0f; /*Output = prior*/	
 			continue;
 		}
-		
+	
 		/*Object probability*/
 		if(in_col == 6)
 		{
-			tab[i] = -sm_tab[2][0]*tab[i];
+			tab[i] = -sm_tab[2][0]*tab[i];	
 			if(tab[i] > sm_tab[2][1])
 				tab[i] = sm_tab[2][1];
-			tab[i] = 1.0f/(1.0f + expf(tab[i]));
+			else if(tab[i] < sm_tab[2][2])	
+				tab[i] = sm_tab[2][2];
+			tab[i] = 1.0f/(1.0f + expf(tab[i]));	
 			continue;
 		}
-		
+	
 		/*Objectness (Obj. quality => based on IoU)*/
 		if(in_col == 7)
 		{
-			tab[i] = -sm_tab[3][0]*tab[i];
+			tab[i] = -sm_tab[3][0]*tab[i];	
 			if(tab[i] > sm_tab[3][1])
 				tab[i] = sm_tab[3][1];
-			tab[i] = 1.0f/(1.0f + expf(tab[i]));
+			else if(tab[i] < sm_tab[3][2])	
+				tab[i] = sm_tab[3][2];
+			tab[i] = 1.0f/(1.0f + expf(tab[i]));	
 			continue;
 		}
-		
+	
 		/*Classes*/
 		if(in_col >= 8 && in_col < 8+nb_class)
 		{
-			tab[i] = -sm_tab[4][0]*tab[i];
+			tab[i] = -sm_tab[4][0]*tab[i];	
 			if(tab[i] > sm_tab[4][1])
 				tab[i] = sm_tab[4][1];
-			tab[i] = 1.0f/(1.0f + expf(tab[i]));
+			else if(tab[i] < sm_tab[4][2])	
+				tab[i] = sm_tab[4][2];
+			tab[i] = 1.0f/(1.0f + expf(tab[i]));	
+	
 			continue;
 		}
-		
+	
 		/*Additional parameters (regression)*/
 		if(in_col >= 8+nb_class)
 		{
 			tab[i] = sm_tab[5][0]*tab[i];
 			if(tab[i] > sm_tab[5][1])
 				tab[i] = sm_tab[5][1];
-			else if(tab[i] < (sm_tab[5][2]))
+			else if(tab[i] < (sm_tab[5][2]))	
 				tab[i] = (sm_tab[5][2]);
 			continue;
 		}	
 	}
 }
 
-
 // Only minimal optimisation has been performed for now => might be responsible for a significant portion of the total network time
 void YOLO_deriv_error_fct
-	(void *i_delta_o, void *i_output, void *i_target, int flat_target_size, int flat_output_size, 
-	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, int size)
+	(void *i_delta_o, void *i_output, void *i_target, int flat_target_size, int flat_output_size,
+	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, int size, int nb_im_epoch)
 {
 	
 	float* t_delta_o = (float*) i_delta_o;
-	float* t_output  = (float*) i_output;
-	float* t_target  = (float*) i_target;
- 
+	float* t_output = (float*) i_output;
+	float* t_target = (float*) i_target;
+
 	int nb_box = y_param.nb_box, nb_class = y_param.nb_class, nb_param = y_param.nb_param; 
 	float *prior_w = y_param.prior_w, *prior_h = y_param.prior_h, *prior_d = y_param.prior_d;
 	int cell_w = y_param.cell_w, cell_h = y_param.cell_h, cell_d = y_param.cell_d;
 	int strict_box_size_association = y_param.strict_box_size_association;
-	
-	float coord_scale = y_param.scale_tab[0], size_scale  = y_param.scale_tab[1];
-	float prob_scale  = y_param.scale_tab[2], obj_scale   = y_param.scale_tab[3];
+	int fit_dim = y_param.fit_dim, rand_startup = y_param.rand_startup;
+	float rand_prob_best_box_assoc = y_param.rand_prob_best_box_assoc;
+	float min_prior_forced_scaling = y_param. min_prior_forced_scaling;
+
+	float coord_scale = y_param.scale_tab[0], size_scale = y_param.scale_tab[1];
+	float prob_scale = y_param.scale_tab[2], obj_scale  = y_param.scale_tab[3];
 	float class_scale = y_param.scale_tab[4], param_scale = y_param.scale_tab[5];
-	
+
 	float *param_ind_scale = y_param.param_ind_scale;
 	float *lambda_noobj_prior = y_param.noobj_prob_prior;
 	float **sm_tab = y_param.slopes_and_maxes_tab;
-	
+
 	float size_max_sat = expf(sm_tab[1][1]), size_min_sat = expf(sm_tab[1][2]);
-	float good_IoU_lim = y_param.IoU_limits[0];
-	float min_prob_IoU_lim = y_param.IoU_limits[1], min_obj_IoU_lim = y_param.IoU_limits[2];
-	float min_class_IoU_lim = y_param.IoU_limits[3], min_param_IoU_lim = y_param.IoU_limits[4];
+	float good_IoU_lim = y_param.IoU_limits[0], low_IoU_best_box_assoc = y_param.IoU_limits[1];
+	float min_prob_IoU_lim = y_param.IoU_limits[2], min_obj_IoU_lim = y_param.IoU_limits[3];
+	float min_class_IoU_lim = y_param.IoU_limits[4], min_param_IoU_lim = y_param.IoU_limits[5];
 	int fit_size = y_param.fit_parts[0], fit_prob = y_param.fit_parts[1], fit_obj = y_param.fit_parts[2];
 	int fit_class = y_param.fit_parts[3], fit_param = y_param.fit_parts[4];
-	
+
 	int c_pix;
 	
 	#pragma omp parallel for schedule(guided,4)
@@ -1095,270 +1210,448 @@ void YOLO_deriv_error_fct
 	{
 		//All private variables inside the loop for convenience
 		//Should be marginal since one iteration cost is already high
+		
 		float *delta_o, *output, *target;
+		int l_o, l_t;
 		int i, j, k, l;
 		int c_batch, f_offset;
 		int nb_obj_target;
-		int resp_box = -1;
+		int is_in_cell, nb_in_cell, id_in_cell, resp_box = -1;
+		float best_dist;
+		int dist_id;
 		float max_IoU, current_IoU;
 		int cell_x, cell_y, cell_z;
 		int obj_cx, obj_cy, obj_cz;
 		float *box_in_pix, *c_box_in_pix;
 		float obj_in_offset[6];
+		float *IoU_table, *dist_prior;
 		int *box_locked;
 		float out_int[6], targ_int[6];
-		
 		float targ_w, targ_h, targ_d;
-		int larger_box, smaller_box;
 		
-		box_locked = (int*) malloc(nb_box*sizeof(int));
-		box_in_pix = (float*) malloc(nb_box*6*sizeof(float));
-	
 		c_batch = c_pix / flat_output_size;
 		target = t_target + flat_target_size * c_batch;
 		f_offset = size;
-		
+
 		i = c_pix % flat_output_size;
 		cell_z = i / (nb_area_w*nb_area_h);
 		cell_y = (int)(i % (nb_area_w*nb_area_h)) / nb_area_w;
 		cell_x = (int)(i % (nb_area_w*nb_area_h)) % nb_area_w;
-		
+
 		delta_o = t_delta_o + (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
-		output  = t_output + (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
-		
+		output = t_output + (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
+
 		nb_obj_target = target[0];
-		target += 1;
+		target++;
+
+		if(nb_obj_target == 0)
+			continue;
+
+		IoU_table = (float*) malloc(nb_box*nb_obj_target*sizeof(float));
+		dist_prior = (float*) malloc(nb_box*nb_obj_target*sizeof(float));
+		box_locked = (int*) malloc(nb_box*sizeof(int));
+		box_in_pix = (float*) malloc(nb_box*6*sizeof(float));
+
 		
 		for(k = 0; k < nb_box; k++)
 		{
 			box_locked[k] = 0;
 			c_box_in_pix = box_in_pix+k*6;
-			c_box_in_pix[0] = ((float)output[(k*(8+nb_class+nb_param)+0)*f_offset] + cell_x) * cell_w;
-			c_box_in_pix[1] = ((float)output[(k*(8+nb_class+nb_param)+1)*f_offset] + cell_y) * cell_h;
-			c_box_in_pix[2] = ((float)output[(k*(8+nb_class+nb_param)+2)*f_offset] + cell_z) * cell_d;
-			c_box_in_pix[3] = prior_w[k]*expf((float)output[(k*(8+nb_class+nb_param)+3)*f_offset]);
-			c_box_in_pix[4] = prior_h[k]*expf((float)output[(k*(8+nb_class+nb_param)+4)*f_offset]);
-			c_box_in_pix[5] = prior_d[k]*expf((float)output[(k*(8+nb_class+nb_param)+5)*f_offset]);
+			l_o = k*(8+nb_class+nb_param);
+			c_box_in_pix[0] = ((float)output[(l_o+0)*f_offset] + cell_x) * cell_w;
+			c_box_in_pix[1] = ((float)output[(l_o+1)*f_offset] + cell_y) * cell_h;
+			c_box_in_pix[2] = ((float)output[(l_o+2)*f_offset] + cell_z) * cell_d;
+			c_box_in_pix[3] = prior_w[k]*expf((float)output[(l_o+3)*f_offset]);
+			c_box_in_pix[4] = prior_h[k]*expf((float)output[(l_o+4)*f_offset]);
+			c_box_in_pix[5] = prior_d[k]*expf((float)output[(l_o+5)*f_offset]);
 		}
-		
+
+		nb_in_cell = 0;
 		for(j = 0; j < nb_obj_target; j++)
 		{
-			if((int) target[j*(7+nb_param)] == 0)
-				break;
-			obj_cx = (int)( ((float)target[j*(7+nb_param)+4] + (float)target[j*(7+nb_param)+1])*0.5f / cell_w);
-			obj_cy = (int)( ((float)target[j*(7+nb_param)+5] + (float)target[j*(7+nb_param)+2])*0.5f / cell_h);
-			obj_cz = (int)( ((float)target[j*(7+nb_param)+6] + (float)target[j*(7+nb_param)+3])*0.5f / cell_d);
-		
+			l_t = j*(7+nb_param);
+			for(k = 0; k < 6; k++)
+				targ_int[k] = target[l_t+1+k];
+
+			targ_w = targ_int[3] - targ_int[0];
+			targ_h = targ_int[4] - targ_int[1];
+			targ_d = targ_int[5] - targ_int[2];
+
+			is_in_cell = 0;
+
+			obj_cx = (int)( ((float)target[l_t+4] + (float)target[l_t+1])*0.5f / cell_w);
+			obj_cy = (int)( ((float)target[l_t+5] + (float)target[l_t+2])*0.5f / cell_h);
+			obj_cz = (int)( ((float)target[l_t+6] + (float)target[l_t+3])*0.5f / cell_d);
+
 			if(obj_cx == cell_x && obj_cy == cell_y && obj_cz == cell_z)
 			{
-				for(k = 0; k < 6; k++)
-					targ_int[k] = target[j*(7+nb_param)+1+k];
-		
-				targ_w = targ_int[3] - targ_int[0];
-				targ_h = targ_int[4] - targ_int[1];
-				targ_d = targ_int[5] - targ_int[2];
-		
-				resp_box = -1;
-				max_IoU = -1.0f;
-				for(k = 0; k < nb_box; k++)
+				is_in_cell = 1;
+				nb_in_cell++;
+			}
+
+			for(k = 0; k < nb_box; k++)
+			{
+				c_box_in_pix = box_in_pix+k*6;
+				out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[3];
+				out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[4];
+				out_int[2] = c_box_in_pix[2] - 0.5f*c_box_in_pix[5];
+				out_int[3] = c_box_in_pix[0] + 0.5f*c_box_in_pix[3];
+				out_int[4] = c_box_in_pix[1] + 0.5f*c_box_in_pix[4];
+				out_int[5] = c_box_in_pix[2] + 0.5f*c_box_in_pix[5];
+
+				current_IoU = y_param.c_IoU_fct(out_int, targ_int);
+				if(box_locked[k] == 0 && current_IoU > good_IoU_lim)
+					box_locked[k] = 1;
+
+				if(is_in_cell)
 				{
-					larger_box = 0;
-					smaller_box = 0;
-					if(strict_box_size_association)
-					{
-						for(l = k; l < nb_box - 1; l++)
-						{
-							if(prior_w[l+1]*prior_h[l+1]*prior_d[l+1] > prior_w[k]*prior_h[k]*prior_d[k])
-								if(targ_w*targ_h*targ_d >= prior_w[l+1]*prior_h[l+1]*prior_d[l+1])
-									larger_box = 1;
-						}
-						for(l = k; l > 0; l--)
-						{
-							if(prior_w[l-1]*prior_h[l-1]*prior_d[l+1] < prior_w[k]*prior_h[k]*prior_d[k])
-								if(targ_w*targ_h*targ_d < prior_w[l-1]*prior_h[l-1]*prior_d[l-1])
-									smaller_box = 1;
-						}
-					}
-		
-					if(box_locked[k] == 2 || larger_box || smaller_box)
-						continue;
-		
-					c_box_in_pix = box_in_pix+k*6;
-					out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[3];
-					out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[4];
-					out_int[2] = c_box_in_pix[2] - 0.5f*c_box_in_pix[5];
-					out_int[3] = c_box_in_pix[0] + 0.5f*c_box_in_pix[3];
-					out_int[4] = c_box_in_pix[1] + 0.5f*c_box_in_pix[4];
-					out_int[5] = c_box_in_pix[2] + 0.5f*c_box_in_pix[5];
-		
-					current_IoU = y_param.c_IoU_fct(out_int, targ_int);
-		
-					if(current_IoU > max_IoU)
-					{
-						max_IoU = current_IoU;
-						resp_box = k;
-					}
-					if(current_IoU > good_IoU_lim) /*Avoid update of non best but still good match boxes*/
-						box_locked[k] = 1;
-				}
-		
-				if(resp_box == -1 || box_locked[resp_box] == 2)
-					continue;
-				
-				box_locked[resp_box] = 2;
-		
-				obj_in_offset[0] = clip(((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w, 0.01f, 0.99f);
-				obj_in_offset[1] = clip(((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h, 0.01f, 0.99f);
-				obj_in_offset[2] = clip(((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d, 0.01f, 0.99f);
-				obj_in_offset[3] = (targ_w)/(float)prior_w[resp_box];
-				if(obj_in_offset[3] < size_min_sat)
-					obj_in_offset[3] = logf(size_min_sat);
-				else if(obj_in_offset[3] > size_max_sat)
-					obj_in_offset[3] = logf(size_max_sat);
-				else
-					obj_in_offset[3] = logf(obj_in_offset[3]);
-				obj_in_offset[4] = (targ_h)/(float)prior_h[resp_box];
-				if(obj_in_offset[4] < size_min_sat)
-					obj_in_offset[4] = logf(size_min_sat);
-				else if(obj_in_offset[4] > size_max_sat)
-					obj_in_offset[4] = logf(size_max_sat);
-				else
-					obj_in_offset[4] = logf(obj_in_offset[4]);
-				obj_in_offset[5] = (targ_d)/(float)prior_d[resp_box];
-				if(obj_in_offset[5] < size_min_sat)
-					obj_in_offset[5] = logf(size_min_sat);
-				else if(obj_in_offset[5] > size_max_sat)
-					obj_in_offset[5] = logf(size_max_sat);
-				else
-					obj_in_offset[5] = logf(obj_in_offset[5]);
-		
-				for(k = 0; k < 3; k++)
-				{
-					delta_o[(resp_box*(8+nb_class+nb_param)+k)*f_offset] = 
-						(sm_tab[0][0]*coord_scale*(float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset]
-						*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset])
-						*((float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]));
-				}
-		
-				if(fit_size)
-				{
-					for(k = 0; k < 3; k++)
-						delta_o[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] =  (sm_tab[1][0]*size_scale*
-							((float)output[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] - obj_in_offset[k+3]));
+					IoU_table[j*nb_box + k] = current_IoU;
+					dist_prior[j*nb_box + k] = sqrt(
+						 (targ_w-prior_w[k])*(targ_w-prior_w[k])
+						+(targ_h-prior_h[k])*(targ_h-prior_h[k])
+						+(targ_d-prior_d[k])*(targ_d-prior_d[k]));
 				}
 				else
 				{
-					for(k = 0; k < 3; k++)
-						delta_o[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] =  (0.0f);
-				}
-		
-				if(fit_prob && max_IoU > min_prob_IoU_lim)
-					delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = 
-									(sm_tab[2][0]*prob_scale*(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]
-									*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset])
-									*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f));
-				else
-					delta_o[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = (0.0f);
-					
-				if(fit_obj && max_IoU > min_obj_IoU_lim)
-				{
-					if(max_IoU > 0.999f)
-						max_IoU = 0.999f;
-					delta_o[(resp_box*(8+nb_class+nb_param)+7)*f_offset] = 
-							(sm_tab[3][0]*obj_scale*(float)output[(resp_box*(8+nb_class+nb_param)+7)*f_offset]
-							*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+7)*f_offset])
-							*((float)output[(resp_box*(8+nb_class+nb_param)+7)*f_offset]-(1.0+max_IoU)*0.5));
-				}
-				else
-					delta_o[(resp_box*(8+nb_class+nb_param)+7)*f_offset] = (0.0f);
-		
-				/*mean square error on classes => could be changed to soft max (change in activation needed as well)*/
-				if(fit_class && max_IoU > min_class_IoU_lim)
-				{
-					for(k = 0; k < nb_class; k++)
-					{
-						if(k == (int) target[j*(7+nb_param)]-1)
-							delta_o[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 
-								 (sm_tab[4][0]*class_scale
-								*(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]
-								*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset])
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.99f));
-						else
-							delta_o[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 
-								 (sm_tab[4][0]*class_scale
-								*(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]
-								*(1.0f-(float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset])
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f));
-					}
-				}
-				else
-				{
-					for(k = 0; k < nb_class; k++)
-						delta_o[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 0.0f;
-				}
-		
-				/*linear activation of additional parameters*/
-				if(fit_param && max_IoU > min_param_IoU_lim)
-				{
-					for(k = 0; k < nb_param; k++)
-						delta_o[(resp_box*(8+nb_class+nb_param)+8+nb_class+k)*f_offset] = 
-							 (param_ind_scale[k]*sm_tab[5][0]*param_scale
-							*((float)output[(resp_box*(8+nb_class+nb_param)+8+nb_class+k)*f_offset] 
-							- (float)target[j*(7+nb_param)+7+k]));
-				}
-				else
-				{
-					for(k = 0; k < nb_param; k++)
-						delta_o[(resp_box*(8+nb_class+nb_param)+8+nb_class+k)*f_offset] =  0.0f;
+					IoU_table[j*nb_box + k] = -2.0f;
+					dist_prior[j*nb_box + k] = 1.0f;
 				}
 			}
+
+			if(is_in_cell && strict_box_size_association > 0)
+			{
+				for(l = 0; l < strict_box_size_association; l++)
+				{
+					best_dist = 10000000000;
+					for(k = 0; k < nb_box; k++)	/* Find the closest theoritical prior */
+						if(dist_prior[j*nb_box+k] > 0 && dist_prior[j*nb_box+k] < best_dist)
+							best_dist = dist_prior[j*nb_box+k];
+					if(best_dist < 10000000000)
+						for(k = 0; k < nb_box; k++) /* Flag the closest theoritical prior (and identical ones if any)*/
+							if(abs(dist_prior[j*nb_box+k]-best_dist) < 0.001f)
+								dist_prior[j*nb_box+k] = -1.0f;
+				}
+			}
+			else
+				for(k = 0; k < nb_box; k++)
+					dist_prior[j*nb_box+k] = -1.0f;
 		}
-		
+
+		for(id_in_cell = 0; id_in_cell < nb_in_cell; id_in_cell++)
+		{
+			max_IoU = -2.0f;
+			resp_box = -1;
+			for(k = 0; k < nb_obj_target*nb_box; k++)
+				if(IoU_table[k] > max_IoU && dist_prior[k] < 0.0f)
+				{
+					max_IoU = IoU_table[k];
+					resp_box = k;
+				}
+
+			if(resp_box == -1)	/* Might happen if all good priors are already taken. In that case relax the constrain*/
+				for(k = 0; k < nb_obj_target*nb_box; k++)
+					if(IoU_table[k] > max_IoU)
+					{
+						max_IoU = IoU_table[k];
+						resp_box = k;
+					}
+
+			if(resp_box == -1) /* Only happen if all the box are taken (more targets in the cell than boxes) */
+				break;
+
+			j = resp_box / nb_box;
+			resp_box = resp_box % nb_box;
+			l_t = j*(7+nb_param);
+			for(k = 0; k < 6; k++)
+				targ_int[k] = target[l_t+1+k];
+
+			targ_w = targ_int[3] - targ_int[0];
+			targ_h = targ_int[4] - targ_int[1];
+			targ_d = targ_int[5] - targ_int[2];
+
+			for(k = 0; k < nb_box; k++)
+				dist_prior[j*nb_box+k] = sqrt((targ_w-prior_w[k])*(targ_w-prior_w[k])
+									+(targ_h-prior_h[k])*(targ_h-prior_h[k])
+									+(targ_d-prior_d[k])*(targ_d-prior_d[k]));
+
+			if(max_IoU < low_IoU_best_box_assoc || 
+				random_uniform() < rand_prob_best_box_assoc)
+			{
+				best_dist = 10000000000;
+				dist_id = -1;
+				for(k = 0; k < nb_box; k++)
+					if(dist_prior[j*nb_box+k] < best_dist && box_locked[k] != 2)
+					{
+						best_dist = dist_prior[j*nb_box+k];
+						dist_id = k;
+					}
+				resp_box = dist_id;
+			}
+
+			for(k = 0; k < nb_box; k++)
+				IoU_table[j*nb_box + k] = -2.0f;
+			
+			if(targ_w*targ_h*targ_d < min_prior_forced_scaling*prior_w[0]*prior_h[0]*prior_d[0] && box_locked[0] != 2)
+				resp_box = 0;
+
+			if(nb_im_epoch < rand_startup)
+				for(k = 0; k < 10; k++)
+				{
+					resp_box = random_uniform()*nb_box;
+					if(box_locked[resp_box] != 2)
+						break;
+				}
+
+			if(resp_box == -1) /* Only happen if all the box are taken (more targets in the cell than boxes) */
+				break;
+
+			l_o = resp_box*(8+nb_class+nb_param);
+			for(k = 0; k < nb_obj_target; k++)
+				IoU_table[k*nb_box + resp_box] = -2.0f;
+
+			box_locked[resp_box] = 2;
+
+			c_box_in_pix = box_in_pix+resp_box*6;
+			out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[3];
+			out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[4];
+			out_int[2] = c_box_in_pix[2] - 0.5f*c_box_in_pix[5];
+			out_int[3] = c_box_in_pix[0] + 0.5f*c_box_in_pix[3];
+			out_int[4] = c_box_in_pix[1] + 0.5f*c_box_in_pix[4];
+			out_int[5] = c_box_in_pix[2] + 0.5f*c_box_in_pix[5];
+
+			max_IoU = y_param.c_IoU_fct(out_int, targ_int);
+			if(max_IoU > 0.98f)
+				max_IoU = 0.98f;
+
+			obj_in_offset[0] = ((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
+			obj_in_offset[1] = ((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
+			obj_in_offset[2] = ((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d;
+			obj_in_offset[3] = (targ_w)/(float)prior_w[resp_box];
+			if(obj_in_offset[3] < size_min_sat)
+				obj_in_offset[3] = logf(size_min_sat);
+			else if(obj_in_offset[3] > size_max_sat)
+				obj_in_offset[3] = logf(size_max_sat);
+			else
+				obj_in_offset[3] = logf(obj_in_offset[3]);
+			obj_in_offset[4] = (targ_h)/(float)prior_h[resp_box];
+			if(obj_in_offset[4] < size_min_sat)
+				obj_in_offset[4] = logf(size_min_sat);
+			else if(obj_in_offset[4] > size_max_sat)
+				obj_in_offset[4] = logf(size_max_sat);
+			else
+				obj_in_offset[4] = logf(obj_in_offset[4]);
+			obj_in_offset[5] = (targ_d)/(float)prior_d[resp_box];
+			if(obj_in_offset[5] < size_min_sat)
+				obj_in_offset[5] = logf(size_min_sat);
+			else if(obj_in_offset[5] > size_max_sat)
+				obj_in_offset[5] = logf(size_max_sat);
+			else
+				obj_in_offset[5] = logf(obj_in_offset[5]);
+
+			for(k = 0; k < 3; k++)
+			{
+				if(fit_dim > k)
+					delta_o[(l_o+k)*f_offset] = (
+						sm_tab[0][0]*coord_scale*(float)output[(l_o+k)*f_offset]
+						*(1.0f-(float)output[(l_o+k)*f_offset])*((float)output[(l_o+k)*f_offset]-obj_in_offset[k]));
+				else
+					delta_o[(resp_box*(8+nb_class+nb_param)+k)*f_offset] = (0.0f);
+			}
+
+			switch(fit_size)
+			{
+				case 1:
+					for(k = 0; k < 3; k++)
+					{
+						if(fit_dim > k)
+							delta_o[(l_o+k+3)*f_offset] = (sm_tab[1][0]*size_scale
+								*((float)output[(l_o+k+3)*f_offset]-obj_in_offset[k+3]));
+						else
+							delta_o[(l_o+k+3)*f_offset] = (0.0f);
+					}
+					break;
+				case 0:
+					for(k = 0; k < 3; k++)
+					{
+						if(fit_dim > k)
+							delta_o[(l_o+k+3)*f_offset] = (sm_tab[1][0]*size_scale
+								*((float)output[(l_o+k+3)*f_offset]-0.0f));
+						else
+							delta_o[(l_o+k+3)*f_offset] = (0.0f);
+					}
+					break;
+				case -1:
+					for(k = 0; k < 3; k++)
+						delta_o[(l_o+k+3)*f_offset] = (0.0f);
+					break;
+			}
+
+			switch(fit_prob)
+			{
+				case 1:
+					if(max_IoU > min_prob_IoU_lim)
+						delta_o[(l_o+6)*f_offset] = (
+							sm_tab[2][0]*prob_scale*(float)output[(l_o+6)*f_offset]
+							*(1.0f-(float)output[(l_o+6)*f_offset])*((float)output[(l_o+6)*f_offset]-0.98f));
+					else
+						delta_o[(l_o+6)*f_offset] = (0.0f);
+					break;
+				case 0:
+					delta_o[(l_o+6)*f_offset] = (
+						sm_tab[2][0]*prob_scale*(float)output[(l_o+6)*f_offset]
+						*(1.0f-(float)output[(l_o+6)*f_offset])*((float)output[(l_o+6)*f_offset]-0.5f));
+					break;
+				case -1:
+					delta_o[(l_o+6)*f_offset] = (0.0f);
+					break;
+			}
+
+			switch(fit_obj)
+			{
+				case 1:
+					if(max_IoU > min_obj_IoU_lim)
+						delta_o[(l_o+7)*f_offset] = (
+							sm_tab[3][0]*obj_scale*(float)output[(l_o+7)*f_offset]
+							*(1.0f-(float)output[(l_o+7)*f_offset])*((float)output[(l_o+7)*f_offset]-(1.0+max_IoU)*0.5));
+					else
+						delta_o[(l_o+7)*f_offset] = (0.0f);
+					break;
+				case 0:
+					delta_o[(l_o+7)*f_offset] = (
+						sm_tab[3][0]*obj_scale*(float)output[(l_o+7)*f_offset]
+						*(1.0f-(float)output[(l_o+7)*f_offset])*((float)output[(l_o+7)*f_offset]-0.5f));
+					break;
+				case -1:
+					delta_o[(l_o+7)*f_offset] = (0.0f);
+					break;
+			}
+
+			/*Note : mean square error on classes => could be changed to soft max but difficult to balance*/
+			switch(fit_class)
+			{
+				case 1:
+					if(max_IoU > min_class_IoU_lim)
+						for(k = 0; k < nb_class; k++)
+						{
+							if(k == (int) target[l_t]-1)
+								delta_o[(l_o+8+k)*f_offset] = 
+									 (sm_tab[4][0]*class_scale*(float)output[(l_o+8+k)*f_offset]
+									*(1.0f-(float)output[(l_o+8+k)*f_offset])*((float)output[(l_o+8+k)*f_offset]-0.98f));
+							else
+								delta_o[(l_o+8+k)*f_offset] = 
+									 (sm_tab[4][0]*class_scale*(float)output[(l_o+8+k)*f_offset]
+									*(1.0f-(float)output[(l_o+8+k)*f_offset])*((float)output[(l_o+8+k)*f_offset]-0.02f));
+						}
+					else
+						for(k = 0; k < nb_class; k++)
+							delta_o[(l_o+8+k)*f_offset] = (0.0f);
+					break;
+				case 0:
+					for(k = 0; k < nb_class; k++)
+						delta_o[(l_o+8+k)*f_offset] = 
+							 (sm_tab[4][0]*class_scale*(float)output[(l_o+8+k)*f_offset]
+							*(1.0f-(float)output[(l_o+8+k)*f_offset])*((float)output[(l_o+8+k)*f_offset]-0.5f));
+					break;
+				case -1:
+					for(k = 0; k < nb_class; k++)
+						delta_o[(l_o+8+k)*f_offset] = (0.0f);
+					break;
+			}
+
+			/*Linear activation of additional parameters*/
+			switch(fit_param)
+			{
+				case 1:
+					if(max_IoU > min_param_IoU_lim)
+						for(k = 0; k < nb_param; k++)
+							delta_o[(l_o+8+nb_class+k)*f_offset] = 
+								 (param_ind_scale[k]*sm_tab[5][0]*param_scale
+								*((float)output[(l_o+8+nb_class+k)*f_offset]-(float)target[l_t+7+k]));
+					else
+						for(k = 0; k < nb_param; k++)
+							delta_o[(l_o+8+nb_class+k)*f_offset] = (0.0f);
+					break;
+				case 0:
+					for(k = 0; k < nb_param; k++)
+						delta_o[(l_o+8+nb_class+k)*f_offset] = 
+							 (param_ind_scale[k]*sm_tab[5][0]*param_scale
+							*((float)output[(l_o+8+nb_class+k)*f_offset]-0.5f));
+					break;
+				case -1:
+					for(k = 0; k < nb_param; k++)
+						delta_o[(l_o+8+nb_class+k)*f_offset] = (0.0f);
+					break;
+			}
+		}
+
 		for(j = 0; j < nb_box; j++)
 		{
 			/*If no match (means no IoU > 0.5) only update Objectness toward 0 */
 			/*(here it means error compute)! (no coordinate nor class update)*/
+			l_o = j*(8+nb_class+nb_param);
 			if(box_locked[j] != 2)
 			{
 				for(k = 0; k < 6; k++)
-					delta_o[(j*(8+nb_class+nb_param)+k)*f_offset] =  0.0f;
-		
+					delta_o[(l_o+k)*f_offset] = 0.0f;
+
 				if(box_locked[j] == 1)
 				{
-					delta_o[(j*(8+nb_class+nb_param)+6)*f_offset] =  0.0f;
-					delta_o[(j*(8+nb_class+nb_param)+7)*f_offset] =  0.0f;
+					delta_o[(l_o+6)*f_offset] = 0.0f;
+					delta_o[(l_o+7)*f_offset] = 0.0f;
 				}
 				else
 				{
-					if(fit_prob)
-						delta_o[(j*(8+nb_class+nb_param)+6)*f_offset] = 
-							(sm_tab[3][0]*(lambda_noobj_prior[j])*prob_scale
-							*(float)output[(j*(8+nb_class+nb_param)+6)*f_offset]
-							*(1.0f-(float)output[(j*(8+nb_class+nb_param)+6)*f_offset])
-							*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f));
-					else
-						delta_o[(j*(8+nb_class+nb_param)+6)*f_offset] = (0.0f);
-		
-					delta_o[(j*(8+nb_class+nb_param)+7)*f_offset] =  0.0f;
-		
+					switch(fit_prob)
+					{
+						case 1:
+							delta_o[(l_o+6)*f_offset] = (
+								sm_tab[2][0]*(lambda_noobj_prior[j])*prob_scale*(float)output[(l_o+6)*f_offset]
+								*(1.0f-(float)output[(l_o+6)*f_offset])*((float)output[(l_o+6)*f_offset]-0.02f));
+							break;
+						case 0:
+							delta_o[(l_o+6)*f_offset] = (
+								sm_tab[2][0]*(lambda_noobj_prior[j])*prob_scale*(float)output[(l_o+6)*f_offset]
+								*(1.0f-(float)output[(l_o+6)*f_offset])*((float)output[(l_o+6)*f_offset]-0.5f));
+							break;
+						case -1:
+							delta_o[(l_o+6)*f_offset] = (0.0f);
+							break;
+					}
+					switch(fit_obj)
+					{
+						case 1:
+							delta_o[(l_o+7)*f_offset] = (
+								sm_tab[3][0]*(lambda_noobj_prior[j])*obj_scale*(float)output[(l_o+7)*f_offset]
+								*(1.0f-(float)output[(l_o+7)*f_offset])*((float)output[(l_o+7)*f_offset]-0.02f));
+							break;
+						case 0:
+							delta_o[(l_o+7)*f_offset] = (
+								sm_tab[3][0]*(lambda_noobj_prior[j])*obj_scale*(float)output[(l_o+7)*f_offset]
+								*(1.0f-(float)output[(l_o+7)*f_offset])*((float)output[(l_o+7)*f_offset]-0.5f));
+							break;
+						case -1:
+							delta_o[(l_o+7)*f_offset] = (0.0f);
+							break;
+					}
 				}
-		
+
 				for(k = 0; k < nb_class; k++)
-					delta_o[(j*(8+nb_class+nb_param)+8+k)*f_offset] =  0.0f;
-		
+					delta_o[(l_o+8+k)*f_offset] = (0.0f);
+
 				for(k = 0; k < nb_param; k++)
-						delta_o[(j*(8+nb_class+nb_param)+8+nb_class+k)*f_offset] =  0.0f;
+					delta_o[(l_o+8+nb_class+k)*f_offset] = (0.0f);
 			}
 		}
+		free(IoU_table);
+		free(dist_prior);
 		free(box_in_pix);
 		free(box_locked);
 	}
 }
 
-
 // Only minimal optimisation has been performed for now => might be responsible for a significant portion of the total network time
 void YOLO_error_fct
-	(float *i_output_error, void *i_output, void *i_target, int flat_target_size, int flat_output_size, 
+	(float *i_output_error, void *i_output, void *i_target, int flat_target_size, int flat_output_size,
 	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, int size)
 {		
 	float* t_output = (float*) i_output;
@@ -1366,20 +1659,22 @@ void YOLO_error_fct
 	
 	int nb_box = y_param.nb_box, nb_class = y_param.nb_class, nb_param = y_param.nb_param; 
 	float *prior_w = y_param.prior_w, *prior_h = y_param.prior_h, *prior_d = y_param.prior_d;
-	int cell_w = y_param.cell_w, cell_h = y_param.cell_h, cell_d = y_param.cell_d;
-	int strict_box_size_association = y_param.strict_box_size_association;
-	
+	int cell_w = y_param.cell_w, cell_h = y_param.cell_h, cell_d = y_param.cell_d;	  
+	int fit_dim =  y_param.fit_dim;
+
 	float coord_scale = y_param.scale_tab[0], size_scale  = y_param.scale_tab[1];
 	float prob_scale  = y_param.scale_tab[2], obj_scale   = y_param.scale_tab[3];
 	float class_scale = y_param.scale_tab[4], param_scale = y_param.scale_tab[5];
 	float *lambda_noobj_prior = y_param.noobj_prob_prior;
 	float **sm_tab = y_param.slopes_and_maxes_tab;
-	
+
 	float size_max_sat = expf(sm_tab[1][1]), size_min_sat = expf(sm_tab[1][2]);
 	float good_IoU_lim = y_param.IoU_limits[0];
-	float min_prob_IoU_lim = y_param.IoU_limits[1], min_obj_IoU_lim = y_param.IoU_limits[2];
-	float min_class_IoU_lim = y_param.IoU_limits[3], min_param_IoU_lim = y_param.IoU_limits[4];
-	
+	float min_prob_IoU_lim = y_param.IoU_limits[2], min_obj_IoU_lim = y_param.IoU_limits[3];
+	float min_class_IoU_lim = y_param.IoU_limits[4], min_param_IoU_lim = y_param.IoU_limits[5];
+	int fit_size = y_param.fit_parts[0], fit_prob = y_param.fit_parts[1], fit_obj = y_param.fit_parts[2];
+	int fit_class = y_param.fit_parts[3], fit_param = y_param.fit_parts[4];
+
 	float *param_ind_scale = y_param.param_ind_scale;
 	float *t_IoU_monitor = y_param.IoU_monitor;
 	
@@ -1389,23 +1684,20 @@ void YOLO_error_fct
 	for(c_pix = 0; c_pix < size; c_pix++)
 	{	
 		float *output, *target, *output_error, *IoU_monitor;
-		int i, j, k, l;
+		int l_o, l_t;
+		int i, j, k;
 		int c_batch, f_offset;
 		int nb_obj_target;
-		int resp_box = -1;
+		int is_in_cell, nb_in_cell, id_in_cell, resp_box = -1;
 		float max_IoU, current_IoU;
 		int cell_x, cell_y, cell_z;
 		int obj_cx, obj_cy, obj_cz;
 		float *box_in_pix, *c_box_in_pix;
 		float obj_in_offset[6];
+		float *IoU_table, *dist_prior;
 		int *box_locked;
 		float out_int[6], targ_int[6];
-		
 		float targ_w, targ_h, targ_d;
-		int larger_box, smaller_box;
-		
-		box_locked = (int*) malloc(nb_box*sizeof(int));
-		box_in_pix = (float*) malloc(nb_box*6*sizeof(float));
 	
 		c_batch = c_pix / flat_output_size;
 		target = t_target + flat_target_size * c_batch;
@@ -1416,224 +1708,363 @@ void YOLO_error_fct
 		cell_y = (int)(i % (nb_area_w*nb_area_h)) % nb_area_w;
 		cell_x = (int)(i % (nb_area_w*nb_area_h)) / nb_area_w;
 		
-		output_error = i_output_error + (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
-		output = t_output + (nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
+		output_error = i_output_error + (nb_area_w*nb_area_h*nb_area_d) * c_batch 
+			+ cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
+		output = t_output + (nb_area_w*nb_area_h*nb_area_d) * c_batch 
+			+ cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x;
 		
-		IoU_monitor = t_IoU_monitor + 2 * nb_box * ((nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x);
+		IoU_monitor = t_IoU_monitor + 2 * nb_box * ((nb_area_w*nb_area_h*nb_area_d) * c_batch 
+			+ cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x);
 		
 		nb_obj_target = target[0];
-		target += 1;
+		target ++;
+		
+		IoU_table = (float*) malloc(nb_box*nb_obj_target*sizeof(float));
+		dist_prior = (float*) malloc(nb_box*nb_obj_target*sizeof(float));
+		box_locked = (int*) malloc(nb_box*sizeof(int));
+		box_in_pix = (float*) malloc(nb_box*6*sizeof(float));
 		
 		for(k = 0; k < nb_box; k++)
 		{
 			box_locked[k] = 0;
 			c_box_in_pix = box_in_pix+k*6;
-			c_box_in_pix[0] = ((float)output[(k*(8+nb_class+nb_param)+0)*f_offset] + cell_x) * cell_w;
-			c_box_in_pix[1] = ((float)output[(k*(8+nb_class+nb_param)+1)*f_offset] + cell_y) * cell_h;
-			c_box_in_pix[2] = ((float)output[(k*(8+nb_class+nb_param)+2)*f_offset] + cell_z) * cell_d;
-			c_box_in_pix[3] = prior_w[k]*expf((float)output[(k*(8+nb_class+nb_param)+3)*f_offset]);
-			c_box_in_pix[4] = prior_h[k]*expf((float)output[(k*(8+nb_class+nb_param)+4)*f_offset]);
-			c_box_in_pix[5] = prior_d[k]*expf((float)output[(k*(8+nb_class+nb_param)+5)*f_offset]);
-		
+			l_o = k*(8+nb_class+nb_param);
+			c_box_in_pix[0] = ((float)output[(l_o+0)*f_offset] + cell_x) * cell_w;
+			c_box_in_pix[1] = ((float)output[(l_o+1)*f_offset] + cell_y) * cell_h;
+			c_box_in_pix[2] = ((float)output[(l_o+2)*f_offset] + cell_z) * cell_d;
+			c_box_in_pix[3] = prior_w[k]*expf((float)output[(l_o+3)*f_offset]);
+			c_box_in_pix[4] = prior_h[k]*expf((float)output[(l_o+4)*f_offset]);
+			c_box_in_pix[5] = prior_d[k]*expf((float)output[(l_o+5)*f_offset]);
+	
 			IoU_monitor[k*2] = 0.0f;
 			IoU_monitor[k*2+1] = -1.0f;
 		}
-		
+	
+		nb_in_cell = 0;
 		for(j = 0; j < nb_obj_target; j++)
 		{
-			if((int) target[j*(7+nb_param)] == 0)
-				break;
-			obj_cx = (int)( ((float)target[j*(7+nb_param)+4] + (float)target[j*(7+nb_param)+1])*0.5f / cell_w);
-			obj_cy = (int)( ((float)target[j*(7+nb_param)+5] + (float)target[j*(7+nb_param)+2])*0.5f / cell_h);
-			obj_cz = (int)( ((float)target[j*(7+nb_param)+6] + (float)target[j*(7+nb_param)+3])*0.5f / cell_d);
-		
+			l_t = j*(7+nb_param);
+			for(k = 0; k < 6; k++)
+				targ_int[k] = target[l_t+1+k];
+	
+			targ_w = targ_int[3] - targ_int[0];
+			targ_h = targ_int[4] - targ_int[1];
+			targ_d = targ_int[5] - targ_int[2];
+	
+			is_in_cell = 0;
+	
+			obj_cx = (int)( ((float)target[l_t+4] + (float)target[l_t+1])*0.5f / cell_w);
+			obj_cy = (int)( ((float)target[l_t+5] + (float)target[l_t+2])*0.5f / cell_h);
+			obj_cz = (int)( ((float)target[l_t+6] + (float)target[l_t+3])*0.5f / cell_d);
+	
 			if(obj_cx == cell_x && obj_cy == cell_y && obj_cz == cell_z)
 			{
-				for(k = 0; k < 6; k++)
-					targ_int[k] = target[j*(7+nb_param)+1+k];
-		
-				targ_w = targ_int[3] - targ_int[0];
-				targ_h = targ_int[4] - targ_int[1];
-				targ_d = targ_int[5] - targ_int[2];
-		
-				resp_box = -1;
-				max_IoU = -1.0f;
-				for(k = 0; k < nb_box; k++)
+				is_in_cell = 1;
+				nb_in_cell++;
+			}
+	
+			for(k = 0; k < nb_box; k++)
+			{
+				c_box_in_pix = box_in_pix+k*6;
+				out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[3];
+				out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[4];
+				out_int[2] = c_box_in_pix[2] - 0.5f*c_box_in_pix[5];
+				out_int[3] = c_box_in_pix[0] + 0.5f*c_box_in_pix[3];
+				out_int[4] = c_box_in_pix[1] + 0.5f*c_box_in_pix[4];
+				out_int[5] = c_box_in_pix[2] + 0.5f*c_box_in_pix[5];
+	
+				current_IoU = y_param.c_IoU_fct(out_int, targ_int);
+				if(box_locked[k] == 0 && current_IoU > good_IoU_lim)
+					box_locked[k] = 1;
+	
+				if(is_in_cell)
 				{
-					larger_box = 0;
-					smaller_box = 0;
-					if(strict_box_size_association)
-					{
-						for(l = k; l < nb_box - 1; l++)
-						{
-							if(prior_w[l+1]*prior_h[l+1]*prior_d[l+1] > prior_w[k]*prior_h[k]*prior_d[k])
-								if(targ_w*targ_h*targ_d >= prior_w[l+1]*prior_h[l+1]*prior_d[l+1])
-									larger_box = 1;
-						}
-						for(l = k; l > 0; l--)
-						{
-							if(prior_w[l-1]*prior_h[l-1]*prior_d[l+1] < prior_w[k]*prior_h[k]*prior_d[k])
-								if(targ_w*targ_h*targ_d < prior_w[l-1]*prior_h[l-1]*prior_d[l-1])
-									smaller_box = 1;
-						}
-					}
-		
-					if(box_locked[k] == 2 || larger_box || smaller_box)
-						continue;
-		
-					c_box_in_pix = box_in_pix+k*6;
-					out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[3];
-					out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[4];
-					out_int[2] = c_box_in_pix[2] - 0.5f*c_box_in_pix[5];
-					out_int[3] = c_box_in_pix[0] + 0.5f*c_box_in_pix[3];
-					out_int[4] = c_box_in_pix[1] + 0.5f*c_box_in_pix[4];
-					out_int[5] = c_box_in_pix[2] + 0.5f*c_box_in_pix[5];
-		
-					current_IoU = y_param.c_IoU_fct(out_int, targ_int);
-		
-					if(current_IoU > max_IoU)
-					{
-						max_IoU = current_IoU;
-						resp_box = k;
-					}
-					if(current_IoU > good_IoU_lim) /*Avoid update of non best but still good match boxes*/
-						box_locked[k] = 1;
-				}
-		
-				if(resp_box == -1 || box_locked[resp_box] == 2)
-					continue;
-				
-				box_locked[resp_box] = 2;
-				IoU_monitor[resp_box*2] = 1.0f;
-				IoU_monitor[resp_box*2+1] = max_IoU*(float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset];
-		
-				obj_in_offset[0] = clip(((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w, 0.01f, 0.99f);
-				obj_in_offset[1] = clip(((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h, 0.01f, 0.99f);
-				obj_in_offset[2] = clip(((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d, 0.01f, 0.99f);
-				obj_in_offset[3] = (targ_w)/(float)prior_w[resp_box];
-				if(obj_in_offset[3] < size_min_sat)
-						obj_in_offset[3] = logf(size_min_sat);
-				else if(obj_in_offset[3] > size_max_sat)
-						obj_in_offset[3] = logf(size_max_sat);
-				else
-						obj_in_offset[3] = logf(obj_in_offset[3]);
-				obj_in_offset[4] = (targ_h)/(float)prior_h[resp_box];
-				if(obj_in_offset[4] < size_min_sat)
-						obj_in_offset[4] = logf(size_min_sat);
-				else if(obj_in_offset[4] > size_max_sat)
-						obj_in_offset[4] = logf(size_max_sat);
-				else
-						obj_in_offset[4] = logf(obj_in_offset[4]);
-				obj_in_offset[5] = (targ_d)/(float)prior_d[resp_box];
-				if(obj_in_offset[5] < size_min_sat)
-						obj_in_offset[5] = logf(size_min_sat);
-				else if(obj_in_offset[5] > size_max_sat)
-						obj_in_offset[5] = logf(size_max_sat);
-				else
-						obj_in_offset[5] = logf(obj_in_offset[5]);
-		
-				/*Already compute error for the responsible box*/
-				for(k = 0; k < 3; k++)
-					output_error[(resp_box*(8+nb_class+nb_param)+k)*f_offset] =
-						0.5f*coord_scale*((float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k])
-						*((float)output[(resp_box*(8+nb_class+nb_param)+k)*f_offset] - obj_in_offset[k]);
-				for(k = 0; k < 3; k++)
-					output_error[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] =
-						0.5f*size_scale*((float)output[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] - obj_in_offset[k+3])
-						*((float)output[(resp_box*(8+nb_class+nb_param)+k+3)*f_offset] - obj_in_offset[k+3]);
-		
-				if(max_IoU > min_prob_IoU_lim)
-					output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] =
-									0.5f*prob_scale*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f)
-									*((float)output[(resp_box*(8+nb_class+nb_param)+6)*f_offset]-0.99f);
-				else
-					output_error[(resp_box*(8+nb_class+nb_param)+6)*f_offset] = 0.0f;
-		
-				if(max_IoU > min_obj_IoU_lim)
-				{
-					if(max_IoU > 0.999f)
-							max_IoU = 0.999f;
-					output_error[(resp_box*(8+nb_class+nb_param)+7)*f_offset] =
-								 0.5f*obj_scale*((float)output[(resp_box*(8+nb_class+nb_param)+7)*f_offset]-(1.0+max_IoU)*0.5)
-								 *((float)output[(resp_box*(8+nb_class+nb_param)+7)*f_offset]-(1.0+max_IoU)*0.5);
-				}
-				else
-					output_error[(resp_box*(8+nb_class+nb_param)+7)*f_offset] = 0.0f;
-		
-				/*mean square error on classes => could be changed to soft max (change in activation needed as well)*/
-				if(max_IoU > min_class_IoU_lim)
-				{
-					for(k = 0; k < nb_class; k++)
-					{
-						if(k == (int)target[j*(7+nb_param)]-1)
-							output_error[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 0.5f*class_scale
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.99f)
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.99f);
-						else
-							output_error[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 0.5f*class_scale
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f)
-								*((float)output[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset]-0.01f);
-					}
+					IoU_table[j*nb_box + k] = current_IoU;
+					dist_prior[j*nb_box + k] = sqrt((targ_w-prior_w[k])*(targ_w-prior_w[k])
+									+(targ_h-prior_h[k])*(targ_h-prior_h[k])
+									+(targ_d-prior_d[k])*(targ_d-prior_d[k]));
 				}
 				else
 				{
-					for(k = 0; k < nb_class; k++)
-						output_error[(resp_box*(8+nb_class+nb_param)+8+k)*f_offset] = 0.0f;
-				}
-		
-				/*linear error of additional parameters*/
-				if(max_IoU > min_param_IoU_lim)
-				{
-					for(k = 0; k < nb_param; k++)
-						output_error[(resp_box*(8+nb_class+nb_param)+8+nb_class+k)*f_offset] = 
-							(param_ind_scale[k]*0.5f*param_scale*((float)output[(resp_box*(8+nb_class+nb_param)
-							+8+nb_class+k)*f_offset] - (float) target[j*(7+nb_param)+7+k])
-							*((float)output[(resp_box*(8+nb_class+nb_param)
-							+8+nb_class+k)*f_offset] - (float) target[j*(7+nb_param)+7+k]));
-				}
-				else
-				{
-					for(k = 0; k < nb_param; k++)
-						output_error[(resp_box*(8+nb_class+nb_param)+8+nb_class+k)*f_offset] = 0.0f;
+					IoU_table[j*nb_box + k] = -2.0f;
+					dist_prior[j*nb_box + k] = 1.0f;
 				}
 			}
+	
+			for(k = 0; k < nb_box; k++)
+				dist_prior[j*nb_box+k] = -1.0f;
 		}
-		
+	
+		for(id_in_cell = 0; id_in_cell < nb_in_cell; id_in_cell++)
+		{
+			max_IoU = -2.0f;
+			resp_box = -1;
+			for(k = 0; k < nb_obj_target*nb_box; k++)
+				if(IoU_table[k] > max_IoU && dist_prior[k] < 0.0f)
+				{
+					max_IoU = IoU_table[k];
+					resp_box = k;
+				}
+	
+			if(resp_box == -1) /* Only happen if all the box are taken (more targets in the cell than boxes) */
+				break;
+	
+			j = resp_box / nb_box;
+			resp_box = resp_box % nb_box;
+			l_t = j*(7+nb_param);
+	
+			for(k = 0; k < 6; k++)
+				targ_int[k] = target[l_t+1+k];
+	
+			targ_w = targ_int[3] - targ_int[0];
+			targ_h = targ_int[4] - targ_int[1];
+			targ_d = targ_int[5] - targ_int[2];
+	
+			for(k = 0; k < nb_box; k++)
+				IoU_table[j*nb_box + k] = -2.0f;
+	
+			if(resp_box == -1)	/* Only happen if all the box are taken (more targets in the cell than boxes) */
+				break;
+	
+			l_o = resp_box*(8+nb_class+nb_param);
+			for(k = 0; k < nb_obj_target; k++)
+				IoU_table[k*nb_box + resp_box] = -2.0f;
+	
+			box_locked[resp_box] = 2;
+	
+			if(max_IoU > 0.98f)
+				max_IoU = 0.98f;
+	
+			c_box_in_pix = box_in_pix+resp_box*6;
+			out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[3];
+			out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[4];
+			out_int[2] = c_box_in_pix[2] - 0.5f*c_box_in_pix[5];
+			out_int[3] = c_box_in_pix[0] + 0.5f*c_box_in_pix[3];
+			out_int[4] = c_box_in_pix[1] + 0.5f*c_box_in_pix[4];
+			out_int[5] = c_box_in_pix[2] + 0.5f*c_box_in_pix[5];
+	
+			max_IoU = y_param.c_IoU_fct(out_int, targ_int);
+	
+			IoU_monitor[resp_box*2] = 1.0f;
+			IoU_monitor[resp_box*2+1] = max_IoU*(float)output[(l_o+6)*f_offset];
+	
+			obj_in_offset[0] = fmaxf(0.01f,fminf(0.99,((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w));
+			obj_in_offset[1] = fmaxf(0.01f,fminf(0.99,((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h));
+			obj_in_offset[2] = fmaxf(0.01f,fminf(0.99,((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d));
+			obj_in_offset[3] = (targ_w)/(float)prior_w[resp_box];
+			if(obj_in_offset[3] < size_min_sat)
+				obj_in_offset[3] = logf(size_min_sat);
+			else if(obj_in_offset[3] > size_max_sat)
+				obj_in_offset[3] = logf(size_max_sat);
+			else
+				obj_in_offset[3] = logf(obj_in_offset[3]);
+			obj_in_offset[4] = (targ_h)/(float)prior_h[resp_box];
+			if(obj_in_offset[4] < size_min_sat)
+				obj_in_offset[4] = logf(size_min_sat);
+			else if(obj_in_offset[4] > size_max_sat)
+				obj_in_offset[4] = logf(size_max_sat);
+			else
+				obj_in_offset[4] = logf(obj_in_offset[4]);
+			obj_in_offset[5] = (targ_d)/(float)prior_d[resp_box];
+			if(obj_in_offset[5] < size_min_sat)
+				obj_in_offset[5] = logf(size_min_sat);
+			else if(obj_in_offset[5] > size_max_sat)
+				obj_in_offset[5] = logf(size_max_sat);
+			else
+				obj_in_offset[5] = logf(obj_in_offset[5]);
+	
+			for(k = 0; k < 3; k++)
+			{
+				if(fit_dim > k)
+					output_error[(l_o+k)*f_offset] = 0.5f*coord_scale
+						*((float)output[(l_o+k)*f_offset]-obj_in_offset[k])*((float)output[(l_o+k)*f_offset]-obj_in_offset[k]);
+				else
+					output_error[(l_o+k)*f_offset] = 0.0f;
+			}
+	
+			switch(fit_size)
+			{
+				case 1:
+					for(k = 0; k < 3; k++)
+					{
+						if(fit_dim > k)
+							output_error[(l_o+k+3)*f_offset] = 0.5f*size_scale
+							*((float)output[(l_o+k+3)*f_offset]-obj_in_offset[k+3])
+							*((float)output[(l_o+k+3)*f_offset]-obj_in_offset[k+3]);
+						else
+							output_error[(l_o+k+3)*f_offset] = 0.0f;
+					}
+					break;
+				case 0:
+					for(k = 0; k < 3; k++)
+					{
+						if(fit_dim > k)
+							output_error[(l_o+k+3)*f_offset] = 0.5f*size_scale
+							*((float)output[(l_o+k+3)*f_offset]-0.0f)*((float)output[(l_o+k+3)*f_offset]-0.0f);
+						else
+							output_error[(l_o+k+3)*f_offset] = 0.0f;
+					}
+					break;
+				case -1:
+					for(k = 0; k < 3; k++)
+						output_error[(l_o+k+3)*f_offset] = 0.0f;
+					break;
+			}
+	
+			switch(fit_prob)
+			{
+				case 1:
+					if(max_IoU > min_prob_IoU_lim)
+						output_error[(l_o+6)*f_offset] = 0.5f*prob_scale
+							*((float)output[(l_o+6)*f_offset]-0.98f)*((float)output[(l_o+6)*f_offset]-0.98f);
+					else
+						output_error[(l_o+6)*f_offset] = 0.0f;
+					break;
+				case 0:
+					output_error[(l_o+6)*f_offset] = 0.5f*prob_scale
+						*((float)output[(l_o+6)*f_offset]-0.5f)*((float)output[(l_o+6)*f_offset]-0.5f);
+					break;
+				case -1:
+					output_error[(l_o+6)*f_offset] = 0.0f;
+					break;
+			}
+	
+			switch(fit_obj)
+			{
+				case 1:
+					if(max_IoU > min_obj_IoU_lim)
+						output_error[(l_o+7)*f_offset] = 0.5f*obj_scale
+							*((float)output[(l_o+7)*f_offset]-(1.0+max_IoU)*0.5)*((float)output[(l_o+7)*f_offset]-(1.0+max_IoU)*0.5);
+					else
+						output_error[(l_o+7)*f_offset] = 0.0f;
+					break;
+				case 0:
+					output_error[(l_o+7)*f_offset] = 0.5f*obj_scale
+						*((float)output[(l_o+7)*f_offset]-0.5)*((float)output[(l_o+7)*f_offset]-0.5);
+					break;
+				case -1:
+					output_error[(l_o+7)*f_offset] = 0.0f;
+					break;
+			}
+	
+			/*Note : mean square error on classes => could be changed to soft max but difficult to balance*/
+			switch(fit_class)
+			{
+				case 1:
+					if(max_IoU > min_class_IoU_lim)
+						for(k = 0; k < nb_class; k++)
+						{
+							if(k == (int)target[l_t]-1)
+								output_error[(l_o+8+k)*f_offset] = 0.5f*class_scale
+									*((float)output[(l_o+8+k)*f_offset]-0.98f)*((float)output[(l_o+8+k)*f_offset]-0.98f);
+							else
+								output_error[(l_o+8+k)*f_offset] = 0.5f*class_scale
+									*((float)output[(l_o+8+k)*f_offset]-0.02f)*((float)output[(l_o+8+k)*f_offset]-0.02f);
+						}
+					else
+						for(k = 0; k < nb_class; k++)
+							output_error[(l_o+8+k)*f_offset] = 0.0f;
+					break;
+				case 0:
+					for(k = 0; k < nb_class; k++)
+						output_error[(l_o+8+k)*f_offset] = 0.5f*class_scale
+							*((float)output[(l_o+8+k)*f_offset]-0.5f)*((float)output[(l_o+8+k)*f_offset]-0.5f);
+					break;
+				case -1:
+					for(k = 0; k < nb_class; k++)
+						output_error[(l_o+8+k)*f_offset] = 0.0f;
+					break;
+			}
+	
+			/*Linear error of additional parameters*/
+			switch(fit_param)
+			{
+				case 1:
+					if(max_IoU > min_param_IoU_lim)
+						for(k = 0; k < nb_param; k++)
+							output_error[(l_o+8+nb_class+k)*f_offset] = (param_ind_scale[k]*0.5f*param_scale
+								*((float)output[(l_o+8+nb_class+k)*f_offset]-(float)target[l_t+7+k])
+								*((float)output[(l_o+8+nb_class+k)*f_offset]-(float)target[l_t+7+k]));
+					else
+						for(k = 0; k < nb_param; k++)
+							output_error[(l_o+8+nb_class+k)*f_offset] = 0.0f;
+					break;
+				case 0:
+					for(k = 0; k < nb_param; k++)
+						output_error[(l_o+8+nb_class+k)*f_offset] = (param_ind_scale[k]*0.5f*param_scale
+							*((float)output[(l_o+8+nb_class+k)*f_offset]-0.5f)*((float)output[(l_o+8+nb_class+k)*f_offset]-0.5f));
+					break;
+				case -1:
+					for(k = 0; k < nb_param; k++)
+						output_error[(l_o+8+nb_class+k)*f_offset] = 0.0f;
+					break;
+			}
+		}
+	
 		for(j = 0; j < nb_box; j++)
 		{
 			/*If no match (means no IoU > 0.5) only update Objectness toward 0 */
 			/*(here it means error compute)! (no coordinate nor class update)*/
+			l_o = j*(8+nb_class+nb_param);
 			if(box_locked[j] != 2)
 			{
 				for(k = 0; k < 6; k++)
-					output_error[(j*(8+nb_class+nb_param)+k)*f_offset] = 0.0f;
-		
+					output_error[(l_o+k)*f_offset] = 0.0f;
+	
 				if(box_locked[j] == 1)
 				{
-					output_error[(j*(8+nb_class+nb_param)+6)*f_offset] = 0.0f;
-					output_error[(j*(8+nb_class+nb_param)+7)*f_offset] = 0.0f;
+					output_error[(l_o+6)*f_offset] = 0.0f;
+					output_error[(l_o+7)*f_offset] = 0.0f;
 				}
 				else
 				{
-					output_error[(j*(8+nb_class+nb_param)+6)*f_offset] =
-						0.5f*(lambda_noobj_prior[j])*prob_scale*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f)
-						*((float)output[(j*(8+nb_class+nb_param)+6)*f_offset]-0.01f);
-		
-					output_error[(j*(8+nb_class+nb_param)+7)*f_offset] = 0.0f;
+					switch(fit_prob)
+					{
+						case 1:
+							output_error[(l_o+6)*f_offset] = 0.5f*(lambda_noobj_prior[j])*prob_scale
+								*((float)output[(l_o+6)*f_offset]-0.02f)*((float)output[(l_o+6)*f_offset]-0.02f);
+							break;
+						case 0:
+							output_error[(j*(8+nb_class+nb_param)+6)*f_offset] = 0.5f*(lambda_noobj_prior[j])*prob_scale
+								*((float)output[(l_o+6)*f_offset]-0.5f)*((float)output[(l_o+6)*f_offset]-0.5f);
+							break;
+						case -1:
+							output_error[(l_o+6)*f_offset] = 0.0f;
+							break;
+					}
+	
+					switch(fit_obj)
+					{
+						case 1:
+							output_error[(l_o+7)*f_offset] = 0.5f*(lambda_noobj_prior[j])*obj_scale
+								*((float)output[(l_o+7)*f_offset]-0.02f)*((float)output[(l_o+7)*f_offset]-0.02f);
+							break;
+						case 0:
+							output_error[(l_o+7)*f_offset] = 0.5f*(lambda_noobj_prior[j])*obj_scale
+								*((float)output[(l_o+7)*f_offset]-0.5f)*((float)output[(l_o+7)*f_offset]-0.5f);
+							break;
+						case -1:
+							output_error[(l_o+7)*f_offset] = 0.0f;
+							break;
+					}
 				}
-		
+	
 				for(k = 0; k < nb_class; k++)
-					output_error[(j*(8+nb_class+nb_param)+8+k)*f_offset] = 0.0f;
-		
+					output_error[(l_o+8+k)*f_offset] = 0.0f;
+	
 				for(k = 0; k < nb_param; k++)
-					output_error[(j*(8+nb_class+nb_param)+8+nb_class+k)*f_offset] = 0.0f;
-		
+					output_error[(l_o+8+nb_class+k)*f_offset] = 0.0f;
+	
 			}
 		}
+	
+		free(IoU_table);
+		free(dist_prior);
 		free(box_in_pix);
 		free(box_locked);
 	}
 }
+
 
 void YOLO_activation(layer* current)
 {
@@ -1646,7 +2077,7 @@ void YOLO_activation(layer* current)
 
 void YOLO_deriv(layer *previous)
 {
-	printf("Error : YOLO activation can not be used in the middle of the network !\n");
+	printf("Error : YOLO activation can not be used in the middle of the network !n");
 	exit(EXIT_FAILURE);
 }
 
@@ -1657,7 +2088,8 @@ void YOLO_deriv_output_error(layer* current)
 	
 	YOLO_deriv_error_fct(current->delta_o, current->output, current->c_network->target, current->c_network->output_dim, 
 		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
-		*a_param, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
+		*a_param, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size,
+		current->c_network->epoch * current->c_network->train.size);
 }
 
 void YOLO_output_error(layer* current)

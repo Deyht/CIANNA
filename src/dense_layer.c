@@ -259,6 +259,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 		net->nb_layers, d_param->in_size,  d_param->nb_neurons, 
 		activ, current->bias_value, current->dropout_rate,
 		(d_param->nb_neurons+1)*d_param->in_size, (int)(mem_approx/1000000));
+	net->total_nb_param += (d_param->nb_neurons+1)*d_param->in_size;
 	net->memory_footprint += mem_approx;
 	
 	#ifdef CUDA

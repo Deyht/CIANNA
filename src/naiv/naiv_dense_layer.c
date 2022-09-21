@@ -173,14 +173,17 @@ void naiv_forward_dense_layer(layer *current)
 		
 		ref_input = d_param->flat_input;
 	}
-	prev_drop_rate = current->previous->dropout_rate;
 	
 	//bias weight is included in drop, should change this behavior ?
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
+	{
+		prev_drop_rate = current->previous->dropout_rate;
 		w_alpha = (1.0f/(1.0f+ prev_drop_rate));
+	}
 	else
+	{
 		w_alpha = 1.0f;
-	
+	}
 	
 	float *f_input = (float*) ref_input;
 	//Strongly affected by performance drop of cache miss

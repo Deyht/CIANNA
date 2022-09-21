@@ -342,11 +342,11 @@ void cuda_forward_dense_layer(layer *current)
 		
 		ref_input = d_param->flat_input;
 	}
-	prev_drop_rate = current->previous->dropout_rate;
-	
 	
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
+		prev_drop_rate = current->previous->dropout_rate;
+		
 		if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
 			*((half*)w_alpha) = (1.0f/(1.0f + prev_drop_rate));	
 		else
