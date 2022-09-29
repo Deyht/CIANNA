@@ -625,7 +625,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	float count;
 	float *rapp_err = NULL, *rapp_err_rec = NULL;
 	int o, pos, in_col, width_conf;
-	double total_error, batch_error = 0.0f;
+	double total_error, batch_error = 0.0;
 	double pos_error = 0.0f, size_error = 0.0f, prob_error = 0.0f;
 	double objectness_error = 0.0f, class_error = 0.0f, param_error = 0.0f;
 	void* output_save = NULL;
@@ -866,7 +866,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			}
 			
 			pos = 0;
-			batch_error = 0;
+			batch_error = 0.0;
 			switch(net->net_layers[net->nb_layers-1]->type)
 			{
 				default:
@@ -1275,7 +1275,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				#endif
 			}
 			pos = 0;
-			batch_error = 0;
+			batch_error = 0.0;
 			switch(net->net_layers[net->nb_layers-1]->type)
 			{
 				default:
@@ -1464,7 +1464,7 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 	float begin_learn_rate;
 	float end_learn_rate;
 	float decay;
-	double batch_error = 0.0, total_error;
+	double batch_error = 0.0, total_error = 0.0;
 	char net_save_file_name[200];
 	struct timeval ep_timer, local_timer;
 	float items_per_s = 0.0;
@@ -1862,7 +1862,7 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 				#endif
 			}
 			pos = 0;
-			batch_error = 0;
+			batch_error = 0.0;
 			switch(disc->net_layers[disc->nb_layers-1]->type)
 			{
 				default:
