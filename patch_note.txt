@@ -16,6 +16,7 @@
 ==== Low level modifications ====
 
 - Fix an error that was preventing the use of a flat input since the last dropout update
+- Fix an indexing error in the loss display computation
 - For CUDA compute, all layers now initialize a seed for random number generation (previously only layers with dropout)
 - Add more (and better) default values to the YOLO parameters. More optional keywords in set_yolo_params.
 - Change the default bias value for YOLO layer to 0.5 
