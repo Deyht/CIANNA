@@ -260,13 +260,13 @@ __global__ void cross_entropy_output_error_kernel_##name																						\
 	if(i < len && (i+1)%(dim+1) != 0)																											\
 	{																																			\
 		pos = i - i/(dim+1);																													\
-		if((float)output[i] > 0.00001f)																											\
-			output_error[i] = -target[pos] * (type) logf((float)output[i]);																		\
+		if(output[i] > (type)0.0001f)																											\
+			output_error[i] = -(float)target[pos] * logf((float)output[i]);																		\
 		else																																	\
-			output_error[i] = -target[pos] * (type) logf((float)0.00001f);																		\
+			output_error[i] = -(float)target[pos] * logf((float)0.0001f);																		\
 	}																																			\
 	else																																		\
-		output_error[i] = (type) 0.0f;																											\
+		output_error[i] = 0.0f;																													\
 }
 
 //#####################################################

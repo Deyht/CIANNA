@@ -624,10 +624,10 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	int arg1, arg2;
 	float count;
 	float *rapp_err = NULL, *rapp_err_rec = NULL;
-	int o, pos, in_col, width_conf;
+	int o, in_col, width_conf;
 	double total_error, batch_error = 0.0;
-	double pos_error = 0.0f, size_error = 0.0f, prob_error = 0.0f;
-	double objectness_error = 0.0f, class_error = 0.0f, param_error = 0.0f;
+	double pos_error = 0.0, size_error = 0.0, prob_error = 0.0;
+	double objectness_error = 0.0, class_error = 0.0, param_error = 0.0;
 	void* output_save = NULL;
 	void* output_buffer = NULL;
 	struct timeval ep_timer, local_timer;
@@ -865,7 +865,6 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				}
 			}
 			
-			pos = 0;
 			batch_error = 0.0;
 			switch(net->net_layers[net->nb_layers-1]->type)
 			{
@@ -875,9 +874,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					{
 						for(l = 0; l < net->out_size; l++)
 						{
-							pos++;
-							batch_error += ((float*)net->output_error)[pos];
-							total_error += ((float*)net->output_error)[pos];
+							batch_error += ((float*)net->output_error)[k*net->out_size + l];
+							total_error += ((float*)net->output_error)[k*net->out_size + l];
 						}
 						
 						if(confusion_matrix && net->compute_method != C_CUDA)
@@ -1096,7 +1094,6 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	struct timeval ep_timer, local_timer;
 	float items_per_s = 0.0;
 	int batch_loc;
-	int pos;
 	conv_param *c_param;
 	
 	perf_eval_init(net);
@@ -1274,7 +1271,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				net->output_error = temp_error;
 				#endif
 			}
-			pos = 0;
+			
 			batch_error = 0.0;
 			switch(net->net_layers[net->nb_layers-1]->type)
 			{
@@ -1284,9 +1281,8 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 					{
 						for(l = 0; l < net->out_size; l++)
 						{
-							pos++;
-							batch_error += ((float*)net->output_error)[pos];
-							total_error += ((float*)net->output_error)[pos];
+							batch_error += ((float*)net->output_error)[k*net->out_size + l];
+							total_error += ((float*)net->output_error)[k*net->out_size + l];
 						}
 					}
 					break;
