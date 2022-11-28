@@ -108,7 +108,7 @@ void blas_forward_dense_layer(layer *current)
 	
 	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
-		dropout_select_dense(d_param->dropout_mask, d_param->nb_neurons+1, d_param->dropout_rate);
+		dropout_select_dense(d_param->dropout_mask, d_param->nb_neurons+1, current->dropout_rate);
 		dropout_apply_dense(current->output, net->batch_size, d_param->nb_neurons, d_param->dropout_mask);
 	}
 }
@@ -123,7 +123,7 @@ void blas_backward_dense_layer(layer* current)
 	
 	d_param = (dense_param*) current->param;
 	
-	if(d_param->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f)
 		dropout_apply_dense(current->delta_o, net->batch_size, d_param->nb_neurons,
 					d_param->dropout_mask);
 	

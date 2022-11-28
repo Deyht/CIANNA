@@ -1,12 +1,56 @@
 
 ********************************************
+===== V-0.9.3.1 =====
+ (interface V-0.6.3)
+
+====    Interface related    ====
+
+- Correct an error in the display of the running Mean Prob. Max IoU.
+- Fix a display error for YOLO causing class and param error to be != 0 when nb_class or nb_param = 0.
+- Fix the B.perf display for the last batch for cases where data.size % batch_size != 0.
+- Add display of previously missing hyper-parameters for YOLO.
+- Moved some remaining default hyper-parameters setting from the Python interface to the C backend.
+  This allow more consistency and fine control, and also ease the use of the direct C interface if required.
+
+==== Low level modifications ====
+
+- Tested support for the new Nvidia Ada Lovelace architecture, working great on Ubuntu 20.04 with CUDA 11.8 and driver 520.
+- Fix an activation error for ReLU, all comp_meth (no impact on results, but remove possible out of bound access).
+- Fix an error introduced in V-0.9.3.0 on the transfer of YOLO parameters "all IoU limits" to the GPU memory, 
+  which was causing the crash of any network with nb_param > 0.
+- Modify the YOLO association process introduced in V-9.3.0 to correct a condition-specific error with CUDA comp_method.
+  The error was occurring when the size of nb_box x max_nb_obj_per_image was too large. In the previous version, a vector of this size
+  was allocated in each CUDA thread local memory, which is too small for this in some cases. The present correction rework the association
+  so it preserves the search for "Good but not best" for all target boxes, but then search for best IoU and prior distances only on
+  the target present in the current grid element. Also update the CPU version to preserve consistency between compute methods.
+- In addition to the previous point, all dynamically allocated arrays inside YOLO-specific kernels have been moved to global GPU memory.
+  This change do not affect the results but strongly improve the compute performance of the YOLO layer and remove all possibility of 
+  exceeding the CUDA thread local memory through specific network configuration.
+- Instead of using a single definition of DIoU there is now two : "DIoU" to use the direct distance ratio
+  and "DIoU2" to use the squared distance ratio (which is the classical definition).
+- Small refinement of the association process for cases with multiple identical priors: 
+ 	+ In the case of "best theoretical prior association": the process now search for the best theoretical prior but if it 
+ 	  corresponds to several identical priors it will select the one for which the prediction has the best IoU with the target 
+ 	  (still excluding priors already associated to a previous target).
+	+ In the case of "smallest prior" association, the smallest prior is now searched (and not assumed to be the first one) and
+	  if there is multiple occurrence of this prior it will select the one for which the prediction has the best IoU with the target.
+  Note: All these refinement do not change the fact that the "next target" to process is selected in order of best IoU with available boxes
+  (only impacted by "strict box size association").
+	+ Also removed some conditions that was granting a bypass of strict box association. 
+	  This condition is now absolutely strict (even for random startup) and the constrains it implies should 
+	  only be leveraged by using more boxes or using a larger range of strict association.  
+- Add "max_nb_obj_per_image" as a mandatory parameter for YOLO layer configuration. This allows to allocate the working spaces required by
+  the previous points. It will also serve for a new verification step on the dimension of "net output size", which correspond to the target array.
+- Fix an error that was not properly updating the deriv error and error compute in YOLO network if the number of target in the image was 0.
+ 
+
+********************************************
 ===== V-0.9.3.0 =====
  (interface V-0.6.3)
 
 ====    Interface related    ====
 
 - Various minor updates to wiki and readme
-- Correct an error in the display of the running Mean Prob. Max IoU
 - Update various console outputs to increase density and generate fewer lines overall
 - Add a more complete YOLO parameter setting summary-display
 - Add information about the total number of weights and the corresponding total "network" memory
@@ -45,11 +89,11 @@
 		that can be associated or not, this new number is user defined 
 		(the default value is 2 best theoretical Priors that can be used as the best match).
 		Repetition of the same box Prior count for only one in the number of best Priors authorized, but they all remain open.
-	+ If all the "good" Priors are used, the target will fall in the case of "no good enough prediction found"*
+	+ ~~If all the "good" Priors are used, the target will fall in the case of "no good enough prediction found"
 		and will search for the best Prior outside the best theoretical Prior range. This is useful to force all the Priors to
-		represent an object in case of a very crowded region in the image.
-	+ Finally, note that with this definition, the only way for a target to not be associated with any prediction box
-		is when there are more targets than Priors in a grid cell.
+		represent an object in case of a very crowded region in the image.~~ (Removed in 9.3.1)
+	+ ~~Finally, note that with this definition, the only way for a target to not be associated with any prediction box
+		is when there are more targets than Priors in a grid cell.~~ (Not true anymore in 9.3.1)
   Most fine-grained associations only apply when computing the YOLO layer error propagation. 
   The displayed error remains based on the best IoU association only, so it remains representative of the evolution 
   of the network final performance.

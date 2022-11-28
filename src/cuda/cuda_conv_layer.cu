@@ -611,7 +611,6 @@ void cuda_backward_conv_layer(layer *current)
 	if(!current->frozen)
 	{
 		set_cu_learning_rate_and_momentum(net);
-	
 		//based on the recovered delta_o provided by the next layer propagation
 		//CUBLAS_OP_N ,in this case, is a transpose of regular input (see forward function)
 		cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, (c_param->flat_f_size+c_param->TC_padding), c_param->nb_filters, 
@@ -621,7 +620,6 @@ void cuda_backward_conv_layer(layer *current)
 			c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * net->batch_size,
 			cu_momentum, c_param->update, cuda_data_type, 
 			(c_param->flat_f_size + c_param->TC_padding), cuda_compute_type, CUBLAS_GEMM_DEFAULT);
-		
 		cuda_update_weights(net, c_param->FP32_filters, c_param->update, 
 			(c_param->flat_f_size + c_param->TC_padding) * c_param->nb_filters);
 	}

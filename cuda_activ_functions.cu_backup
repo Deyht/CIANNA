@@ -629,7 +629,9 @@ __device__ pointFunction_gpu_IoU device_gpu_DIoU_fct = gpu_DIoU_fct;
 __device__ pointFunction_gpu_IoU device_gpu_DIoU2_fct = gpu_DIoU2_fct;
 
 
-
+// Only minimal optimisation has been performed for now => might be responsible for a significant portion of the total network time
+// Optimization path => having more cuda thread working (for now only grid_size*batch_size)
+// Simple idea with high thread divergence would be to have a second thread index over the targets
 #define YOLO_deriv_error_kernel(name, type)																										\
 __global__ void YOLO_deriv_error_kernel_##name																									\
 	(void *i_delta_o, void *i_output, void *i_target, int flat_target_size, int flat_output_size, 												\
@@ -662,8 +664,6 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 	int *target_cell_mask = y_param.target_cell_mask;																							\
 	float *IoU_table = y_param.IoU_table;																										\
 	float *dist_prior = y_param.dist_prior;																										\
-	int *box_locked = y_param.box_locked;																										\
-	float *box_in_pix = y_param.box_in_pix;																										\
 																																				\
 	float size_max_sat = expf(sm_tab[1][1]), size_min_sat = expf(sm_tab[1][2]);																	\
 	float good_IoU_lim = y_param.IoU_limits[0], low_IoU_best_box_assoc = y_param.IoU_limits[1];													\
@@ -674,14 +674,15 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 																																				\
 	int j, k, l;																																\
 	int c_batch, f_offset;																														\
-	int nb_obj_target, s_p_i = 0;																												\
+	int nb_obj_target, s_p_i;																													\
 	int nb_in_cell, id_in_cell, resp_box = -1, resp_targ = -1;																					\
-	float best_dist, c_dist;																													\
+	float best_dist, c_dist, s_p, l_p;																											\
 	float max_IoU, current_IoU;																													\
 	int cell_x, cell_y, cell_z;																													\
 	int obj_cx, obj_cy, obj_cz;																													\
-	float *c_box_in_pix;																														\
+	float *box_in_pix, *c_box_in_pix;																											\
 	float obj_in_offset[6];																														\
+	int *box_locked;																															\
 	float out_int[6], targ_int[6];																												\
 	float targ_w, targ_h, targ_d;																												\
 																																				\
@@ -706,16 +707,12 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 	dist_prior += ((nb_area_w*nb_area_h*nb_area_d)*c_batch * y_param.max_nb_obj_per_image * nb_box);											\
 	dist_prior += (cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) *  y_param.max_nb_obj_per_image * nb_box;							\
 																																				\
-	box_locked += ((nb_area_w*nb_area_h*nb_area_d) * c_batch * nb_box);																			\
-	box_locked += (cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) * nb_box;															\
-																																				\
-	box_in_pix += ((nb_area_w*nb_area_h*nb_area_d) * c_batch * 6 * nb_box);																		\
-	box_in_pix += (cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) * 6 * nb_box;														\
-																																				\
 	nb_obj_target = target[0];																													\
 	target++;																																	\
 																																				\
-	best_dist = 10000000000;																													\
+	box_locked = (int*) malloc(nb_box*sizeof(int));																								\
+	box_in_pix = (float*) malloc(nb_box*6*sizeof(float));																						\
+																																				\
 	for(k = 0; k < nb_box; k++)																													\
 	{																																			\
 		box_locked[k] = 0;																														\
@@ -728,13 +725,18 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 		c_box_in_pix[4] = prior_h[k]*expf((float)output[(l_o+4)*f_offset]);																		\
 		c_box_in_pix[5] = prior_d[k]*expf((float)output[(l_o+5)*f_offset]);																		\
 																																				\
-		/* Min prior best association could be improved by using the "fit_dim" parameter to avoid definition issues with unused dimensions */	\
-		/* This would allow to verify if each used dimension is smaller, rather that using a surface criteria (later in this function) */		\
-		c_dist = sqrt(prior_w[k]*prior_w[k] + prior_h[k]*prior_h[k]	+ prior_d[k]*prior_d[k]);													\
-		if(c_dist < best_dist)																													\
+		best_dist = 10000000000;																												\
+		if(prior_w[k]*prior_h[k]*prior_d[k] < best_dist)																						\
 		{																																		\
-			best_dist = c_dist;																													\
+			best_dist = prior_w[k]*prior_h[k]*prior_d[k];																						\
+			s_p = best_dist;																													\
 			s_p_i = k;																															\
+		}																																		\
+		best_dist = 10000000000;																												\
+		if(prior_w[k]*prior_h[k]*prior_d[k] > best_dist)																						\
+		{																																		\
+			best_dist = prior_w[k]*prior_h[k]*prior_d[k];																						\
+			l_p = best_dist;																													\
 		}																																		\
 	}																																			\
 																																				\
@@ -757,11 +759,9 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 			nb_in_cell++;																														\
 		}																																		\
 																																				\
-		/* Flag all the "Good but not best boxes" for all targets regardless of the grid element */												\
+		/* Flag all the "Good but not best boxes" for all target and regardless of the grid element */											\
 		for(k = 0; k < nb_box; k++)																												\
 		{																																		\
-			if(box_locked[k] != 0)																												\
-				continue;																														\
 			c_box_in_pix = box_in_pix+k*6;																										\
 			out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[3];																				\
 			out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[4];																				\
@@ -771,7 +771,7 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 			out_int[5] = c_box_in_pix[2] + 0.5f*c_box_in_pix[5];																				\
 																																				\
 			current_IoU = y_param.c_IoU_fct(out_int, targ_int);																					\
-			if(current_IoU > good_IoU_lim)																										\
+			if(box_locked[k] == 0 && current_IoU > good_IoU_lim)																				\
 				box_locked[k] = 1;																												\
 		}																																		\
 	}																																			\
@@ -823,6 +823,9 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 					for(k = 0; k < nb_box; k++) /* Flag the closest theoritical prior (and identical ones if any) */							\
 						if(abs(dist_prior[id_in_cell*nb_box+k]-best_dist) < 0.001f)																\
 							dist_prior[id_in_cell*nb_box+k] = -1.0f;																			\
+				/* If the target is larger or smaller than any prior, only allow one of the extrem prior (or identical)*/						\
+				if(abs(best_dist - s_p) < 0.001f || abs(best_dist - l_p) < 0.001f)																\
+					break;																														\
 			}																																	\
 		}																																		\
 		else																																	\
@@ -844,13 +847,10 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 			resp_box = -1;																														\
 			for(k = 0; k < 2*nb_box; k++)																										\
 			{																																	\
-				resp_box = (int)(curand_uniform(&(((curandState_t*)block_state)[blockIdx.x]))*nb_box);											\
+				resp_box = int(curand_uniform(&(((curandState_t*)block_state)[blockIdx.x]))*nb_box);											\
 				if(dist_prior[resp_targ*nb_box+resp_box] < 0.0f && box_locked[resp_box] != 2)													\
 					break;																														\
 			}																																	\
-																																				\
-			if(resp_box == -1)																													\
-				continue;																														\
 																																				\
 			k = 0;																																\
 			for(j = 0; j < nb_obj_target; j++)																									\
@@ -884,7 +884,7 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 			/* Happen if stric_box_size > 0 and no more good prior is available, or if there is more targets than boxes */						\
 			/* In that case all the remaining target are unable to be associated to */ 															\
 			/* any other box and the id_in_cell loop must be stoped */																			\
-			if(resp_box == -1)																													\
+			if(resp_box == -1)	/* In that case max_IoU = -2.0f */																				\
 				continue;																														\
 																																				\
 			/* l is the "best" index in the "in cell" list */																					\
@@ -906,7 +906,7 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 			targ_d = targ_int[5] - targ_int[2];																									\
 																																				\
 			/* If prediction is too bad, associate it it the best theoritical prior instead (might found the same box again) */					\
-			/* Also force the best theoritical prior association at a small rate */																\
+			/* Also force the best theoritical prior association at a small random rate */														\
 			if(max_IoU < low_IoU_best_box_assoc || 																								\
 				curand_uniform(&(((curandState_t*)block_state)[blockIdx.x])) < rand_prob_best_box_assoc)										\
 			{																																	\
@@ -1007,7 +1007,7 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 					*(1.0f-(float)output[(l_o+k)*f_offset])																						\
 					*((float)output[(l_o+k)*f_offset]-obj_in_offset[k]));																		\
 			else																																\
-				delta_o[(l_o+k)*f_offset] = (type)(0.0f);																						\
+				delta_o[(l_o)*f_offset] = (type)(0.0f);																							\
 		}																																		\
 																																				\
 		switch(fit_size)																														\
@@ -1145,7 +1145,7 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 																																				\
 	for(j = 0; j < nb_box; j++)																													\
 	{																																			\
-		/* If no match only update Objectness toward 0 */																						\
+		/* If no match (means no IoU > 0.5) only update Objectness toward 0 */																	\
 		/* (here it means error compute)! (no coordinate nor class update) */																	\
 		l_o = j*(8+nb_class+nb_param);																											\
 		if(box_locked[j] != 2)																													\
@@ -1209,9 +1209,14 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 				delta_o[(l_o+8+nb_class+k)*f_offset] = (type) (0.0f);																			\
 		}																																		\
 	}																																			\
+																																				\
+	free(box_in_pix);																															\
+	free(box_locked);																															\
 }
 
 
+// Only minimal optimisation has been performed for now => might be responsible for a significant portion of the total network time
+// Also, there is a bad local memory scaling with max_nb_obj_target and batch size !
 #define YOLO_error_kernel(name, type)																											\
 __global__ void YOLO_error_kernel_##name																										\
 	(float *output_error, void *i_output, void *i_target, int flat_target_size, int flat_output_size, 											\
@@ -1240,8 +1245,6 @@ __global__ void YOLO_error_kernel_##name																										\
 	int *target_cell_mask = y_param.target_cell_mask;																							\
 	float *IoU_table = y_param.IoU_table;																										\
 	float *dist_prior = y_param.dist_prior;																										\
-	int *box_locked = y_param.box_locked;																										\
-	float *box_in_pix = y_param.box_in_pix;																										\
 																																				\
 	float size_max_sat = expf(sm_tab[1][1]), size_min_sat = expf(sm_tab[1][2]);																	\
 	float good_IoU_lim = y_param.IoU_limits[0];																									\
@@ -1257,9 +1260,9 @@ __global__ void YOLO_error_kernel_##name																										\
 	float max_IoU, current_IoU;																													\
 	int cell_x, cell_y, cell_z;																													\
 	int obj_cx, obj_cy, obj_cz;																													\
-	float *c_box_in_pix;																														\
+	float *box_in_pix, *c_box_in_pix;																											\
 	float obj_in_offset[6];																														\
-																																				\
+	int *box_locked;																															\
 	float out_int[6], targ_int[6];																												\
 	float targ_w, targ_h, targ_d;																												\
 																																				\
@@ -1277,23 +1280,21 @@ __global__ void YOLO_error_kernel_##name																										\
 																																				\
 	IoU_monitor += 2 * nb_box * ((nb_area_w*nb_area_h*nb_area_d) * c_batch + cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x);			\
 																																				\
-	target_cell_mask +=	(nb_area_w*nb_area_h*nb_area_d) * c_batch * y_param.max_nb_obj_per_image;												\
-	target_cell_mask +=	(cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) * y_param.max_nb_obj_per_image;								\
+	target_cell_mask +=	(nb_area_w*nb_area_h*nb_area_d)*c_batch * y_param.max_nb_obj_per_image;													\
+	target_cell_mask +=	(cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) *  y_param.max_nb_obj_per_image;								\
 																																				\
-	IoU_table += ((nb_area_w*nb_area_h*nb_area_d) * c_batch * y_param.max_nb_obj_per_image * nb_box);											\
-	IoU_table += (cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) * y_param.max_nb_obj_per_image * nb_box;								\
+	IoU_table += ((nb_area_w*nb_area_h*nb_area_d)*c_batch * y_param.max_nb_obj_per_image * nb_box);												\
+	IoU_table += (cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) *  y_param.max_nb_obj_per_image * nb_box;								\
 																																				\
-	dist_prior += ((nb_area_w*nb_area_h*nb_area_d) * c_batch * y_param.max_nb_obj_per_image * nb_box);											\
-	dist_prior += (cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) * y_param.max_nb_obj_per_image * nb_box;								\
-																																				\
-	box_locked += ((nb_area_w*nb_area_h*nb_area_d) * c_batch * nb_box);																			\
-	box_locked += (cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) * nb_box;															\
-																																				\
-	box_in_pix += ((nb_area_w*nb_area_h*nb_area_d) * c_batch * 6 * nb_box);																		\
-	box_in_pix += (cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) * 6 * nb_box;														\
+	dist_prior += ((nb_area_w*nb_area_h*nb_area_d)*c_batch * y_param.max_nb_obj_per_image * nb_box);											\
+	dist_prior += (cell_z*nb_area_w*nb_area_h + cell_y*nb_area_w + cell_x) *  y_param.max_nb_obj_per_image * nb_box;							\
 																																				\
 	nb_obj_target = target[0];																													\
 	target++;																																	\
+																																				\
+																																				\
+	box_locked = (int*) malloc(nb_box*sizeof(int));																								\
+	box_in_pix = (float*) malloc(nb_box*6*sizeof(float));																						\
 																																				\
 	for(k = 0; k < nb_box; k++)																													\
 	{																																			\
@@ -1603,7 +1604,7 @@ __global__ void YOLO_error_kernel_##name																										\
 																																				\
 	for(j = 0; j < nb_box; j++)																													\
 	{																																			\
-		/*If no match only update Objectness toward 0 */																						\
+		/*If no match (means no IoU > 0.5) only update Objectness toward 0 */																	\
 		/*(here it means error compute)! (no coordinate nor class update)*/																		\
 		l_o = j*(8+nb_class+nb_param);																											\
 		if(box_locked[j] != 2)																													\
@@ -1661,6 +1662,9 @@ __global__ void YOLO_error_kernel_##name																										\
 																																				\
 		}																																		\
 	}																																			\
+																																				\
+	free(box_in_pix);																															\
+	free(box_locked);																															\
 }
 
 
@@ -2005,14 +2009,14 @@ void cuda_YOLO_output_error(layer *current)
 void cuda_YOLO_activ_init(layer *current)
 {
 	float *temp_tab, *temp_tab2, **temp_tab3;
-	
-	int nb_area_flat;
+	int *temp_int;
 
 	yolo_param* a_param = (yolo_param*)current->activ_param;
-	
-	nb_area_flat = ((conv_param*)current->param)->nb_area[0]
-		* ((conv_param*)current->param)->nb_area[1]
-		* ((conv_param*)current->param)->nb_area[2];
+
+	float *device_prior_w, *device_prior_h, *device_prior_d, *device_noobj_prob_prior;
+	float *device_scale_tab, **device_slopes_and_maxes_tab, *device_param_ind_scale, *device_IoU_limits, *device_IoU_monitor;
+	float *device_IoU_table, *device_dist_prior;
+	int *device_fit_parts, *device_target_cell_mask;
 	
 	switch(((yolo_param*)a_param)->IoU_type)
 	{
@@ -2034,46 +2038,139 @@ void cuda_YOLO_activ_init(layer *current)
 			break;
 	}
 	
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->prior_w,
-		((yolo_param*)a_param)->nb_box);
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->prior_h,
-		((yolo_param*)a_param)->nb_box);
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->prior_d,
-		((yolo_param*)a_param)->nb_box);
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->noobj_prob_prior,
-		((yolo_param*)a_param)->nb_box);
-		
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->scale_tab, 6);
+	temp_tab = ((yolo_param*)a_param)->prior_w;
+	cudaMalloc(&device_prior_w, 
+			((yolo_param*)a_param)->nb_box*sizeof(float));
+	cudaMemcpy(device_prior_w, temp_tab,
+			((yolo_param*)a_param)->nb_box
+			*sizeof(float),cudaMemcpyHostToDevice);
+			
+	temp_tab = ((yolo_param*)a_param)->prior_h;
+	cudaMalloc(&device_prior_h, 
+			((yolo_param*)a_param)->nb_box*sizeof(float));
+	cudaMemcpy(device_prior_h, temp_tab,
+			((yolo_param*)a_param)->nb_box
+			*sizeof(float),cudaMemcpyHostToDevice);
+			
+	temp_tab = ((yolo_param*)a_param)->prior_d;
+	cudaMalloc(&device_prior_d, 
+			((yolo_param*)a_param)->nb_box*sizeof(float));
+	cudaMemcpy(device_prior_d, temp_tab,
+			((yolo_param*)a_param)->nb_box
+			*sizeof(float),cudaMemcpyHostToDevice);
 	
+	temp_tab = ((yolo_param*)a_param)->noobj_prob_prior;
+	cudaMalloc(&device_noobj_prob_prior, 
+			((yolo_param*)a_param)->nb_box*sizeof(float));
+	cudaMemcpy(device_noobj_prob_prior, temp_tab,
+			((yolo_param*)a_param)->nb_box
+			*sizeof(float),cudaMemcpyHostToDevice);
+			
+	temp_tab = ((yolo_param*)a_param)->scale_tab;
+	cudaMalloc(&device_scale_tab, 6*sizeof(float));
+	cudaMemcpy(device_scale_tab, temp_tab,
+			6*sizeof(float),cudaMemcpyHostToDevice);
+			
 	temp_tab = ((yolo_param*)a_param)->slopes_and_maxes_tab[0];
 	cudaMalloc(&temp_tab2, 6*3*sizeof(float));
-	cudaMemcpy(temp_tab2, temp_tab, 6*3*sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(temp_tab2, temp_tab, 6*3*sizeof(float),cudaMemcpyHostToDevice);
 	for(int i = 0; i < 6; i++)
 		((yolo_param*)a_param)->slopes_and_maxes_tab[i] = &temp_tab2[i*3];
 	temp_tab3 = ((yolo_param*)a_param)->slopes_and_maxes_tab;
-	cudaMalloc(&((yolo_param*)a_param)->slopes_and_maxes_tab, 6*sizeof(float*));
-	cudaMemcpy(((yolo_param*)a_param)->slopes_and_maxes_tab, temp_tab3,
-			6*sizeof(float*), cudaMemcpyHostToDevice);
+	cudaMalloc(&device_slopes_and_maxes_tab, 6*sizeof(float*));
+	cudaMemcpy(device_slopes_and_maxes_tab, temp_tab3,
+			6*sizeof(float*),cudaMemcpyHostToDevice);
 	
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->param_ind_scale,
-		((yolo_param*)a_param)->nb_param);
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->IoU_limits, 6);
-	cuda_convert_table_int(&((yolo_param*)a_param)->fit_parts, 5);
+	temp_tab = ((yolo_param*)a_param)->param_ind_scale;
+	cudaMalloc(&device_param_ind_scale, ((yolo_param*)a_param)->nb_param*sizeof(float));
+	cudaMemcpy(device_param_ind_scale, temp_tab,
+			((yolo_param*)a_param)->nb_param*sizeof(float),cudaMemcpyHostToDevice);
 	
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->IoU_monitor,
-		2 *((yolo_param*)a_param)->nb_box * current->c_network->batch_size * nb_area_flat);
-	cuda_convert_table_int(&((yolo_param*)a_param)->target_cell_mask,
-		((yolo_param*)a_param)->max_nb_obj_per_image * current->c_network->batch_size * nb_area_flat);
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->IoU_table,
-		((yolo_param*)a_param)->max_nb_obj_per_image * ((yolo_param*)a_param)->nb_box 
-		* current->c_network->batch_size * nb_area_flat);
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->dist_prior,
-		((yolo_param*)a_param)->max_nb_obj_per_image * ((yolo_param*)a_param)->nb_box 
-		* current->c_network->batch_size * nb_area_flat);
-	cuda_convert_table_int(&((yolo_param*)a_param)->box_locked,
-		((yolo_param*)a_param)->nb_box * current->c_network->batch_size * nb_area_flat);
-	cuda_convert_table_FP32((void**)&((yolo_param*)a_param)->box_in_pix,
-		6 * ((yolo_param*)a_param)->nb_box * current->c_network->batch_size * nb_area_flat);
+	temp_tab = ((yolo_param*)a_param)->IoU_limits;
+	cudaMalloc(&device_IoU_limits, 6*sizeof(float));
+	cudaMemcpy(device_IoU_limits, temp_tab,
+			6*sizeof(float),cudaMemcpyHostToDevice);
+			
+	temp_int = ((yolo_param*)a_param)->fit_parts;
+	cudaMalloc(&device_fit_parts, 5*sizeof(int));
+	cudaMemcpy(device_fit_parts, temp_int,
+			5*sizeof(int),cudaMemcpyHostToDevice);
+	
+	temp_tab = ((yolo_param*)a_param)->IoU_monitor;
+	cudaMalloc(&device_IoU_monitor, 2 * ((yolo_param*)a_param)->nb_box
+		* ((conv_param*)current->param)->nb_area[0]
+		* ((conv_param*)current->param)->nb_area[1]
+		* ((conv_param*)current->param)->nb_area[2]
+		* current->c_network->batch_size * sizeof(float));
+	cudaMemcpy(device_IoU_monitor, temp_tab,
+		2 * ((yolo_param*)a_param)->nb_box
+		* ((conv_param*)current->param)->nb_area[0]
+		* ((conv_param*)current->param)->nb_area[1]
+		* ((conv_param*)current->param)->nb_area[2]
+		* current->c_network->batch_size * sizeof(float), cudaMemcpyHostToDevice);
+	
+	printf("MNOPI %d\n", ((yolo_param*)a_param)->max_nb_obj_per_image
+		* ((conv_param*)current->param)->nb_area[0]
+		* ((conv_param*)current->param)->nb_area[1]
+		* ((conv_param*)current->param)->nb_area[2]
+		* current->c_network->batch_size);
+		
+	temp_int = ((yolo_param*)a_param)->target_cell_mask;
+	cudaMalloc(&device_target_cell_mask, ((yolo_param*)a_param)->max_nb_obj_per_image
+		* ((conv_param*)current->param)->nb_area[0]
+		* ((conv_param*)current->param)->nb_area[1]
+		* ((conv_param*)current->param)->nb_area[2]
+		* current->c_network->batch_size * sizeof(int));
+	cudaMemcpy(device_target_cell_mask, temp_int,
+		((yolo_param*)a_param)->max_nb_obj_per_image
+		* ((conv_param*)current->param)->nb_area[0]
+		* ((conv_param*)current->param)->nb_area[1]
+		* ((conv_param*)current->param)->nb_area[2]
+		* current->c_network->batch_size * sizeof(int), cudaMemcpyHostToDevice);
+	
+	temp_tab = ((yolo_param*)a_param)->IoU_table;
+	cudaMalloc(&device_IoU_table, ((yolo_param*)a_param)->max_nb_obj_per_image
+		* ((conv_param*)current->param)->nb_area[0]
+		* ((conv_param*)current->param)->nb_area[1]
+		* ((conv_param*)current->param)->nb_area[2]
+		* ((yolo_param*)a_param)->nb_box
+		* current->c_network->batch_size * sizeof(float));
+	cudaMemcpy(device_IoU_table, temp_tab,
+		((yolo_param*)a_param)->max_nb_obj_per_image
+		* ((conv_param*)current->param)->nb_area[0]
+		* ((conv_param*)current->param)->nb_area[1]
+		* ((conv_param*)current->param)->nb_area[2]
+		* ((yolo_param*)a_param)->nb_box
+		* current->c_network->batch_size * sizeof(float), cudaMemcpyHostToDevice);
+	
+	temp_tab = ((yolo_param*)a_param)->dist_prior;
+	cudaMalloc(&device_dist_prior, ((yolo_param*)a_param)->max_nb_obj_per_image
+		* ((conv_param*)current->param)->nb_area[0]
+		* ((conv_param*)current->param)->nb_area[1]
+		* ((conv_param*)current->param)->nb_area[2]
+		* ((yolo_param*)a_param)->nb_box
+		* current->c_network->batch_size * sizeof(float));
+	cudaMemcpy(device_dist_prior, temp_tab,
+		((yolo_param*)a_param)->max_nb_obj_per_image
+		* ((conv_param*)current->param)->nb_area[0]
+		* ((conv_param*)current->param)->nb_area[1]
+		* ((conv_param*)current->param)->nb_area[2]
+		* ((yolo_param*)a_param)->nb_box
+		* current->c_network->batch_size * sizeof(float), cudaMemcpyHostToDevice);
+	
+	((yolo_param*)a_param)->prior_w = device_prior_w;
+	((yolo_param*)a_param)->prior_h = device_prior_h;
+	((yolo_param*)a_param)->prior_d = device_prior_d;
+	((yolo_param*)a_param)->noobj_prob_prior = device_noobj_prob_prior;
+	((yolo_param*)a_param)->scale_tab = device_scale_tab;
+	((yolo_param*)a_param)->slopes_and_maxes_tab = device_slopes_and_maxes_tab;
+	((yolo_param*)a_param)->param_ind_scale = device_param_ind_scale;
+	((yolo_param*)a_param)->IoU_limits = device_IoU_limits;
+	((yolo_param*)a_param)->fit_parts = device_fit_parts;
+	((yolo_param*)a_param)->IoU_monitor = device_IoU_monitor;
+	((yolo_param*)a_param)->target_cell_mask = device_target_cell_mask;
+	((yolo_param*)a_param)->IoU_table = device_IoU_table;
+	((yolo_param*)a_param)->dist_prior = device_dist_prior;
 }
 
 

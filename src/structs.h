@@ -37,7 +37,7 @@ enum batch_param{OFF, SGD, FULL};
 enum data_types{c_FP32, c_UINT16, c_UINT8};
 enum compute_method{C_NAIV, C_BLAS, C_CUDA};
 enum memory_localization{NO_LOC, HOST, DEVICE};
-enum IoU_types{IOU, GIOU, DIOU};
+enum IoU_types{IOU, GIOU, DIOU, DIOU2};
 enum pool_types{MAX_pool, AVG_pool};
 
 typedef struct Dataset Dataset;
@@ -158,7 +158,7 @@ struct cuda_linear_activ_fcts
 
 struct cuda_ReLU_activ_fcts
 {
-	void (*activ_fct)(void *i_tab, int len, int dim, float saturation, float leaking_factor);
+	void (*activ_fct)(void *i_tab, int len, int dim, float saturation, float leaking_factor, int size);
 	void (*deriv_fct)(void *i_deriv, void *i_value, int len, int dim, float saturation, float leaking_factor, int size);
 	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target, int len, int dim, int size, float TC_scale_factor);
 	void (*output_error_fct)(float *output_error, void *i_output, void *i_target, int len, int dim, int size);
@@ -335,8 +335,6 @@ struct dense_param
 	void* update;
 	int* dropout_mask;
 	void* block_state;
-	
-	float dropout_rate;
 };
 
 
@@ -431,6 +429,7 @@ struct yolo_param
 	int nb_box;
 	int nb_class;
 	int nb_param;
+	int max_nb_obj_per_image;
 	int fit_dim;
 	int IoU_type;
 	float (*c_IoU_fct)(float*, float*);
@@ -456,8 +455,13 @@ struct yolo_param
 	int *fit_parts;
 	
 	
-	//monitoring
+	//Shared ancillary arrays
 	float *IoU_monitor;
+	int *target_cell_mask;
+	float *IoU_table;
+	float *dist_prior;
+	int *box_locked;
+	float *box_in_pix;
 };
 
 

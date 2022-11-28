@@ -2,8 +2,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 #Uncomment to access a locally compiled version
-#import sys
-#sys.path.insert(0,'./src/build/lib.linux-x86_64-3.8')
+import sys
+sys.path.insert(0,'./src/build/lib.linux-x86_64-3.8')
 import CIANNA as cnn
 
 ############################################################################

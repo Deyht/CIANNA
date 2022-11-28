@@ -43,7 +43,7 @@ extern int verbose;
 //auxil.c
 void init_timing(struct timeval* tstart);
 float ellapsed_time(struct timeval tstart);
-void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, int u_compute_method, int u_dynamic_load, int u_use_cuda_TC, int no_logo);
+void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, const char* compute_method_string, int u_dynamic_load, const char* cuda_TC_string, int no_logo);
 Dataset create_dataset(network *net, int nb_elem);
 void free_dataset(Dataset *data);
 float clip(float n, float lower, float upper);
@@ -77,10 +77,10 @@ void set_relu_activ(layer *current, int size, int dim, int biased_dim, const cha
 void set_logistic_activ(layer *current, int size, int dim, int biased_dim, const char *activ);
 void set_softmax_activ(layer *current, int dim, int biased_dim);
 void set_yolo_activ(layer *current);
-int set_yolo_params(network *net, int nb_box, int IoU_type, float *prior_w, float *prior_h, float *prior_d, 
-	float *yolo_noobj_prob_prior, int nb_class, int nb_param, int fit_dim, int strict_box_size, int rand_startup, 
-	float rand_prob_best_box_assoc, float min_prior_forced_scaling, float *scale_tab, float **slopes_and_maxes_tab, 
-	float *param_ind_scale, float *IoU_limits, int *fit_parts);
+int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, int IoU_type, 
+	float *prior_w, float *prior_h, float *prior_d,	float *yolo_noobj_prob_prior, int fit_dim, int strict_box_size, 
+	int rand_startup, float rand_prob_best_box_assoc, float min_prior_forced_scaling, float *scale_tab, 
+	float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts);
 
 //dense_layer.c
 void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias, float drop_rate, 
@@ -190,6 +190,7 @@ void cuda_sync(void);
 void cuda_free_table(void* tab);
 void cuda_create_host_table(network* net, void **tab, int size);
 size_t cuda_convert_table(network* net, void **tab, size_t size);
+size_t cuda_convert_table_FP32(void **tab, size_t size);
 size_t cuda_convert_table_int(int **tab, int size);
 void cuda_convert_dataset(network *net, Dataset *data);
 void cuda_get_batched_dataset(network *net, Dataset *data);
