@@ -84,7 +84,10 @@ CIANNA V-0.9.3.1 EXPERIMENTAL BUILD (10/2022), by D.Cornu\n\
 	}
 	
 	char string_comp[50]; 
-	int c_mixed_precision = FP32C_FP32A, comp_int = C_CUDA;
+	int comp_int = C_CUDA;
+	#ifdef CUDA
+	int c_mixed_precision = FP32C_FP32A;
+	#endif
 	
 	network *net;
 
