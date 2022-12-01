@@ -95,14 +95,19 @@ Then, the interface can be built automatically by adding the PY_INTERF argument 
 
 &nbsp;
 
-## Various Recommendations
+## How to use
 
-Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface)) Wiki page. The Wiki page containing all the interface functions details is under construction. You might also want to consult the Step-by-step installation guide to verify that everything was correctly installed.
+Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface)) Wiki page for a minimalistic tour of CIANNA capabilities on a simple example script and dataset.   
+The Wiki page containing all the interface functions details is under construction. You might also want to consult the Step-by-step installation guide to verify that everything was correctly installed.   
 "Troubleshooting" and "F.A.Q" pages will be added soon.
 
-This framework takes into account various modern neural network optimizations. 
-However, since there is no fancy automated gradient optimization, the network gradient might "explode" or "vanish" under specific conditions. 
-Users must be aware of those issues and capable of identifying them to use the framework properly.
+**For a quick view of CIANNA capabilities using Goggle Colab:**  
+
+- Simple MNIST example script  
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deyht/CIANNA/blob/CIANNA_dev/ex_script.ipynb)  
+
+- More advanced YOLO detection network construction and usage (see the associate repository from IRMIA 2022 summer school) 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deyht/IRMIA_2022/blob/main/IRMIA_DL_Summer_school_2022_Object_Detection_with_YOLO_full_v2.ipynb)  
 
 
 &nbsp;
