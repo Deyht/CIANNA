@@ -106,7 +106,7 @@ The Wiki page containing all the interface functions details is under constructi
 - Simple MNIST example script  
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deyht/CIANNA/blob/CIANNA_dev/ex_script.ipynb)  
 
-- More advanced YOLO detection network construction and usage (see the associate repository from IRMIA 2022 summer school) 
+- More advanced YOLO detection network construction and usage (see the associate repository from IRMIA 2022 summer school)  
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deyht/IRMIA_2022/blob/main/IRMIA_DL_Summer_school_2022_Object_Detection_with_YOLO_full_v2.ipynb)  
 
 
