@@ -12,16 +12,32 @@ CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysic
 Developer : [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), FR - LERMA / Observatoire de Paris, PSL
 david.cornu@observatoiredeparis.psl.eu
 
-See Copyright (C) and [License](#License) terms.
+See Copyright &copy; and [License](#License) terms at the end.
 
 
 &nbsp;
 
 ## /!\ /!\ /!\ WARNING /!\ /!\ /!\
 
-CIANNA is a fast-evolving framework that adds new capabilities, methods, architectures, and optimizations over time and accounts for new AI-dedicated technologies. The framework itself and the associated interface are subject to significant changes between versions (no guaranteed forward or backward compatibility). One must pay attention to what has been changed before performing updates.
+CIANNA is a fast-evolving framework that adds new capabilities, methods, architectures, and optimizations over time and accounts for new AI-dedicated technologies. The framework itself and the associated interface are subject to significant changes between versions (no guaranteed forward or backward compatibility). One must pay attention to what has been changed before performing updates (the [patch note file](https://github.com/Deyht/CIANNA/blob/CIANNA_dev/patch_note.txt) keeps track of the significants modifications).
 
-**SKA Science Data Challenge 2 information** ([SDC2](https://sdc2.astronomers.skatelescope.org/)): *The current dev branch of CIANNA includes the work that was done by the [MINERVA](https://vm-weblerma.obspm.fr/minerva/ska-data-challenges/) team of implementing a 3D-YOLO network in the context of the SKA-SDC2. However, this is **not** a participation to the SDC2 reproducibility award and does not contain the actual training procedure we used for the challenge. This last point will come in the near-future along with papers dedicated to our approach. Still, the present CIANNA_dev contains all the necessary functions (un-documented) to construct a 3D-YOLO network.*
+**SKA Science Data Challenge 2 information** ([SDC2](https://sdc2.astronomers.skatelescope.org/)): *The current dev branch of CIANNA includes the work that was done by the [MINERVA](https://vm-weblerma.obspm.fr/minerva/ska-data-challenges/) team of implementing a 3D-YOLO network in the context of the SKA-SDC2. However, this is **not** a participation to the SDC2 reproducibility award and does not contain the actual training procedure we used for the challenge. This last point will come in the near-future along with papers dedicated to our approach. Still, the present CIANNA_dev contains all the necessary functions to construct a 3D-YOLO network, see the Google Colab example below.*
+
+&nbsp;
+
+## How to use
+
+Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface)) Wiki page for a minimalistic tour of CIANNA capabilities on a simple example script and dataset.   
+The Wiki page containing all the interface functions details is under construction. You might also want to consult the Step-by-step installation guide to verify that everything was correctly installed.   
+"Troubleshooting" and "F.A.Q" pages will be added soon.
+
+**For a quick view of CIANNA capabilities using Goggle Colab:**  
+
+- Simple MNIST example script  
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deyht/CIANNA/blob/CIANNA_dev/ex_script.ipynb)  
+
+- More advanced YOLO detection network on the PASCAL-VOC dataset (see the repository from [IRMIA 2022](https://github.com/Deyht/IRMIA_2022) summer school)  
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deyht/IRMIA_2022/blob/main/IRMIA_DL_Summer_school_2022_Object_Detection_with_YOLO_full_v2.ipynb)  
 
 &nbsp;
 
@@ -91,23 +107,6 @@ Then, the interface can be built automatically by adding the PY_INTERF argument 
    ```
 
    The Python interface module has no dependency on *main.c*. Any Python code invoking CIANNA can be written without the need of a new compilation.
-
-
-&nbsp;
-
-## How to use
-
-Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface)) Wiki page for a minimalistic tour of CIANNA capabilities on a simple example script and dataset.   
-The Wiki page containing all the interface functions details is under construction. You might also want to consult the Step-by-step installation guide to verify that everything was correctly installed.   
-"Troubleshooting" and "F.A.Q" pages will be added soon.
-
-**For a quick view of CIANNA capabilities using Goggle Colab:**  
-
-- Simple MNIST example script  
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deyht/CIANNA/blob/CIANNA_dev/ex_script.ipynb)  
-
-- More advanced YOLO detection network construction and usage (see the associate repository from IRMIA 2022 summer school)  
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deyht/IRMIA_2022/blob/main/IRMIA_DL_Summer_school_2022_Object_Detection_with_YOLO_full_v2.ipynb)  
 
 
 &nbsp;
