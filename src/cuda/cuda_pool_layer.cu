@@ -82,7 +82,7 @@ __global__ void avg_pooling_kernel_##name																			\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
 	int k = blockIdx.y*blockDim.y + threadIdx.y;																	\
 	int x, y, z, pos, pos_x, pos_y, pos_z, pos_out;																	\
-	float r_avg = 0.0f;																								\
+	double r_avg = 0.0f;																							\
 																													\
 	type* input  = (type*) i_input;																					\
 	type* output = (type*) i_output;																				\
@@ -100,7 +100,7 @@ __global__ void avg_pooling_kernel_##name																			\
 		for(x = 0; x < pool_size_d; x++)																			\
 			for(y = 0; y < pool_size_h; y++)																		\
 				for(z = 0; z < pool_size_w; z++)																	\
-					r_avg += (float) input[pos + x*w_size*h_size + y*w_size + z];									\
+					r_avg += (double) input[pos + x*w_size*h_size + y*w_size + z];									\
 																													\
 		output[pos_out] = (type) (r_avg/(pool_size_w*pool_size_h*pool_size_d));										\
 	}																												\
@@ -124,8 +124,8 @@ __global__ void deltah_max_pool_cont_##name																			\
 			+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h										\
 			+ ((i%(w_size*h_size))%w_size) * pool_size_w +															\
 			+ ((pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 					\
-			+ (((pool_map[i])%(pool_size_w*pool_size_h))/pool_size_h) * w_size * pool_size_w						\
-			+ (((pool_map[i])%(pool_size_w*pool_size_h))%pool_size_h);												\
+			+ (((pool_map[i])%(pool_size_w*pool_size_h))/pool_size_w) * w_size * pool_size_w						\
+			+ (((pool_map[i])%(pool_size_w*pool_size_h))%pool_size_w);												\
 																													\
 		*delta_o_unpool = delta_o[i];																				\
 	}																												\
@@ -146,17 +146,16 @@ __global__ void deltah_avg_pool_cont_##name																			\
 																													\
 	if(i < len*image_size)																							\
 	{																												\
-		/*add mask of locations*/																					\
 		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d			\
-						+ ((i%(w_size*h_size))/h_size) * h_size * pool_size_w * pool_size_h							\
-						+ ((i%(w_size*h_size))%h_size) * pool_size_w;												\
+						+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h							\
+						+ ((i%(w_size*h_size))%w_size) * pool_size_w;												\
 																													\
 		for(x = 0; x < pool_size_d; x++)																			\
 			for(y = 0; y < pool_size_h; y++)																		\
 				for(z = 0; z < pool_size_w; z++)																	\
 					 delta_o_unpool[(x) * w_size * h_size * pool_size_w * pool_size_h 								\
 						+ (y) * w_size * pool_size_w + (z)] 														\
-						= (type)((float)delta_o[i]/(pool_size_w*pool_size_h*pool_size_d));							\
+						= (type)((float)delta_o[i]);																\
 	}																												\
 }
 
@@ -298,16 +297,16 @@ size_t cuda_convert_pool_layer(layer *current)
 	network* net = current->c_network;
 
 	vram_approx += cuda_convert_table_int(&(p_param->pool_map), p_param->nb_area[0] 
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size);
+		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size,0);
 	vram_approx += cuda_convert_table(net, &(current->output), p_param->nb_area[0] 
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size);
+		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size,0);
 	
 	vram_approx += cuda_convert_table(net, &(current->delta_o), p_param->nb_area[0] 
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size);
+		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size,0);
 		
 	if(current->dropout_rate > 0.01f)
 	{
-		vram_approx += cuda_convert_table_int(&(p_param->dropout_mask), p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+		vram_approx += cuda_convert_table_int(&(p_param->dropout_mask), p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]),0);
 		cudaMalloc((void**) &p_param->block_state, (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])) * sizeof(curandState_t));
 		vram_approx += (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])) * sizeof(curandState_t);
 		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));

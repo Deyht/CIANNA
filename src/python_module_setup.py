@@ -23,8 +23,8 @@ open_mp_extra = []
 if(os.environ.get('USE_CUDA') != None):
 	print("USE_CUDA")
 	cuda_obj = ['cuda/cuda_main.o', 'cuda/cuda_conv_layer.o', 'cuda/cuda_dense_layer.o', 'cuda/cuda_pool_layer.o', 'cuda/cuda_activ_functions.o']
-	cuda_include = ['/usr/local/cuda-11.8/include']
-	cuda_extra = ['-L/usr/local/cuda-11.8/lib64', '-lcudart', '-lcublas']
+	cuda_include = ['/usr/local/cuda-12.0/include']
+	cuda_extra = ['-L/usr/local/cuda-12.0/lib64', '-lcudart', '-lcublas']
 	cuda_macro = [('CUDA','1'), ('CUDA_THREADS_PER_BLOCKS', '128')]
 if(os.environ.get('USE_BLAS') != None):
 	print("USE_BLAS")
@@ -37,7 +37,7 @@ if(os.environ.get('USE_OPENMP') != None):
 	open_mp_extra = ['-fopenmp']
 
 setup(name = 'CIANNA', 
-	version = '0.9.2.9', 
+	version = '0.9.3.2', 
 	ext_modules = [Extension('CIANNA', ['python_module.c'], 
 	extra_objects=['conv_layer.o', 'dense_layer.o', 'pool_layer.o', 'activ_functions.o', 'initializers.o', 'vars.o', 'auxil.o', 'naiv/naiv_dense_layer.o', 'naiv/naiv_conv_layer.o', 'naiv/naiv_pool_layer.o'] + cuda_obj + blas_obj,
 	include_dirs= cuda_include + blas_include + [numpy.get_include()],

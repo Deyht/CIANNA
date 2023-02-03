@@ -39,6 +39,7 @@ enum compute_method{C_NAIV, C_BLAS, C_CUDA};
 enum memory_localization{NO_LOC, HOST, DEVICE};
 enum IoU_types{IOU, GIOU, DIOU, DIOU2};
 enum pool_types{MAX_pool, AVG_pool};
+enum yolo_error_type{ERR_COMPLETE, ERR_NATURAL};
 
 typedef struct Dataset Dataset;
 typedef struct layer layer;
@@ -82,7 +83,7 @@ typedef struct cuda_YOLO_activ_fcts cuda_YOLO_activ_fcts;
 struct cuda_auxil_fcts
 {
 	void (*cu_create_host_table_fct)(void **tab, int size);
-	size_t (*cu_convert_table_fct)(void **tab, size_t size);
+	size_t (*cu_convert_table_fct)(void **tab, size_t size, int keep_host);
 	void (*cu_create_table_fct)(void **tab, int size);
 	void (*cu_get_table_fct)(void *cuda_table, void *table, int size);
 	void (*cu_get_table_to_FP32_fct)(void *cuda_table, float *table, int size, void* buffer);
@@ -92,7 +93,7 @@ struct cuda_auxil_fcts
 	void (*cu_get_batched_table_fct)(void **tab, int batch_size, int nb_batch, int size);
 	void (*cu_convert_batched_host_table_FP32_to_fct)(void **tab, int batch_size, int nb_batch, int size);
 	void (*cu_master_weight_copy_kernel)(float *master, void *copy, int size);
-	void (*cu_update_weights_kernel)(float *weights, void* update, int size, float TC_scale_factor);
+	void (*cu_update_weights_kernel)(float *weights, void* update, float weight_decay, int size, float TC_scale_factor);
 	void (*cu_print_table_fct)(void* tab, int size, int return_every);
 	void (*cu_add_confmat_fct)(void *i_out, void *i_targ, float *mat, int len, int o_dim);
 	void (*cu_shfl_kern_fct)(void** i_in, void** i_targ, void** i_train_dupl, void** i_targ_dupl,
@@ -181,7 +182,7 @@ struct cuda_softmax_activ_fcts
 
 struct cuda_YOLO_activ_fcts
 {
-	void (*activ_fct)(void *i_tab, int flat_offset, int len, yolo_param y_param, int size);
+	void (*activ_fct)(void *i_tab, int flat_offset, int len, yolo_param y_param, int size, int class_softmax);
 	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target, 
 		int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, int nb_area_d,
 		yolo_param y_param, int size, float TC_scale_factor, int nb_im_epoch, void *block_sate);
@@ -271,6 +272,8 @@ struct network
 	
 	float learning_rate;
 	float momentum;
+	float decay;
+	float weight_decay;
 	
 	Dataset train, test, valid;
 	Dataset train_buf, test_buf, valid_buf;
@@ -293,6 +296,7 @@ struct network
 	int *fwd_perf_n, *back_perf_n;
 	long long int total_nb_param;
 	long long int memory_footprint;
+	int adv_size;
 	
 	void* input;
 	void* target;
@@ -373,6 +377,7 @@ struct pool_param
 	int *prev_size;
 	int prev_depth;
 	int pool_type;
+	int global;
 	
 	int* dropout_mask;
 	void* block_state;
@@ -437,6 +442,9 @@ struct yolo_param
 	float *prior_h;
 	float *prior_d;
 	float *noobj_prob_prior;
+	int class_softmax;
+	int diff_flag;
+	int error_type;
 
 	//Association related parameters
 	int strict_box_size_association;

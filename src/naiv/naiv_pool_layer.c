@@ -133,8 +133,8 @@ void deltah_max_pool_cont_fct
 			+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h
 			+ ((i%(w_size*h_size))%w_size) * pool_size_w +
 			+ ((pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 
-			+ (((pool_map[i])%(pool_size_w*pool_size_h))/pool_size_h) * w_size * pool_size_w
-			+ (((pool_map[i])%(pool_size_w*pool_size_h))%pool_size_h);
+			+ (((pool_map[i])%(pool_size_w*pool_size_h))/pool_size_w) * w_size * pool_size_w
+			+ (((pool_map[i])%(pool_size_w*pool_size_h))%pool_size_w);
 	
 		*delta_o_unpool = delta_o[i];
 	}
@@ -157,15 +157,15 @@ void deltah_avg_pool_cont_fct
 	{
 		/*add mask of locations*/
 		delta_o_unpool = t_delta_o_unpool + (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d
-						+ ((i%(w_size*h_size))/h_size) * h_size * pool_size_w * pool_size_h
-						+ ((i%(w_size*h_size))%h_size) * pool_size_w;
+						+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h
+						+ ((i%(w_size*h_size))%w_size) * pool_size_w;
 	
 		for(x = 0; x < pool_size_d; x++)
 			for(y = 0; y < pool_size_h; y++)
 				for(z = 0; z < pool_size_w; z++)
 					 delta_o_unpool[(x) * w_size * h_size * pool_size_w * pool_size_h 
 						+ (y) * w_size * pool_size_w + (z)] 
-						= (delta_o[i]/(pool_size_w*pool_size_h*pool_size_d));
+						= (delta_o[i]);
 	}
 }
 

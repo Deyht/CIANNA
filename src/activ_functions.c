@@ -323,7 +323,7 @@ void set_relu_activ(layer *current, int size, int dim, int biased_dim, const cha
 	param->size = size;
 	param->dim = dim;
 	param->biased_dim = biased_dim;
-	param->saturation = 400.0f;
+	param->saturation = 800.0f;
 	param->leaking_factor = 0.1f;
 	current->bias_value = 0.1f;
 	
@@ -490,7 +490,7 @@ void set_logistic_activ(layer *current, int size, int dim, int biased_dim, const
 	param->size = size;
 	param->dim = dim;
 	param->biased_dim = biased_dim;
-	param->saturation = 8.0f;
+	param->saturation = 6.0f;
 	param->beta = 1.0f;
 	current->bias_value = -1.0f;
 	
@@ -878,15 +878,22 @@ float DIoU2_fct(float* output, float* target)
 }
 
 
-int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, int IoU_type, 
+int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, const char* IoU_type_char, 
 	float *prior_w, float *prior_h, float *prior_d,	float *yolo_noobj_prob_prior, int fit_dim, int strict_box_size, 
 	int rand_startup, float rand_prob_best_box_assoc, float min_prior_forced_scaling, float *scale_tab, 
-	float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts)
+	float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts, int class_softmax, 
+	int diff_flag, const char* error_type)
 {
 	int i;
 	float *temp;
 	float **sm;
-	char IoU_type_char[40];
+	float *l_IoU_limits, *l_scale_tab;
+	float **l_slopes_and_maxes_tab;
+	int *l_fit_parts;
+	char display_IoU_type_char[40];
+	char display_error_type[40];
+	char display_class_type[60];
+	char display_difficult[40];
 	
 	if(net->y_param->fit_dim > 0)
 	{
@@ -894,7 +901,7 @@ int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int ma
 		exit(EXIT_FAILURE);
 	}
 	
-	if((1+max_nb_obj_per_image*(7+nb_param)) != net->output_dim)
+	if((1+max_nb_obj_per_image*(7+nb_param+diff_flag)) != net->output_dim)
 	{
 		printf("\n ERROR: Network output dim (target) specified in init_network and YOLO's \"max_nb_obj_per_image\" values do not match\n");
 		printf(" output_dim should be equal to 1+max_nb_obj_per_image*(7+nb_param)\n");
@@ -902,7 +909,38 @@ int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int ma
 		exit(EXIT_FAILURE);
 	}
 	
-	net->y_param->IoU_type = IoU_type;
+	if(strcmp(IoU_type_char, "IoU") == 0)
+	{
+		net->y_param->IoU_type = IOU;
+		sprintf(display_IoU_type_char, "Classical IoU");
+		net->y_param->c_IoU_fct = IoU_fct;
+	}
+	else if(strcmp(IoU_type_char, "GIoU") == 0)
+	{
+		net->y_param->IoU_type = GIOU;
+		sprintf(display_IoU_type_char, "Generalized GIoU");
+		net->y_param->c_IoU_fct = GIoU_fct;
+	}
+	else if(strcmp(IoU_type_char, "DIoU") == 0)
+	{
+		net->y_param->IoU_type = DIOU;
+		sprintf(display_IoU_type_char, "Distance DIoU");
+		net->y_param->c_IoU_fct = DIoU_fct;
+	}
+	else if(strcmp(IoU_type_char, "DIoU2") == 0)
+	{
+		net->y_param->IoU_type = DIOU2;
+		sprintf(display_IoU_type_char, "Distance DIoU2");
+		net->y_param->c_IoU_fct = DIoU2_fct;
+	}
+	else
+	{
+		printf("Warning: Unrecognized IoU type: %s, fallback to default GIoU\n", IoU_type_char);
+		net->y_param->IoU_type = GIOU;
+		sprintf(display_IoU_type_char, "Generalized GIoU");
+		net->y_param->c_IoU_fct = GIoU_fct;
+	}
+	
 	net->y_param->strict_box_size_association = strict_box_size;
 	
 	if(rand_startup < 0)
@@ -960,29 +998,41 @@ int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int ma
 			yolo_noobj_prob_prior[i] = 0.2f;
 	}
 	
-	if(scale_tab == NULL)
-	{
-		scale_tab = (float*) calloc(6, sizeof(float));
-		scale_tab[0] = 2.0f; /*Pos */ scale_tab[1] = 2.0f; /*Size */
-		scale_tab[2] = 1.0f; /*Proba*/ scale_tab[3] = 2.0f; /*Objct*/
-		scale_tab[4] = 1.0f; /*Class*/ scale_tab[5] = 1.0f; /*Param*/
-	}
-	
-	if(slopes_and_maxes_tab == NULL)
-	{
-		temp = (float*) calloc(6*3, sizeof(float));
-		slopes_and_maxes_tab = (float**) malloc(6*sizeof(float*));
+	l_scale_tab = (float*) calloc(6,sizeof(float));
+
+	l_scale_tab[0] = 2.0f; /*Pos */  l_scale_tab[1] = 2.0f; /*Size */
+	l_scale_tab[2] = 1.0f; /*Proba*/ l_scale_tab[3] = 2.0f; /*Objct*/
+	l_scale_tab[4] = 1.0f; /*Class*/ l_scale_tab[5] = 1.0f; /*Param*/
+
+	if(scale_tab != NULL)
 		for(i = 0; i < 6; i++)
-			slopes_and_maxes_tab[i] = &temp[i*3];
+			if(scale_tab[i] > 0.0f)
+				l_scale_tab[i] = scale_tab[i];
 	
-		sm = slopes_and_maxes_tab;
-		sm[0][0] = 1.0f; sm[0][1] = 4.5f; sm[0][2] = -4.5f;
-		sm[1][0] = 1.0f; sm[1][1] = 1.2f; sm[1][2] = -1.4f;
-		sm[2][0] = 1.0f; sm[2][1] = 4.5f; sm[2][2] = -4.5f;
-		sm[3][0] = 1.0f; sm[3][1] = 4.5f; sm[3][2] = -4.5f;
-		sm[4][0] = 1.0f; sm[4][1] = 4.5f; sm[4][2] = -4.5f;
-		sm[5][0] = 1.0f; sm[5][1] = 2.0f; sm[5][2] = -0.2f;
+	
+	temp = (float*) calloc(6*3, sizeof(float));
+	l_slopes_and_maxes_tab = (float**) malloc(6*sizeof(float*));
+	for(i = 0; i < 6; i++)
+		l_slopes_and_maxes_tab[i] = &temp[i*3];
+	
+	sm = l_slopes_and_maxes_tab;
+	sm[0][0] = 1.0f; sm[0][1] = 4.5f; sm[0][2] = -4.5f;
+	sm[1][0] = 1.0f; sm[1][1] = 1.2f; sm[1][2] = -1.4f;
+	sm[2][0] = 1.0f; sm[2][1] = 4.5f; sm[2][2] = -4.5f;
+	sm[3][0] = 1.0f; sm[3][1] = 4.5f; sm[3][2] = -4.5f;
+	sm[4][0] = 1.0f; sm[4][1] = 4.5f; sm[4][2] = -4.5f;
+	sm[5][0] = 1.0f; sm[5][1] = 2.0f; sm[5][2] = -0.2f;
+	
+	for(i = 0; i < 6; i++)
+	{
+		if(slopes_and_maxes_tab[i][0] > 0.0f)
+			sm[i][0] = slopes_and_maxes_tab[i][0];
+		if(slopes_and_maxes_tab[i][1] < 100000.0f)
+			sm[i][1] = slopes_and_maxes_tab[i][1];
+		if(slopes_and_maxes_tab[i][2] > -100000.0f)
+			sm[i][2] = slopes_and_maxes_tab[i][2];
 	}
+	
 	
 	if(param_ind_scale == NULL)
 	{
@@ -991,52 +1041,64 @@ int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int ma
 			param_ind_scale[i] = 1.0f;
 	}
 
-	if(IoU_limits == NULL)
+	
+	l_IoU_limits = (float*) calloc(8,sizeof(float));
+	switch(net->y_param->IoU_type)
 	{
-		IoU_limits = (float*) calloc(6,sizeof(float));
-		switch(IoU_type)
-		{
-			case IOU:
-				IoU_limits[0] = 0.5f; IoU_limits[1] = 0.1f;
-				IoU_limits[2] = 0.0f; IoU_limits[3] = 0.0f;
-				IoU_limits[4] = 0.2f; IoU_limits[5] = 0.2f;
-				break;
+		case IOU:
+			l_IoU_limits[0] = 0.5f;  l_IoU_limits[1] = 0.1f;
+			l_IoU_limits[2] = 0.0f;  l_IoU_limits[3] = 0.0f;
+			l_IoU_limits[4] = 0.2f;  l_IoU_limits[5] = 0.2f;
+			l_IoU_limits[6] = 0.5f;  l_IoU_limits[7] = 0.3f;
+			break;
+		
+		default:
+		case GIOU:
+			l_IoU_limits[0] = 0.4f;  l_IoU_limits[1] = -0.5f;
+			l_IoU_limits[2] = -1.0f; l_IoU_limits[3] = -1.0f;
+			l_IoU_limits[4] = -0.3f; l_IoU_limits[5] = -0.3f;
+			l_IoU_limits[6] = 0.4f;  l_IoU_limits[7] = 0.2f;
+			break;
+		
+		case DIOU:
+			l_IoU_limits[0] = 0.3f;  l_IoU_limits[1] = -0.6f;
+			l_IoU_limits[2] = -1.0f; l_IoU_limits[3] = -1.0f;
+			l_IoU_limits[4] = -0.5f; l_IoU_limits[5] = -0.5f;
+			l_IoU_limits[6] = 0.3f;  l_IoU_limits[7] = 0.1f;
+			break;
 			
-			default:
-			case GIOU:
-				IoU_limits[0] = 0.4f; IoU_limits[1] = -0.5f;
-				IoU_limits[2] = -1.0f; IoU_limits[3] = -1.0f;
-				IoU_limits[4] = -0.3f; IoU_limits[5] = -0.3f;
-				break;
-			
-			case DIOU:
-				IoU_limits[0] = 0.3f; IoU_limits[1] = -0.6f;
-				IoU_limits[2] = -1.0f; IoU_limits[3] = -1.0f;
-				IoU_limits[4] = -0.5f; IoU_limits[5] = -0.5f;
-				break;
-				
-			case DIOU2:
-				IoU_limits[0] = 0.3f; IoU_limits[1] = -0.5f;
-				IoU_limits[2] = -1.0f; IoU_limits[3] = -1.0f;
-				IoU_limits[4] = -0.4f; IoU_limits[5] = -0.4f;
-				break;
-		}
+		case DIOU2:
+			l_IoU_limits[0] = 0.3f;  l_IoU_limits[1] = -0.5f;
+			l_IoU_limits[2] = -1.0f; l_IoU_limits[3] = -1.0f;
+			l_IoU_limits[4] = -0.4f; l_IoU_limits[5] = -0.4f;
+			l_IoU_limits[6] = 0.3f;  l_IoU_limits[7] = 0.1f;
+			break;
+		
 	}
 	
-	if(fit_parts == NULL)
-	{
-		fit_parts = (int*) calloc(5,sizeof(int));
-		fit_parts[0] = 1; /*Size */ fit_parts[1] = 1; /*Prob */
-		fit_parts[2] = 1; /*Object*/
-		if(nb_class > 0) /*Class*/
-			fit_parts[3] = 1;
-		else
-			fit_parts[3] = 0; 
-		if(nb_param > 0) /*Param*/
-			fit_parts[4] = 1;
-		else
-			fit_parts[4] = 0;
-	}
+	if(IoU_limits != NULL)
+		for(i = 0; i < 8; i++)
+			if(IoU_limits[i] > -1.99f)
+				l_IoU_limits[i] = IoU_limits[i];
+	
+	
+	l_fit_parts = (int*) calloc(6,sizeof(int));
+	l_fit_parts[0] = 1; /*Position */ 
+	l_fit_parts[1] = 1; /*Size */ 
+	l_fit_parts[2] = 1; /*Prob */
+	l_fit_parts[3] = 1; /*Object*/
+	l_fit_parts[4] = 1; /*Class*/
+	l_fit_parts[5] = 1; /*Param*/
+	
+	if(nb_class <= 0)
+		l_fit_parts[4] = -1;
+	if(nb_param <= 0) /*Param*/
+		l_fit_parts[5] = -1;
+	
+	if(fit_parts != NULL)
+		for(i = 0; i < 6; i++)
+			if(fit_parts[i] > -2)
+				l_fit_parts[i] = fit_parts[i];
 	
 	net->y_param->nb_box = nb_box;
 	net->y_param->prior_w = prior_w;
@@ -1046,39 +1108,49 @@ int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int ma
 	net->y_param->nb_class = nb_class;
 	net->y_param->nb_param = nb_param;
 	net->y_param->max_nb_obj_per_image = max_nb_obj_per_image;
+	net->y_param->class_softmax = class_softmax;
+	net->y_param->diff_flag = diff_flag;
+	
+	if(net->y_param->class_softmax == 0)
+		sprintf(display_class_type,"sigmoid-MSE");
+	else
+		sprintf(display_class_type,"softmax-CrossEntropy");
+	
+	if(net->y_param->diff_flag == 0)
+		sprintf(display_difficult,"False");
+	else
+		sprintf(display_difficult,"True");
 	
 	//Priors table must be sent to GPU memory if C_CUDA
-	net->y_param->scale_tab = scale_tab;
-	net->y_param->slopes_and_maxes_tab = slopes_and_maxes_tab;
+	net->y_param->scale_tab = l_scale_tab;
+	net->y_param->slopes_and_maxes_tab = l_slopes_and_maxes_tab;
 	net->y_param->param_ind_scale = param_ind_scale;
-	net->y_param->IoU_limits = IoU_limits;
-	net->y_param->fit_parts = fit_parts;
+	net->y_param->IoU_limits = l_IoU_limits;
+	net->y_param->fit_parts = l_fit_parts;
 	
-	switch(net->y_param->IoU_type)
+	if(strcmp(error_type, "complete") == 0)
 	{
-		case IOU:
-			sprintf(IoU_type_char, "Classical IoU");
-			net->y_param->c_IoU_fct = IoU_fct;
-			break;
-		default:
-		case GIOU:
-			sprintf(IoU_type_char, "Generalized GIoU");
-			net->y_param->c_IoU_fct = GIoU_fct;
-			break;
-		case DIOU:
-			sprintf(IoU_type_char, "Distance DIoU");
-			net->y_param->c_IoU_fct = DIoU_fct;
-			break;
-		case DIOU2:
-			sprintf(IoU_type_char, "Distance DIoU2");
-			net->y_param->c_IoU_fct = DIoU2_fct;
-			break;
+		net->y_param->error_type = ERR_COMPLETE;
+		sprintf(display_error_type, "COMPLETE");
+	}
+	else if(strcmp(error_type, "natural") == 0)
+	{
+		net->y_param->error_type = ERR_NATURAL;
+		sprintf(display_error_type, "NATURAL");
+	}
+	else
+	{
+		printf("Warning: Unrecognized YOLO display error type %s, fallback to default \"natural\"\n", error_type);
+		net->y_param->error_type = ERR_NATURAL;
+		sprintf(display_error_type, "NATURAL");
 	}
 	
 	printf("\n YOLO layer setup \n");
 	printf(" -------------------------------------------------------------------\n");
 	printf(" Nboxes = %d\n Nclasses = %d\n Nparams = %d\n IoU type = %s\n",
-			net->y_param->nb_box, net->y_param->nb_class, net->y_param->nb_param, IoU_type_char);
+			net->y_param->nb_box, net->y_param->nb_class, net->y_param->nb_param, display_IoU_type_char);
+	printf("  Classification type: %s\n", display_class_type);
+	printf(" Nb dim fitted : %d\n\n",net->y_param->fit_dim);
 	printf(" W priors = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
 		printf("%7.2f ", net->y_param->prior_w[i]);
@@ -1089,21 +1161,20 @@ int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int ma
 	for(i = 0; i < net->y_param->nb_box; i++)
 		printf("%7.2f ", net->y_param->prior_d[i]);
 	printf("]\n");
-	printf(" Nb dim fitted : %d\n",net->y_param->fit_dim);
 	printf(" No obj. prob. priors\n          = [");
 	for(i = 0; i < net->y_param->nb_box; i++)
 		printf("%7.3f ", net->y_param->noobj_prob_prior[i]);
 	printf("]\n");
-	printf(" Fit parts: (Size, Prob., Obj., Class., Param.)\n   = [");
-	for(i = 0; i < 5; i++)
+	printf(" Fit parts: (Pos., Size, Prob., Obj., Class., Param.)\n   = [");
+	for(i = 0; i < 6; i++)
 		printf(" %d ",net->y_param->fit_parts[i]);
 	printf("]\n");
 	printf(" Error scales: (Pos., Size, Prob., Obj., Class., Param.)\n   = [");
 	for(i = 0; i < 6; i++)
 		printf(" %5.3f ",net->y_param->scale_tab[i]);
 	printf("]\n");
-	printf(" IoU lim.: (GdNotBest, LowBest, Prob., Obj., Class., Param.)\n   = [");
-	for(i = 0; i < 6; i++)
+	printf(" IoU lim.: (GdNotBest, LowBest, Prob., Obj., Class., Param., diffIoUlim, diffObjlim)\n   = [");
+	for(i = 0; i < 8; i++)
 		printf("%7.3f ", net->y_param->IoU_limits[i]);
 	printf("]\n");
 	
@@ -1122,8 +1193,7 @@ int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int ma
 			net->y_param->slopes_and_maxes_tab[i][1],
 			net->y_param->slopes_and_maxes_tab[i][2]);
 	
-	
-	printf("\n *** Association process parameters *** \n");
+	printf("\n *** Other training hyper-parameters *** \n");
 	if(net->y_param->strict_box_size_association > 0)
 	{
 		printf("  Strict box size association is ENABLED\n");
@@ -1135,16 +1205,17 @@ int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int ma
 		printf("  Strict box size association is DISABLED\n");
 	}
 	printf("  Startup random association Nb. item : %d\n", net->y_param->rand_startup);
-	printf("  Low best IoU threshold for best prior assoc.: %5.3f\n", net->y_param->IoU_limits[1]);
 	printf("  Random proportion of best prior assoc.: %5.3f\n", net->y_param->rand_prob_best_box_assoc);
 	printf("  Forced smallest prior association scaling : %6.3f\n", net->y_param->min_prior_forced_scaling);
+	printf("  Difficult flag in use: %s\n", display_difficult);
+	printf("  Display error type : %s\n", display_error_type);
 	printf("\n -------------------------------------------------------------------\n\n");
 	
 	return (net->y_param->nb_box * (8 + net->y_param->nb_class + net->y_param->nb_param));
 }
 
 
-void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_param, int size)
+void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_param, int size, int class_softmax)
 {	
 	float* tab = (float*) i_tab;
 	
@@ -1157,6 +1228,8 @@ void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_par
 	#pragma omp parallel for private(col, in_col) schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
+		float normal = 0.0000001f, vmax;
+		int j;
 		col = i / flat_offset;
 		in_col = col%(8+nb_class+nb_param);
 		
@@ -1220,13 +1293,33 @@ void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_par
 		/*Classes*/
 		if(in_col >= 8 && in_col < 8+nb_class)
 		{
-			tab[i] = -sm_tab[4][0]*tab[i];	
-			if(tab[i] > sm_tab[4][1])
-				tab[i] = sm_tab[4][1];
-			else if(tab[i] < sm_tab[4][2])	
-				tab[i] = sm_tab[4][2];
-			tab[i] = 1.0f/(1.0f + expf(tab[i]));	
-	
+			if(class_softmax)
+			{
+				if(in_col != 8)
+					continue;
+				vmax = tab[i];
+				for(j = 1; j < nb_class; j++)
+					if(tab[i+j*flat_offset] > vmax)
+						vmax = tab[i+j*flat_offset];
+				
+				for(j = 0; j < nb_class; j++)
+				{
+					tab[i+j*flat_offset] = expf((tab[i+j*flat_offset]-vmax));
+					normal += (float)tab[i+j*flat_offset];
+				}
+				
+				for(j = 0; j < nb_class; j++)
+					tab[i+j*flat_offset] = ((float)tab[i+j*flat_offset]/normal);
+			}
+			else
+			{
+				tab[i] = -sm_tab[4][0]*tab[i];	
+				if(tab[i] > sm_tab[4][1])
+					tab[i] = sm_tab[4][1];
+				else if(tab[i] < sm_tab[4][2])	
+					tab[i] = sm_tab[4][2];
+				tab[i] = 1.0f/(1.0f + expf(tab[i]));
+			}
 			continue;
 		}
 	
@@ -1273,13 +1366,16 @@ void YOLO_deriv_error_fct
 	float *t_dist_prior = y_param.dist_prior;
 	int *t_box_locked = y_param.box_locked;
 	float *t_box_in_pix = y_param.box_in_pix;
+	int class_softmax = y_param.class_softmax;
+	int diff_flag = y_param.diff_flag;
 
 	float size_max_sat = expf(sm_tab[1][1]), size_min_sat = expf(sm_tab[1][2]);
 	float good_IoU_lim = y_param.IoU_limits[0], low_IoU_best_box_assoc = y_param.IoU_limits[1];
 	float min_prob_IoU_lim = y_param.IoU_limits[2], min_obj_IoU_lim = y_param.IoU_limits[3];
 	float min_class_IoU_lim = y_param.IoU_limits[4], min_param_IoU_lim = y_param.IoU_limits[5];
-	int fit_size = y_param.fit_parts[0], fit_prob = y_param.fit_parts[1], fit_obj = y_param.fit_parts[2];
-	int fit_class = y_param.fit_parts[3], fit_param = y_param.fit_parts[4];
+	float diff_IoU_lim = y_param.IoU_limits[6], diff_obj_lim = y_param.IoU_limits[7];
+	int fit_pos = y_param.fit_parts[0], fit_size = y_param.fit_parts[1], fit_prob = y_param.fit_parts[2];
+	int fit_obj = y_param.fit_parts[3], fit_class = y_param.fit_parts[4], fit_param = y_param.fit_parts[5];
 
 	int c_pix;
 	
@@ -1305,6 +1401,7 @@ void YOLO_deriv_error_fct
 		float obj_in_offset[6];
 		float out_int[6], targ_int[6];
 		float targ_w, targ_h, targ_d;
+		float class_only_IoU = -2.0f;
 		
 		c_batch = c_pix / flat_output_size;
 		target = t_target + flat_target_size * c_batch;
@@ -1336,7 +1433,13 @@ void YOLO_deriv_error_fct
 		nb_obj_target = target[0];
 		target++;
 		
-		best_dist = 10000000000;
+		if(nb_obj_target == -1)
+		{
+			nb_obj_target = 1;
+			class_only_IoU = good_IoU_lim;
+		}
+		
+		best_dist = 100000000;
 		for(k = 0; k < nb_box; k++)
 		{
 			box_locked[k] = 0;
@@ -1354,13 +1457,19 @@ void YOLO_deriv_error_fct
 			{
 				best_dist = c_dist;
 				s_p_i = k;
-			}	
+			}
+			
+			for(l = 0; l < y_param.max_nb_obj_per_image * nb_box; l++)
+			{
+				IoU_table[l] = -2.0f;
+				dist_prior[l] = 100000000;
+			}
 		}
 		
 		nb_in_cell = 0;
 		for(j = 0; j < nb_obj_target; j++)
 		{
-			l_t = j*(7+nb_param);
+			l_t = j*(7+nb_param+diff_flag);
 			for(k = 0; k < 6; k++)
 				targ_int[k] = target[l_t+1+k];
 		
@@ -1402,7 +1511,7 @@ void YOLO_deriv_error_fct
 			if(target_cell_mask[j] == 0)
 				continue;
 		
-			l_t = j*(7+nb_param);
+			l_t = j*(7+nb_param+diff_flag);
 			for(k = 0; k < 6; k++)
 				targ_int[k] = target[l_t+1+k];
 		
@@ -1434,11 +1543,11 @@ void YOLO_deriv_error_fct
 			{
 				for(l = 0; l < strict_box_size_association; l++)
 				{
-					best_dist = 10000000000;
+					best_dist = 100000000;
 					for(k = 0; k < nb_box; k++)
 						if(dist_prior[id_in_cell*nb_box+k] > 0.0f && dist_prior[id_in_cell*nb_box+k] < best_dist)
 							best_dist = dist_prior[id_in_cell*nb_box+k];
-					if(best_dist < 10000000000)
+					if(best_dist < 100000000)
 						for(k = 0; k < nb_box; k++) /* Flag the closest theoritical prior (and identical ones if any) */
 							if(abs(dist_prior[id_in_cell*nb_box+k]-best_dist) < 0.001f)
 								dist_prior[id_in_cell*nb_box+k] = -1.0f;
@@ -1478,7 +1587,7 @@ void YOLO_deriv_error_fct
 					if(k == resp_targ + 1)
 						break;
 				}
-				l_t = j*(7+nb_param);
+				l_t = j*(7+nb_param+diff_flag);
 				for(k = 0; k < 6; k++)
 					targ_int[k] = target[l_t+1+k];
 		
@@ -1516,7 +1625,7 @@ void YOLO_deriv_error_fct
 						break;
 				}
 				/* The appropriate j value is set after this early stop loop */
-				l_t = j*(7+nb_param);
+				l_t = j*(7+nb_param+diff_flag);
 				for(k = 0; k < 6; k++)
 					targ_int[k] = target[l_t+1+k];
 		
@@ -1529,7 +1638,7 @@ void YOLO_deriv_error_fct
 				if(max_IoU < low_IoU_best_box_assoc || 
 					random_uniform() < rand_prob_best_box_assoc)
 				{
-					best_dist = 10000000000;
+					best_dist = 100000000;
 					for(k = 0; k < nb_box; k++)
 					{
 						c_dist = sqrt((targ_w-prior_w[k])*(targ_w-prior_w[k])
@@ -1572,15 +1681,7 @@ void YOLO_deriv_error_fct
 			/* Mark the target as already associated by removing its contributions to the IoU table */
 			for(k = 0; k < nb_box; k++)
 				IoU_table[resp_targ*nb_box + k] = -2.0f;
-		
-			/* Mark the box as already associated by removing its contributions to the IoU table */
-			for(k = 0; k < nb_in_cell; k++)
-				IoU_table[k*nb_box + resp_box] = -2.0f;
-		
-			box_locked[resp_box] = 2;
-		
-			l_o = resp_box*(8+nb_class+nb_param);
-		
+				
 			c_box_in_pix = box_in_pix+resp_box*6;
 			out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[3];
 			out_int[1] = c_box_in_pix[1] - 0.5f*c_box_in_pix[4];
@@ -1592,6 +1693,22 @@ void YOLO_deriv_error_fct
 			max_IoU = y_param.c_IoU_fct(out_int, targ_int);
 			if(max_IoU > 0.98f)
 				max_IoU = 0.98f;
+			if(class_only_IoU > -2.0f)
+				max_IoU = class_only_IoU; /*regardless of actual IoU because class only box is not precise*/
+		
+			l_o = resp_box*(8+nb_class+nb_param);
+			
+			/* Positive reinforcement */
+			/* If the target is flagged as "difficult", only update the matching box if the prediction is already confident enough */
+			/* The target is removed from the list anyway, and the corresponding box fall to "background" or "Good_but_not_best" case*/
+			if(diff_flag && (float)target[l_t+7+nb_param] > 0.9f && (max_IoU < diff_IoU_lim || output[(l_o+7)*f_offset] < diff_obj_lim))
+				continue;
+		
+			/* Mark the box as already associated by removing its contributions to the IoU table */
+			for(k = 0; k < nb_in_cell; k++)
+				IoU_table[k*nb_box + resp_box] = -2.0f;
+			
+			box_locked[resp_box] = 2;
 		
 			obj_in_offset[0] = ((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w;
 			obj_in_offset[1] = ((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h;
@@ -1617,24 +1734,45 @@ void YOLO_deriv_error_fct
 				obj_in_offset[5] = logf(size_max_sat);
 			else
 				obj_in_offset[5] = logf(obj_in_offset[5]);
-		
-			for(k = 0; k < 3; k++)
+			
+			switch(fit_pos)
 			{
-				if(fit_dim > k)
-					delta_o[(l_o+k)*f_offset] = ( sm_tab[0][0]
-						*coord_scale*(float)output[(l_o+k)*f_offset]
-						*(1.0f-(float)output[(l_o+k)*f_offset])
-						*((float)output[(l_o+k)*f_offset]-obj_in_offset[k]));
-				else
-					delta_o[(l_o+k)*f_offset] = (0.0f);
+				case 1:
+					for(k = 0; k < 3; k++)
+					{
+						if(fit_dim > k && class_only_IoU < -1.9f)
+							delta_o[(l_o+k)*f_offset] = ( sm_tab[0][0]
+								*coord_scale*(float)output[(l_o+k)*f_offset]
+								*(1.0f-(float)output[(l_o+k)*f_offset])
+								*((float)output[(l_o+k)*f_offset]-obj_in_offset[k]));
+						else
+							delta_o[(l_o+k)*f_offset] = (0.0f);
+					}
+					break;
+				case 0:
+					for(k = 0; k < 3; k++)
+					{
+						if(fit_dim > k)
+							delta_o[(l_o+k)*f_offset] = ( sm_tab[0][0]
+								*coord_scale*(float)output[(l_o+k)*f_offset]
+								*(1.0f-(float)output[(l_o+k)*f_offset])
+								*((float)output[(l_o+k)*f_offset]-0.5f));
+						else
+							delta_o[(l_o+k)*f_offset] = (0.0f);
+					}
+					break;
+				case -1:
+					for(k = 0; k < 3; k++)
+						delta_o[(l_o+k)*f_offset] = (0.0f);
+					break;		
 			}
-		
+			
 			switch(fit_size)
 			{
 				case 1:
 					for(k = 0; k < 3; k++)
 					{
-						if(fit_dim > k)
+						if(fit_dim > k && class_only_IoU < -1.9f)
 							delta_o[(l_o+k+3)*f_offset] = ( sm_tab[1][0]
 								*size_scale*((float)output[(l_o+k+3)*f_offset]-obj_in_offset[k+3]));
 						else
@@ -1706,29 +1844,53 @@ void YOLO_deriv_error_fct
 			{
 				case 1:
 					if(max_IoU > min_class_IoU_lim)
-						for(k = 0; k < nb_class; k++)
+					{
+						if(class_softmax)
 						{
-							if(k == (int) target[l_t]-1)
-								delta_o[(l_o+8+k)*f_offset] = ( sm_tab[4][0]
-									*class_scale*(float)output[(l_o+8+k)*f_offset]
-									*(1.0f-(float)output[(l_o+8+k)*f_offset])
-									*((float)output[(l_o+8+k)*f_offset]-0.98f));
-							else
-								delta_o[(l_o+8+k)*f_offset] = ( sm_tab[4][0]
-									*class_scale*(float)output[(l_o+8+k)*f_offset]
-									*(1.0f-(float)output[(l_o+8+k)*f_offset])
-									*((float)output[(l_o+8+k)*f_offset]-0.02f));
+							for(k = 0; k < nb_class; k++)
+							{
+								if(k == (int) target[l_t]-1)
+									delta_o[(l_o+8+k)*f_offset] = (class_scale*((float)output[(l_o+8+k)*f_offset]-1.0f));
+								else
+									delta_o[(l_o+8+k)*f_offset] = (class_scale*((float)output[(l_o+8+k)*f_offset]-0.0f));
+							}
 						}
+						else
+						{
+							for(k = 0; k < nb_class; k++)
+							{
+								if(k == (int) target[l_t]-1)
+									delta_o[(l_o+8+k)*f_offset] = ( sm_tab[4][0]
+										*class_scale*(float)output[(l_o+8+k)*f_offset]
+										*(1.0f-(float)output[(l_o+8+k)*f_offset])
+										*((float)output[(l_o+8+k)*f_offset]-0.98f));
+								else
+									delta_o[(l_o+8+k)*f_offset] = ( sm_tab[4][0]
+										*class_scale*(float)output[(l_o+8+k)*f_offset]
+										*(1.0f-(float)output[(l_o+8+k)*f_offset])
+										*((float)output[(l_o+8+k)*f_offset]-0.02f));
+							}
+						}
+					}
 					else
 						for(k = 0; k < nb_class; k++)
 							delta_o[(l_o+8+k)*f_offset] = (0.0f);
 					break;
 				case 0:
-					for(k = 0; k < nb_class; k++)
-						delta_o[(l_o+8+k)*f_offset] = ( sm_tab[4][0]
-							*class_scale*(float)output[(l_o+8+k)*f_offset]
-							*(1.0f-(float)output[(l_o+8+k)*f_offset])
-							*((float)output[(l_o+8+k)*f_offset]-0.5f));
+					if(class_softmax)
+					{
+						/* Could compute CE with target = 1/nb_class, but in this case perfect classification error > 0 (still minimum) */
+						for(k = 0; k < nb_class; k++)
+							delta_o[(l_o+8+k)*f_offset] = (0.0f);
+					}
+					else
+					{
+						for(k = 0; k < nb_class; k++)
+							delta_o[(l_o+8+k)*f_offset] = ( sm_tab[4][0]
+								*class_scale*(float)output[(l_o+8+k)*f_offset]
+								*(1.0f-(float)output[(l_o+8+k)*f_offset])
+								*((float)output[(l_o+8+k)*f_offset]-0.5f));
+					}
 					break;
 				case -1:
 					for(k = 0; k < nb_class; k++)
@@ -1841,12 +2003,14 @@ void YOLO_error_fct
 	
 	int nb_box = y_param.nb_box, nb_class = y_param.nb_class, nb_param = y_param.nb_param; 
 	float *prior_w = y_param.prior_w, *prior_h = y_param.prior_h, *prior_d = y_param.prior_d;
-	int cell_w = y_param.cell_w, cell_h = y_param.cell_h, cell_d = y_param.cell_d;	 
+	int cell_w = y_param.cell_w, cell_h = y_param.cell_h, cell_d = y_param.cell_d;
+	int strict_box_size_association = y_param.strict_box_size_association;
 	int fit_dim = y_param.fit_dim;
 
 	float coord_scale = y_param.scale_tab[0], size_scale = y_param.scale_tab[1];
 	float prob_scale = y_param.scale_tab[2], obj_scale  = y_param.scale_tab[3];
 	float class_scale = y_param.scale_tab[4], param_scale = y_param.scale_tab[5];
+	float min_prior_forced_scaling = y_param.min_prior_forced_scaling;
 
 	float *param_ind_scale = y_param.param_ind_scale;
 	float *lambda_noobj_prior = y_param.noobj_prob_prior;
@@ -1857,13 +2021,17 @@ void YOLO_error_fct
 	float *t_dist_prior = y_param.dist_prior;
 	int *t_box_locked = y_param.box_locked;
 	float *t_box_in_pix = y_param.box_in_pix;
+	int class_softmax = y_param.class_softmax;
+	int diff_flag = y_param.diff_flag;
+	int error_type = y_param.error_type;
 	
 	float size_max_sat = expf(sm_tab[1][1]), size_min_sat = expf(sm_tab[1][2]);
-	float good_IoU_lim = y_param.IoU_limits[0];
+	float good_IoU_lim = y_param.IoU_limits[0], low_IoU_best_box_assoc = y_param.IoU_limits[1];
 	float min_prob_IoU_lim = y_param.IoU_limits[2], min_obj_IoU_lim = y_param.IoU_limits[3];
 	float min_class_IoU_lim = y_param.IoU_limits[4], min_param_IoU_lim = y_param.IoU_limits[5];
-	int fit_size = y_param.fit_parts[0], fit_prob = y_param.fit_parts[1], fit_obj = y_param.fit_parts[2];
-	int fit_class = y_param.fit_parts[3], fit_param = y_param.fit_parts[4];
+	float diff_IoU_lim = y_param.IoU_limits[6], diff_obj_lim = y_param.IoU_limits[7];
+	int fit_pos = y_param.fit_parts[0], fit_size = y_param.fit_parts[1], fit_prob = y_param.fit_parts[2];
+	int fit_obj = y_param.fit_parts[3], fit_class = y_param.fit_parts[4], fit_param = y_param.fit_parts[5];
 	
 	int c_pix;
 	
@@ -1876,8 +2044,9 @@ void YOLO_error_fct
 		int l_o, l_t;
 		int i, j, k, l;
 		int c_batch, f_offset;
-		int nb_obj_target;
+		int nb_obj_target, s_p_i = 0;
 		int nb_in_cell, id_in_cell, resp_box = -1, resp_targ = -1;
+		float best_dist, c_dist;
 		float max_IoU, current_IoU;
 		int cell_x, cell_y, cell_z;
 		int obj_cx, obj_cy, obj_cz;
@@ -1885,6 +2054,7 @@ void YOLO_error_fct
 		float obj_in_offset[6];
 		float out_int[6], targ_int[6];
 		float targ_w, targ_h, targ_d;
+		float class_only_IoU = -2.0f;
 	
 		c_batch = c_pix / flat_output_size;
 		target = t_target + flat_target_size * c_batch;
@@ -1919,6 +2089,13 @@ void YOLO_error_fct
 		nb_obj_target = target[0];
 		target++;
 		
+		if(nb_obj_target == -1)
+		{
+			nb_obj_target = 1;
+			class_only_IoU = good_IoU_lim;
+		}
+		
+		best_dist = 100000000;
 		for(k = 0; k < nb_box; k++)
 		{
 			box_locked[k] = 0;
@@ -1931,14 +2108,27 @@ void YOLO_error_fct
 			c_box_in_pix[4] = prior_h[k]*expf((float)output[(l_o+4)*f_offset]);
 			c_box_in_pix[5] = prior_d[k]*expf((float)output[(l_o+5)*f_offset]);
 		
-			IoU_monitor[k*2] = 0.0f;
+			IoU_monitor[k*2] = -1.0f;
 			IoU_monitor[k*2+1] = -1.0f;
+			
+			c_dist = sqrt(prior_w[k]*prior_w[k] + prior_h[k]*prior_h[k]	+ prior_d[k]*prior_d[k]);
+			if(c_dist < best_dist)
+			{
+				best_dist = c_dist;
+				s_p_i = k;
+			}
+			
+			for(l = 0; l < y_param.max_nb_obj_per_image * nb_box; l++)
+			{
+				IoU_table[l] = -2.0f;
+				dist_prior[l] = 100000000;
+			}
 		}
 		
 		nb_in_cell = 0;
 		for(j = 0; j < nb_obj_target; j++)
 		{
-			l_t = j*(7+nb_param);
+			l_t = j*(7+nb_param+diff_flag);
 			for(k = 0; k < 6; k++)
 				targ_int[k] = target[l_t+1+k];
 		
@@ -1975,7 +2165,7 @@ void YOLO_error_fct
 			if(target_cell_mask[j] == 0)
 				continue;
 		
-			l_t = j*(7+nb_param);
+			l_t = j*(7+nb_param+diff_flag);
 			for(k = 0; k < 6; k++)
 				targ_int[k] = target[l_t+1+k];
 		
@@ -1996,6 +2186,31 @@ void YOLO_error_fct
 				current_IoU = y_param.c_IoU_fct(out_int, targ_int);
 		
 				IoU_table[id_in_cell*nb_box + k] = current_IoU;
+				dist_prior[id_in_cell*nb_box + k] = sqrt(
+					 (targ_w-prior_w[k])*(targ_w-prior_w[k])
+					+(targ_h-prior_h[k])*(targ_h-prior_h[k])
+					+(targ_d-prior_d[k])*(targ_d-prior_d[k]));
+			}
+			
+			/* Restrict the association to the l best theoritical prior (times repetition of identical priors) */
+			if(error_type == ERR_COMPLETE && strict_box_size_association > 0)
+			{
+				for(l = 0; l < strict_box_size_association; l++)
+				{
+					best_dist = 100000000;
+					for(k = 0; k < nb_box; k++)
+						if(dist_prior[id_in_cell*nb_box+k] > 0.0f && dist_prior[id_in_cell*nb_box+k] < best_dist)
+							best_dist = dist_prior[id_in_cell*nb_box+k];
+					if(best_dist < 100000000)
+						for(k = 0; k < nb_box; k++) /* Flag the closest theoritical prior (and identical ones if any) */
+							if(abs(dist_prior[id_in_cell*nb_box+k]-best_dist) < 0.001f)
+								dist_prior[id_in_cell*nb_box+k] = -1.0f;
+				}
+			}
+			else
+			{
+				for(k = 0; k < nb_box; k++)
+					dist_prior[id_in_cell*nb_box+k] = -1.0f;
 			}
 		
 			id_in_cell++;
@@ -2027,7 +2242,7 @@ void YOLO_error_fct
 					break;
 			}
 			/* The appropriate j is defined after this early stop loop*/
-			l_t = j*(7+nb_param);
+			l_t = j*(7+nb_param+diff_flag);
 			for(k = 0; k < 6; k++)
 				targ_int[k] = target[l_t+1+k];
 		
@@ -2035,19 +2250,50 @@ void YOLO_error_fct
 			targ_h = targ_int[4] - targ_int[1];
 			targ_d = targ_int[5] - targ_int[2];
 		
+			if(error_type == ERR_COMPLETE && max_IoU < low_IoU_best_box_assoc)
+			{
+				best_dist = 100000000;
+				for(k = 0; k < nb_box; k++)
+				{
+					c_dist = sqrt((targ_w-prior_w[k])*(targ_w-prior_w[k])
+						+(targ_h-prior_h[k])*(targ_h-prior_h[k])
+						+(targ_d-prior_d[k])*(targ_d-prior_d[k]));
+					if(c_dist < best_dist)
+						best_dist = c_dist;
+				}
+				max_IoU = -2.0f;
+				for(k = 0; k < nb_box; k++)
+				{
+					c_dist = sqrt((targ_w-prior_w[k])*(targ_w-prior_w[k])
+						+(targ_h-prior_h[k])*(targ_h-prior_h[k])
+						+(targ_d-prior_d[k])*(targ_d-prior_d[k]));
+					if(abs(c_dist-best_dist) < 0.001f && IoU_table[resp_targ*nb_box+k] > max_IoU)
+					{
+						max_IoU = IoU_table[resp_targ*nb_box+k];
+						resp_box = k;
+					}
+				}
+				/* Should always get a resp_box != -1, regarding all previous conditions */
+			}
+	
+			/* Force the association to the smallest prior (or identical) if the target is too small */
+			best_dist = prior_w[s_p_i]*prior_h[s_p_i]*prior_d[s_p_i];
+			if(error_type == ERR_COMPLETE && targ_w*targ_h*targ_d < min_prior_forced_scaling*best_dist)
+			{
+				max_IoU = -2.0f;
+				for(k = 0; k < nb_box; k++)
+					if((prior_w[k]*prior_h[k]*prior_d[k] - best_dist) < 0.001f 
+							&& IoU_table[resp_targ*nb_box+k] > max_IoU)
+					{
+						max_IoU = IoU_table[resp_targ*nb_box+k];
+						resp_box = k;
+					}
+				/* If the smallest prior (or identical) is unavailable the resp_box is unchanged*/
+			}
+		
 			/*Mark the target as already associated by removing its contributions to the IoU table*/
 			for(k = 0; k < nb_box; k++)
 				IoU_table[resp_targ*nb_box + k] = -2.0f;
-		
-			l_o = resp_box*(8+nb_class+nb_param);
-			/*Mark the box as already associated by removing its contributions to the IoU table*/
-			for(k = 0; k < nb_in_cell; k++)
-				IoU_table[k*nb_box + resp_box] = -2.0f;
-		
-			box_locked[resp_box] = 2;
-		
-			if(max_IoU > 0.98f)
-				max_IoU = 0.98f;
 		
 			c_box_in_pix = box_in_pix+resp_box*6;
 			out_int[0] = c_box_in_pix[0] - 0.5f*c_box_in_pix[3];
@@ -2058,13 +2304,32 @@ void YOLO_error_fct
 			out_int[5] = c_box_in_pix[2] + 0.5f*c_box_in_pix[5];
 		
 			max_IoU = y_param.c_IoU_fct(out_int, targ_int);
+			if(max_IoU > 0.98f)
+				max_IoU = 0.98f;
+			if(class_only_IoU > -2.0f)
+			max_IoU = class_only_IoU; /*regardless of actual IoU because class only box is not precise*/
+			
+			l_o = resp_box*(8+nb_class+nb_param);
+			
+			/* Positive reinforcement */
+			/* If the target is flagged as "difficult", only update the matching box if the prediction is already confident enough */
+			/* The target is removed from the list anyway, and the corresponding box fall to "background" or "Good_but_not_best" case*/
+			if(diff_flag && (float)target[l_t+7+nb_param] > 0.9f
+				&& (error_type == ERR_NATURAL || max_IoU < diff_IoU_lim || (float)output[(l_o+7)*f_offset] < diff_obj_lim))
+				continue;
+			
+			/*Mark the box as already associated by removing its contributions to the IoU table*/
+			for(k = 0; k < nb_in_cell; k++)
+				IoU_table[k*nb_box + resp_box] = -2.0f;
+			
+			box_locked[resp_box] = 2;
 		
-			IoU_monitor[resp_box*2] = 1.0f;
-			IoU_monitor[resp_box*2+1] = max_IoU*(float)output[(l_o+6)*f_offset];
+			IoU_monitor[resp_box*2] = (float)output[(l_o+7)*f_offset];
+			IoU_monitor[resp_box*2+1] = max_IoU;
 		
-			obj_in_offset[0] = fmaxf(0.01f,fminf(0.99,((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w));
-			obj_in_offset[1] = fmaxf(0.01f,fminf(0.99,((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h));
-			obj_in_offset[2] = fmaxf(0.01f,fminf(0.99,((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d));
+			obj_in_offset[0] = fmaxf(0.01f,fminf(0.99f,((targ_int[3] + targ_int[0])*0.5f - cell_x*cell_w)/(float)cell_w));
+			obj_in_offset[1] = fmaxf(0.01f,fminf(0.99f,((targ_int[4] + targ_int[1])*0.5f - cell_y*cell_h)/(float)cell_h));
+			obj_in_offset[2] = fmaxf(0.01f,fminf(0.99f,((targ_int[5] + targ_int[2])*0.5f - cell_z*cell_d)/(float)cell_d));
 			obj_in_offset[3] = (targ_w)/(float)prior_w[resp_box];
 			if(obj_in_offset[3] < size_min_sat)
 				obj_in_offset[3] = logf(size_min_sat);
@@ -2086,15 +2351,35 @@ void YOLO_error_fct
 				obj_in_offset[5] = logf(size_max_sat);
 			else
 				obj_in_offset[5] = logf(obj_in_offset[5]);
-		
-			for(k = 0; k < 3; k++)
+			
+			switch(fit_pos)
 			{
-				if(fit_dim > k)
-					output_error[(l_o+k)*f_offset] = 0.5f*coord_scale
-						*((float)output[(l_o+k)*f_offset]-obj_in_offset[k])
-						*((float)output[(l_o+k)*f_offset]-obj_in_offset[k]);
-				else
-					output_error[(l_o+k)*f_offset] = 0.0f;
+				case 1:
+					for(k = 0; k < 3; k++)
+					{
+						if(fit_dim > k && class_only_IoU < -1.9f)
+							output_error[(l_o+k)*f_offset] = 0.5f*coord_scale
+								*((float)output[(l_o+k)*f_offset]-obj_in_offset[k])
+								*((float)output[(l_o+k)*f_offset]-obj_in_offset[k]);
+						else
+							output_error[(l_o+k)*f_offset] = 0.0f;
+					}
+					break;
+				case 0:
+					for(k = 0; k < 3; k++)
+					{
+						if(fit_dim > k)
+							output_error[(l_o+k)*f_offset] = 0.5f*coord_scale
+								*((float)output[(l_o+k)*f_offset]-0.5f)
+								*((float)output[(l_o+k)*f_offset]-0.5f);
+						else
+							output_error[(l_o+k)*f_offset] = 0.0f;
+					}
+					break;
+				case -1:
+					for(k = 0; k < 3; k++)
+						output_error[(l_o+k)*f_offset] = 0.0f;
+					break;
 			}
 		
 			switch(fit_size)
@@ -2102,7 +2387,7 @@ void YOLO_error_fct
 				case 1:
 					for(k = 0; k < 3; k++)
 					{
-						if(fit_dim > k)
+						if(fit_dim > k && class_only_IoU < -1.9f)
 							output_error[(l_o+k+3)*f_offset] = 0.5f*size_scale
 							*((float)output[(l_o+k+3)*f_offset]-obj_in_offset[k+3])
 							*((float)output[(l_o+k+3)*f_offset]-obj_in_offset[k+3]);
@@ -2172,26 +2457,56 @@ void YOLO_error_fct
 			{
 				case 1:
 					if(max_IoU > min_class_IoU_lim)
-						for(k = 0; k < nb_class; k++)
+					{
+						if(class_softmax)
 						{
-							if(k == (int)target[l_t]-1)
-								output_error[(l_o+8+k)*f_offset] = 0.5f*class_scale
-									*((float)output[(l_o+8+k)*f_offset]-0.98f)
-									*((float)output[(l_o+8+k)*f_offset]-0.98f);
-							else
-								output_error[(l_o+8+k)*f_offset] = 0.5f*class_scale
-									*((float)output[(l_o+8+k)*f_offset]-0.02f)
-									*((float)output[(l_o+8+k)*f_offset]-0.02f);
+							for(k = 0; k < nb_class; k++)
+							{
+								if(k == (int)target[l_t]-1)
+								{
+									if((float)output[(l_o+8+k)*f_offset] > 0.0000001f)
+										output_error[(l_o+8+k)*f_offset] = class_scale
+											*(-logf((float)output[(l_o+8+k)*f_offset]));
+									else
+										output_error[(l_o+8+k)*f_offset] = class_scale*(-logf(0.0000001f));
+								}
+								else
+									output_error[(l_o+8+k)*f_offset] = 0.0f;
+							}
 						}
+						else
+						{
+							for(k = 0; k < nb_class; k++)
+							{
+								if(k == (int)target[l_t]-1)
+									output_error[(l_o+8+k)*f_offset] = 0.5f*class_scale
+										*((float)output[(l_o+8+k)*f_offset]-0.98f)
+										*((float)output[(l_o+8+k)*f_offset]-0.98f);
+								else
+									output_error[(l_o+8+k)*f_offset] = 0.5f*class_scale
+										*((float)output[(l_o+8+k)*f_offset]-0.02f)
+										*((float)output[(l_o+8+k)*f_offset]-0.02f);
+							}
+						}
+					}
 					else
 						for(k = 0; k < nb_class; k++)
 							output_error[(l_o+8+k)*f_offset] = 0.0f;
 					break;
 				case 0:
-					for(k = 0; k < nb_class; k++)
-						output_error[(l_o+8+k)*f_offset] = 0.5f*class_scale
-							*((float)output[(l_o+8+k)*f_offset]-0.5f)
-							*((float)output[(l_o+8+k)*f_offset]-0.5f);
+					if(class_softmax)
+					{
+						/* Could compute CE with target = 1/nb_class, but in this case perfect classification error > 0 (still minimum) */
+						for(k = 0; k < nb_class; k++)
+							output_error[(l_o+8+k)*f_offset] = 0.0f;
+					}
+					else
+					{
+						for(k = 0; k < nb_class; k++)
+							output_error[(l_o+8+k)*f_offset] = 0.5f*class_scale
+								*((float)output[(l_o+8+k)*f_offset]-0.5f)
+								*((float)output[(l_o+8+k)*f_offset]-0.5f);
+					}
 					break;
 				case -1:
 					for(k = 0; k < nb_class; k++)
@@ -2295,7 +2610,7 @@ void YOLO_activation(layer* current)
 	conv_param *c_param = (conv_param*)current->param;
 	
 	YOLO_activation_fct(current->output, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] 
-		* current->c_network->batch_size, a_param->biased_dim*current->c_network->length, *a_param, a_param->size);
+		* current->c_network->batch_size, a_param->biased_dim*current->c_network->length, *a_param, a_param->size, a_param->class_softmax);
 }
 
 void YOLO_deriv(layer *previous)

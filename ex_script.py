@@ -46,7 +46,7 @@ print ("Done !", flush=True)
 #Details about the functions and parameters are given in the GitHub Wiki
 
 cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10, \
-		bias=0.1, b_size=24, comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP32C_FP32A") #Change to C_BLAS or C_NAIV
+		bias=0.1, b_size=24, comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP16C_FP32A") #Change to C_BLAS or C_NAIV
 
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
@@ -69,12 +69,12 @@ else:
 	cnn.dense(nb_neurons=10, activation="SMAX")
 
 
-cnn.train(nb_epoch=20, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=10)
+cnn.train(nb_epoch=10, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=10, TC_scale_factor=16.0)
 cnn.perf_eval()
 
 
 #Uncomment to save network prediction
-#cnn.forward(repeat=1, drop_mode="AVG_MODEL")
+cnn.forward(repeat=1, drop_mode="AVG_MODEL")
 
 
 

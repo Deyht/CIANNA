@@ -48,7 +48,8 @@ void sig_handler(int signo)
 	exit(EXIT_SUCCESS);
 }
 
-void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, const char* compute_method_string, int u_dynamic_load, const char* cuda_TC_string, int no_logo)
+void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, 
+	const char* compute_method_string, int u_dynamic_load, const char* cuda_TC_string, int no_logo, int adv_size)
 {
 
 	if(!is_init)
@@ -56,7 +57,8 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
 	signal(SIGINT, sig_handler);
 	
 	if(!no_logo)
-		printf("\n                   ..:^~!?JY5PB~                                                                                             \n\
+		printf("\n\
+                   ..:^~!?JY5PB~                                                                                             \n\
            J5PGB#&&&&&#BGP55YY#&#!                                                                                           \n\
            &GGB##&&&@@@@@&#PJ?B#&B                                                                                           \n\
           .&#&@@@@@@@@@@@@@@@B##&G                                                                                           \n\
@@ -78,7 +80,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-0.9.3.1 EXPERIMENTAL BUILD (10/2022), by D.Cornu\n\
+CIANNA V-0.9.3.2 EXPERIMENTAL BUILD (02/2023), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -217,6 +219,12 @@ CIANNA V-0.9.3.1 EXPERIMENTAL BUILD (10/2022), by D.Cornu\n\
 		net->batch_param = FULL;
 		printf("Undefined batch size -> automatic value is 16\n");
 	}
+	
+	net->learning_rate = 0.0f;
+	net->momentum = 0.0f;
+	net->decay = 0.0f;
+	net->weight_decay = 0.0f;
+	
 	net->compute_method = comp_int;
 	net->nb_layers = 0;
 	net->epoch = 0;
@@ -227,6 +235,8 @@ CIANNA V-0.9.3.1 EXPERIMENTAL BUILD (10/2022), by D.Cornu\n\
 	net->perf_eval = 1;
 	net->total_nb_param = 0;
 	net->memory_footprint = 0;
+	if(adv_size <= 0)
+		net->adv_size = 48;
 	
 	net->train_buf.localization = NO_LOC;
 	net->test_buf.localization = NO_LOC;
@@ -263,6 +273,8 @@ Using %s compute method\n\n",
 	net->y_param->nb_param = 0;
 	net->y_param->max_nb_obj_per_image = 0;
 	net->y_param->fit_dim = 0;
+	net->y_param->class_softmax = 0;
+	net->y_param->diff_flag = 0;
 	
 	net->y_param->strict_box_size_association = 0;
 	net->y_param->rand_startup = 0;
@@ -347,14 +359,14 @@ void print_table(float* tab, int column_size, int nb_column)
 void print_epoch_advance(network *net, int c_batch, int nb_batch, float loss, float c_perf, int is_training)
 {
 	int i;
-	int size = 50, l_size = 0;
+	int size = net->adv_size, l_size = 0;
 	
 	//Must check for case where the total number of tick change
 	printf("\e[?25l");
 	if(is_training)
-		printf("\rEpoch: %5d  [", net->epoch);
+		printf("\rEpoch: %5d [", net->epoch);
 	else
-		printf("\rFwd  : %5d  [", net->epoch);
+		printf("\rFwd  : %5d [", net->epoch);
 	l_size = size*((float)c_batch/nb_batch);
 	for(i = 0; i < l_size; i++)
 		printf("#");
@@ -477,11 +489,12 @@ void save_network(network *net, char *filename, int f_bin)
 }
 
 
-void load_network(network *net, char *filename, int epoch, int f_bin)
+void load_network(network *net, const char *filename, int epoch, int nb_layers, int f_bin)
 {
 	FILE* f = NULL;
 	int temp_dim[4];
 	char layer_type = 'N';
+	int layer_count = 0;
 	
 	net->epoch = epoch;
 	net->nb_layers = 0;
@@ -505,9 +518,13 @@ void load_network(network *net, char *filename, int epoch, int f_bin)
 	
 	if(net->in_dims[0] != temp_dim[0] || net->in_dims[1] != temp_dim[1] || net->in_dims[2] != temp_dim[2] || net->in_dims[3] != temp_dim[3])
 	{
-		printf("ERROR : Wrong image format to load the network\nExpect : W = %d, H = %d, D = %d, C = %d\n", 
+		printf("WARNING : change in image format !\nLoaded network was trained with : W = %d, H = %d, D = %d, C = %d\n", 
 			 temp_dim[0], temp_dim[1], temp_dim[2], temp_dim[3]);
-		exit(EXIT_FAILURE);
+		if(net->in_dims[3] != temp_dim[3])
+		{
+			printf("ERROR : wrong number of input channel !\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 	
 	do
@@ -539,9 +556,19 @@ void load_network(network *net, char *filename, int epoch, int f_bin)
 			default:
 				break;
 		}
-	}while(1);
+		layer_count++;
+		
+	}while(nb_layers <= 0 || layer_count < nb_layers);
 	
 	fclose(f);
+}
+
+void set_frozen_layers(network *net, int* tab, int dim)
+{
+	int i;
+	
+	for(i = 0; i < dim; i++)
+		net->net_layers[i]->frozen = tab[i];
 }
 
 
@@ -577,15 +604,19 @@ void host_only_shuffle(network *net, Dataset data)
 }
 
 
-void update_weights(void *weights, void* update, int size)
+void update_weights(void *weights, void* update, float weight_decay, int size)
 {
 	int i;
 	
 	float* f_weights = (float*) weights;
 	float* f_update = (float*) update;
 	
+	//No pragma parallel. No perf improvement. Must be re-tested since addition of weight decay
 	for(i = 0; i < size; i++)
+	{   //Here the weight_decay variable include the learning rate scaling
+		f_update[i] -= weight_decay*f_weights[i];
 		f_weights[i] -= f_update[i];
+	}
 }
 
 
@@ -696,7 +727,7 @@ void perf_eval_display(network *net)
 }
 
 
-void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat)
+void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat, int silent)
 {
 	int j, k, l, m, r;
 	float** mat = NULL; 
@@ -704,7 +735,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	int arg1, arg2;
 	float count;
 	float *rapp_err = NULL, *rapp_err_rec = NULL;
-	int o, in_col, width_conf;
+	int o, in_col, width_conf, repeat_start;
 	double total_error = 0.0, batch_error = 0.0;
 	double pos_error = 0.0, size_error = 0.0, prob_error = 0.0;
 	double objectness_error = 0.0, class_error = 0.0, param_error = 0.0;
@@ -714,7 +745,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	float items_per_s = 0.0f;
 	conv_param *c_param;
 	yolo_param *a_param;
-	float nb_IoU = 0.0f, sum_IoU = 0.0f;
+	float nb_IoU = 0.0f, nb_good_IoU = 0.0f, sum_IoU = 0.0f, sum_objectness = 0.0f;
 	
 	#ifdef CUDA
 	float* cuda_mat;
@@ -728,7 +759,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	
 	o = net->output_dim;
 	
-	if(confusion_matrix)
+	if(confusion_matrix > 0)
 	{
 		rapp_err = (float*) malloc(o*sizeof(float));
 		rapp_err_rec = (float*) malloc(o*sizeof(float));
@@ -768,69 +799,80 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			exit(EXIT_FAILURE);
 		}
 	}
+		
+	total_error = 0.0;
+	pos_error = 0.0, size_error = 0.0, prob_error = 0.0;
+	objectness_error = 0.0, class_error = 0.0, param_error = 0.0;
+	nb_IoU = 0.0f;
+	sum_IoU = 0.0f;
+	sum_objectness = 0.0f;
+	nb_good_IoU = 0.0f;
 	
-	for(r = 0; r < repeat; r++)
-	{	
-		total_error = 0.0;
-		pos_error = 0.0, size_error = 0.0, prob_error = 0.0;
-		objectness_error = 0.0, class_error = 0.0, param_error = 0.0;
-		nb_IoU = 0.0f;
-		sum_IoU = 0.0f;
+	init_timing(&ep_timer);
+	
+	for(j = 0; j < data.nb_batch; j++)
+	{
+		init_timing(&local_timer);
 		
-		init_timing(&ep_timer);
+		//##########################################################
 		
-		for(j = 0; j < data.nb_batch; j++)
+		if(j == data.nb_batch - 1 && data.size%net->batch_size > 0)
 		{
-			init_timing(&local_timer);
-			if(net->compute_method == C_CUDA)
+			net->length = data.size%net->batch_size;
+		}
+		else
+			net->length = net->batch_size;
+		
+		if(net->compute_method == C_CUDA)
+		{
+			#ifdef CUDA
+			if(net->cu_inst.dynamic_load)
 			{
-				#ifdef CUDA
-				temp_error = net->output_error;
-				net->output_error = net->cu_inst.output_error_cuda;
-				#endif
-			}
-			
-			//##########################################################
-			
-			if(j == data.nb_batch - 1 && data.size%net->batch_size > 0)
-			{
-				net->length = data.size%net->batch_size;
-			}
-			else
-				net->length = net->batch_size;
-			
-			if(net->compute_method == C_CUDA)
-			{
-				#ifdef CUDA
-				if(net->cu_inst.dynamic_load)
-				{
-					cuda_put_table(net, net->input, data.input[j], net->batch_size*(net->input_dim+1));
-					cuda_put_table(net, net->target, data.target[j], net->batch_size*(net->output_dim));
-				}
-				else
-				{
-					net->input = data.input[j];
-					net->target = data.target[j];
-				}
-				#endif
+				cuda_put_table(net, net->input, data.input[j], net->batch_size*(net->input_dim+1));
+				cuda_put_table(net, net->target, data.target[j], net->batch_size*(net->output_dim));
 			}
 			else
 			{
 				net->input = data.input[j];
 				net->target = data.target[j];
 			}
+			#endif
+		}
+		else
+		{
+			net->input = data.input[j];
+			net->target = data.target[j];
+		}
+		
+		repeat_start = 0;
+		for(r = 0; r < repeat; r++)
+		{
 			
-			//forward
-			for(k = 0; k < net->nb_layers; k++)
+			for(k = repeat_start; k < net->nb_layers; k++)
 			{
+				// Could be even more efficient by only doing dropmask on the first layer with drop, 
+				// as the un-masked output is constant in a batch repeat
+				if(repeat_start == 0 && net->net_layers[k]->dropout_rate > 0.01f)
+					repeat_start = k;
 				perf_eval_in(net);
 				net->net_layers[k]->forward(net->net_layers[k]);
 				perf_eval_out(net, k,net->fwd_perf, net->fwd_perf_n);
 			}
 
+			if(net->compute_method == C_CUDA)
+			{
+				#ifdef CUDA
+				for(k = 0; k < net->batch_size * net->out_size; k++)
+					((float*)net->output_error)[k] = 0.0f;
+				cuda_put_table_FP32(net->cu_inst.output_error_cuda, net->output_error, net->batch_size*net->out_size);
+				
+				temp_error = net->output_error;
+				net->output_error = net->cu_inst.output_error_cuda;
+				#endif
+			}
+
 			if(net->no_error != 1)
 				output_error(net->net_layers[net->nb_layers-1]);
-			
 
 			//##########################################################
 			
@@ -961,7 +1003,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 								total_error += ((float*)net->output_error)[k*net->out_size + l];
 							}
 							
-							if(confusion_matrix && net->compute_method != C_CUDA)
+							if(confusion_matrix > 0 && net->compute_method != C_CUDA)
 							{
 								arg1 = argmax(&(((float*)net->target)[k*net->output_dim]), net->output_dim);
 								arg2 = argmax(&(((float*)net->net_layers[net->nb_layers-1]->output)[k*(net->output_dim+1)]),
@@ -1027,9 +1069,14 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 							}
 							for(k = 0; k < 2*a_param->nb_box*batch_offset*net->batch_size; k += 2)
 							{
-								nb_IoU += host_IoU_monitor[k];
-								if(host_IoU_monitor[k] > 0)
+								if(host_IoU_monitor[k] > -0.98f)
+								{
+									nb_IoU += 1;
+									sum_objectness += host_IoU_monitor[k];
 									sum_IoU += host_IoU_monitor[k+1];
+									if(host_IoU_monitor[k+1] >= ((yolo_param*)net->y_param)->IoU_limits[0])
+										nb_good_IoU += 1;
+								}
 							}
 							#ifdef CUDA
 							if(net->compute_method == C_CUDA)
@@ -1042,29 +1089,37 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 						break;
 				}
 			}
-			batch_error /= net->length;
-			print_epoch_advance(net, j+1, data.nb_batch, batch_error, net->batch_size/ellapsed_time(local_timer), 0);
-			if(confusion_matrix && net->compute_method == C_CUDA)
-			{
-				#ifdef CUDA
-				cuda_confmat(net, cuda_mat);
-				#endif
-			}
 		}
-		
-		items_per_s = data.size/ellapsed_time(ep_timer);
+		batch_error /= net->length;
+		if(silent != 1)
+			print_epoch_advance(net, j+1, data.nb_batch, batch_error, (net->batch_size)/ellapsed_time(local_timer), 0);
+		if(confusion_matrix > 0 && net->compute_method == C_CUDA)
+		{
+			#ifdef CUDA
+			cuda_confmat(net, cuda_mat);
+			#endif
+		}
+	}
+	
+	//scaling data.size by repeat make no sense because an "item" is now a combination of full and partial forward
+	//better to display the item time as the time for all repeat / item
+	items_per_s = (data.size)/ellapsed_time(ep_timer);
+	
+	if(silent != 1)
+	{
 		printf("\n%*s", 14, " ");
 		printf("Average forward perf : %0.2f it/s ", items_per_s);
 		if(net->no_error != 1)
 		{	
-			printf("| Mean Loss: %.5g", total_error/data.size);
+			printf("| Mean Loss: %.5g", total_error/(data.size*repeat));
 			if(net->net_layers[net->nb_layers-1]->type == CONV)
 			{
 				if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
 				{
-					printf("\nLoss dist. ||Pos: %.5f |Size: %.5f |Prob: %.5f |Obj: %.5f |Class: %.5f |Param: %.5f ||M.Prob Max IoU = %.5f",
-					pos_error/data.size, size_error/data.size, prob_error/data.size, 
-					objectness_error/data.size, class_error/data.size, param_error/data.size, sum_IoU/nb_IoU);
+					printf("\nLoss dist. ||Pos: %.5f |Size: %.5f |Prob: %.5f |Obj: %.5f |Class: %.5f |Param: %.5f ||M IoU = %.4f |M Obj = %0.4f |P Good = %0.4f",
+					pos_error/(data.size*repeat), size_error/(data.size*repeat), prob_error/(data.size*repeat), 
+					objectness_error/(data.size*repeat), class_error/(data.size*repeat), param_error/(data.size*repeat), 
+					sum_IoU/nb_IoU, sum_objectness/nb_IoU, (float)nb_good_IoU/(float)nb_IoU);
 				}
 			}
 			
@@ -1104,7 +1159,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		
 	}
 	
-	if(confusion_matrix && net->compute_method == C_CUDA)
+	if(confusion_matrix > 0 && net->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
 		cuda_get_table_FP32((float*)cuda_mat, *mat, o*o);
@@ -1121,42 +1176,97 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		fclose(f_save);
 	}
 
-	if(confusion_matrix && net->no_error == 0)
+	if(confusion_matrix > 0 && net->no_error == 0 && repeat <= 1)
 	{
-		printf("\n   ");
-		width_conf = (o*10) / 2;
-		for(j = 0; j < width_conf - 3; j++)printf("*");
-		printf("  ConfMat  ");
-		for(j = 0; j < width_conf - 3; j++)printf("*");
-		printf("   Recall\n");
-		for(j = 0; j < o; j++)
+		if(silent != 1)
 		{
-			rapp_err[j] = 0.0;
-			rapp_err_rec[j] = 0.0;
-			for(k = 0; k < o; k++)
+			if(confusion_matrix == 1)
 			{
-				rapp_err[j] += mat[j][k];
-				rapp_err_rec[j] += mat[k][j];
+				printf("\n   ");
+				width_conf = (o*10) / 2;
+				for(j = 0; j < width_conf - 3; j++)
+					printf("*");
+				printf("  ConfMat  ");
+				for(j = 0; j < width_conf - 3; j++)
+					printf("*");
+				printf("   Recall\n");
+				for(j = 0; j < o; j++)
+				{
+					rapp_err[j] = 0.0;
+					rapp_err_rec[j] = 0.0;
+					for(k = 0; k < o; k++)
+					{
+						rapp_err[j] += mat[j][k];
+						rapp_err_rec[j] += mat[k][j];
+					}
+					rapp_err[j] = mat[j][j]/rapp_err[j]*100.0;
+					rapp_err_rec[j] = mat[j][j]/rapp_err_rec[j]*100.0;
+				}
+				for(j = 0; j < o; j++)
+				{
+					printf("%*s", 5, " ");
+					for(k = 0; k < o; k++)
+						printf("%8d |", (int) mat[j][k]);
+					printf("%11.2f%%\n", rapp_err[j]);
+				}
+				printf("%6s", "Prec. ");
+				for(j = 0; j < o; j++)
+					printf("%7.2f%%  ", rapp_err_rec[j]);
+				
+				count = 0.0;
+				for(j = 0; j < o; j++)
+					count += mat[j][j];
+				
+				printf("Acc %6.2f%%\n", count/data.size*100);
 			}
-			rapp_err[j] = mat[j][j]/rapp_err[j]*100.0;
-			rapp_err_rec[j] = mat[j][j]/rapp_err_rec[j]*100.0;
+			else if(confusion_matrix == 2)
+			{
+				printf("\n   ");
+				for(j = 0; j < o; j++)
+				{
+					rapp_err[j] = 0.0;
+					rapp_err_rec[j] = 0.0;
+					for(k = 0; k < o; k++)
+					{
+						rapp_err[j] += mat[j][k];
+						rapp_err_rec[j] += mat[k][j];
+					}
+					rapp_err[j] = mat[j][j]/rapp_err[j]*100.0;
+					rapp_err_rec[j] = mat[j][j]/rapp_err_rec[j]*100.0;
+				}
+				printf("\n Recall:   ");
+				for(j = 0; j < o; j++)
+					printf("%7.2f%%  ", rapp_err[j]);
+				printf("\n Precision:");
+				for(j = 0; j < o; j++)
+					printf("%7.2f%%  ", rapp_err_rec[j]);
+				
+				count = 0.0;
+				for(j = 0; j < o; j++)
+					count += mat[j][j];
+				printf("\n Accuracy: %6.2f%%\n", count/data.size*100);
+			}
+			else if(confusion_matrix == 3)
+			{
+				for(j = 0; j < o; j++)
+				{
+					rapp_err[j] = 0.0;
+					rapp_err_rec[j] = 0.0;
+					for(k = 0; k < o; k++)
+					{
+						rapp_err[j] += mat[j][k];
+						rapp_err_rec[j] += mat[k][j];
+					}
+					rapp_err[j] = mat[j][j]/rapp_err[j]*100.0;
+					rapp_err_rec[j] = mat[j][j]/rapp_err_rec[j]*100.0;
+				}
+				
+				count = 0.0;
+				for(j = 0; j < o; j++)
+					count += mat[j][j];
+				printf("\n Accuracy: %6.2f%%\n", count/data.size*100);
+			}
 		}
-		for(j = 0; j < o; j++)
-		{
-			printf("%*s", 5, " ");
-			for(k = 0; k < o; k++)
-				printf("%8d |", (int) mat[j][k]);
-			printf("%11.2f%%\n", rapp_err[j]);
-		}
-		printf("%6s", "Prec. ");
-		for(j = 0; j < o; j++)
-			printf("%7.2f%%  ", rapp_err_rec[j]);
-		
-		count = 0.0;
-		for(j = 0; j < o; j++)
-			count += mat[j][j];
-		
-		printf("Acc %6.2f%%\n", count/data.size*100);
 		
 		free(temp);
 		free(mat);
@@ -1166,12 +1276,12 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 }
 
 
-void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, int show_confmat, int save_every, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor)
+void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
+	float u_decay, float u_weight_decay, int show_confmat, int save_every, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor, int silent)
 {
 	int i, j, k, l, m;
 	float begin_learn_rate;
 	float end_learn_rate;
-	float decay;
 	double batch_error = 0.0, total_error = 0.0;
 	char net_save_file_name[200];
 	struct timeval ep_timer, local_timer;
@@ -1206,7 +1316,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 					index_shuffle[i] = i;
 				index_shuffle_device = (void*)  calloc(net->train.size,sizeof(int));
 				cuda_get_batched_dataset(net, &shuffle_duplicate);
-				cuda_convert_table_int(&index_shuffle_device, net->train.size);
+				cuda_convert_table_int(&index_shuffle_device, net->train.size,0);
 			}
 		}
 		
@@ -1216,22 +1326,23 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	begin_learn_rate = u_begin_learning_rate;
 	end_learn_rate = u_end_learning_rate;
 	net->momentum = u_momentum;
-	decay = u_decay;
+	net->decay = u_decay;
+	net->weight_decay = u_weight_decay;
 	
 	switch(net->net_layers[net->nb_layers-1]->type)
 	{
 		case CONV:
-			net->out_size = ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_filters *
-				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[0] * 
-				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[1] *
-				((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[2];
+			net->out_size = ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_filters 
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[0] 
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[1]
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[2];
 			break;
 			
 		case POOL:
-			net->out_size = ((pool_param*)net->net_layers[net->nb_layers-1]->param)->prev_depth *
-				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[0] * 
-				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[1] * 
-				((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[2];
+			net->out_size = ((pool_param*)net->net_layers[net->nb_layers-1]->param)->prev_depth 
+				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[0] 
+				* ((pool_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[1]
+				* ((conv_param*)net->net_layers[net->nb_layers-1]->param)->nb_area[2];
 			break;
 	
 		case DENSE:
@@ -1252,7 +1363,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 	for(i = 0; i < nb_epochs; i++)
 	{
 		printf("\n");
-		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*net->epoch);
+		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-net->decay*net->epoch);
 		net->epoch++;
 	
 		if(shuffle_every > 0 && (net->epoch+1) % shuffle_every == 0 && net->batch_param != SGD)
@@ -1261,7 +1372,9 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			{
 				#ifdef CUDA
 				if(net->cu_inst.dynamic_load)
+				{
 					cuda_host_only_shuffle(net, net->train);
+				}
 				else
 				{
 					if(shuffle_gpu)
@@ -1284,6 +1397,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
         net->inference_drop_mode = AVG_MODEL;
 		for(j = 0; j < net->train.nb_batch; j++)
 		{
+			
 			init_timing(&local_timer);
 			if(j == net->train.nb_batch-1 && net->train.size%net->batch_size > 0)
 				net->length = net->train.size%net->batch_size;
@@ -1336,9 +1450,14 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 				perf_eval_out(net, net->nb_layers-1-k, net->back_perf, net->back_perf_n);
 			}
 			
+			
 			if(net->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
+				for(k = 0; k < net->batch_size * net->out_size; k++)
+					((float*)net->output_error)[k] = 0.0f;
+				cuda_put_table_FP32(net->cu_inst.output_error_cuda, net->output_error, net->batch_size*net->out_size);
+			
 				temp_error = net->output_error;
 				net->output_error = net->cu_inst.output_error_cuda;
 				#endif
@@ -1387,21 +1506,22 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 					break;
 			}
 			batch_error /= net->length;
-			print_epoch_advance(net, j+1, net->train.nb_batch, batch_error, net->batch_size/ellapsed_time(local_timer), 1);
-
+			if(silent != 1)
+				print_epoch_advance(net, j+1, net->train.nb_batch, batch_error, net->batch_size/ellapsed_time(local_timer), 1);
+			
 		}
 		
-		items_per_s = net->train.size/ellapsed_time(ep_timer); 
+		items_per_s = net->train.size/ellapsed_time(ep_timer);
 		
 		if(((net->epoch) % control_interv == 0))
 		{
 			printf("\n%*s", 14, " ");
 			printf("Average Training perf: %0.2f it/s |", items_per_s);
 			printf(" Mean Loss: %.5g |", total_error/net->train.size);
-			printf(" Learning rate : %.5g\n", net->learning_rate);
+			printf(" Learning rate: %.5g | Weight decay: %.5g\n", net->learning_rate, net->weight_decay);
 			net->is_inference = 1;
 			net->no_error = 0;
-			compute_error(net, net->valid, 0, show_confmat, 1);
+			compute_error(net, net->valid, 0, show_confmat, 1, silent);
 		}
 		if(save_every > 0)
 		{
@@ -1441,13 +1561,14 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 }
 
 
-void forward_testset(network *net, int train_step, int saving, int repeat, int drop_mode)
+void forward_testset(network *net, int train_step, int saving, int repeat, int drop_mode, int silent)
 {
-	printf("Forwarding testset");
-	if(repeat > 1)
+	if(repeat > 1 && silent != 1)
+	{
 		printf(", with repeat %d", repeat);
-	printf("\n");
-
+		printf("\n");
+	}	
+	
 	perf_eval_init(net);
 
 	//update out_size in case of forward with no training
@@ -1488,16 +1609,9 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 		#endif
 	}
 	
-	if(train_step <= 0)
-	{
-		printf("Warning, can not forward %d step\n", train_step);
-	}
-	else
-	{
-		net->is_inference = 1;
-        net->inference_drop_mode = drop_mode;
-		compute_error(net, net->test, saving, 0, repeat);
-	}
+	net->is_inference = 1;
+    net->inference_drop_mode = drop_mode;
+	compute_error(net, net->test, saving, 0, repeat, silent);
 	
 	free(net->output_error);
 	
@@ -1522,14 +1636,15 @@ void forward_testset(network *net, int train_step, int saving, int repeat, int d
 
 #ifdef CUDA
 // Experimental function for now, for development purposes only
-void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, float u_decay, float gen_disc_learn_rate_ratio, int save_every, int save_bin, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor)
+void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
+	float u_decay, float gen_disc_learn_rate_ratio, int save_every, int save_bin, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor, int silent)
 {
 	//1)Generate data or use data provided in the form of a dataset
 	//Forward the generative model
 	//straightforward
 	
 	//2) Train the discriminator model
-	//Cut the generator model in half and train the discriminator on  0.5 true/ 0.5 false
+	//Cut the generator model in half and train the discriminator on 0.5 true/ 0.5 false
 	//two passes possible
 	
 	//3) Train the generative model through the frozen discriminative model
@@ -1589,7 +1704,7 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 					index_shuffle[i] = i;
 				index_shuffle_device = (void*)  calloc(disc->train.size,sizeof(int));
 				cuda_get_batched_dataset(disc, &shuffle_duplicate);
-				cuda_convert_table_int(&index_shuffle_device, disc->train.size);
+				cuda_convert_table_int(&index_shuffle_device, disc->train.size,0);
 			}
 		}
 		
@@ -1958,7 +2073,8 @@ void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, f
 					break;
 			}
 			batch_error /= disc->length;
-			print_epoch_advance(disc, j+1, disc->train.nb_batch, batch_error, gen->batch_size/ellapsed_time(local_timer), 1);
+			if(!silent)
+				print_epoch_advance(disc, j+1, disc->train.nb_batch, batch_error, gen->batch_size/ellapsed_time(local_timer), 1);
 
 		}
 		

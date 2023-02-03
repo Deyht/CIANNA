@@ -43,7 +43,8 @@ extern int verbose;
 //auxil.c
 void init_timing(struct timeval* tstart);
 float ellapsed_time(struct timeval tstart);
-void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, const char* compute_method_string, int u_dynamic_load, const char* cuda_TC_string, int no_logo);
+void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, const char* compute_method_string, int u_dynamic_load, 
+	const char* cuda_TC_string, int no_logo, int adv_size);
 Dataset create_dataset(network *net, int nb_elem);
 void free_dataset(Dataset *data);
 float clip(float n, float lower, float upper);
@@ -52,16 +53,17 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 Dataset load_formated_dataset(network *net, const char *filename, int input_data_type, int output_data_type);
 void set_normalize_dataset_parameters(network *net, float *offset_input, float *norm_input, int dim_size_input, float *offset_output, float *norm_output, int dim_size_output);
 void normalize_dataset(network *net, Dataset c_data);
-void update_weights(void *weights, void* update, int size);
+void update_weights(void *weights, void* update, float weight_decay, int size);
 void perf_eval_display(network *net);
-void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat);
+void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat, int silent);
 void save_network(network *net, char *filename, int f_bin);
-void load_network(network *net, char *filename, int epoch, int f_bin);
+void load_network(network *net, const char *filename, int epoch, int nb_layers, int f_bin);
+void set_frozen_layers(network *net, int* tab, int dim);
 void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
-	float u_decay, int show_confmat, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor);
-void forward_testset(network *net, int train_step, int saving, int repeat, int drop_mode);
+	float u_decay, float u_weight_decay, int show_confmat, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor, int silent);
+void forward_testset(network *net, int train_step, int saving, int repeat, int drop_mode, int silent);
 void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
-	float u_decay, float gen_disc_learn_rate_ratio, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor);
+	float u_decay, float gen_disc_learn_rate_ratio, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor, int silent);
 
 
 //activations.c
@@ -77,10 +79,11 @@ void set_relu_activ(layer *current, int size, int dim, int biased_dim, const cha
 void set_logistic_activ(layer *current, int size, int dim, int biased_dim, const char *activ);
 void set_softmax_activ(layer *current, int dim, int biased_dim);
 void set_yolo_activ(layer *current);
-int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, int IoU_type, 
+int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, const char* IoU_type_char, 
 	float *prior_w, float *prior_h, float *prior_d,	float *yolo_noobj_prob_prior, int fit_dim, int strict_box_size, 
 	int rand_startup, float rand_prob_best_box_assoc, float min_prior_forced_scaling, float *scale_tab, 
-	float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts);
+	float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts, int class_softmax, 
+	int diff_flag, const char* error_type);
 
 //dense_layer.c
 void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias, float drop_rate, 
@@ -94,7 +97,7 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 void conv_save(FILE *f, layer *current, int f_bin);
 void conv_load(network *net, FILE *f, int f_bin);
 
-void pool_create(network *net, layer* previous, int *pool_size, int pool_type, float drop_rate);
+void pool_create(network *net, layer* previous, int *pool_size, const char *char_pool_type, int global, float drop_rate);
 void pool_save(FILE *f, layer *current, int f_bin);
 void pool_load(network *net, FILE *f, int f_bin);
 
@@ -179,7 +182,7 @@ extern cublasComputeType_t cuda_compute_type;
 void cuda_master_weight_FP32_to_FP32(float *master, void *copy, int size);
 void cuda_master_weight_FP32_to_FP16(float *master, void *copy, int size);
 void cuda_master_weight_FP32_to_BF16(float *master, void *copy, int size);
-void cuda_update_weights(network* net, void *weights, void* update, int size);
+void cuda_update_weights(network* net, void *weights, void* update, float weight_decay, int size);
 
 //__global__ void cuda_update_weights_dropout(void *weights, void* update, int size, int *drop_mask, int dim);
 __device__ int cuda_argmax(void* tab, int dim_out);
@@ -189,9 +192,9 @@ void cuda_set_TC_scale_factor(network* net, float val);
 void cuda_sync(void);
 void cuda_free_table(void* tab);
 void cuda_create_host_table(network* net, void **tab, int size);
-size_t cuda_convert_table(network* net, void **tab, size_t size);
-size_t cuda_convert_table_FP32(void **tab, size_t size);
-size_t cuda_convert_table_int(int **tab, int size);
+size_t cuda_convert_table(network* net, void **tab, size_t size, int keep_host);
+size_t cuda_convert_table_FP32(void **tab, size_t size, int keep_host);
+size_t cuda_convert_table_int(int **tab, int size, int keep_host);
 void cuda_convert_dataset(network *net, Dataset *data);
 void cuda_get_batched_dataset(network *net, Dataset *data);
 void cuda_convert_host_dataset(network *net, Dataset *data);
@@ -204,7 +207,7 @@ void cuda_master_weight_copy(network* net, float *master, void *copy, int size);
 void cuda_get_table_FP32(void *cuda_table, void *table, int size);
 void cuda_get_table_to_FP32(network* net, void *cuda_table, float *table, int size, void* buffer);
 void cuda_get_table(network* net, void *cuda_table, void *table, int size);
-void cuda_put_table_FP32(network* net, float *cuda_table, float *table, int size);
+void cuda_put_table_FP32(void *cuda_table, void *table, int size);
 void cuda_put_table(network* net, void *cuda_table, void *table, int size);
 void cuda_print_table_FP32(void* tab, int size, int return_every);
 //void cuda_print_table_4d(network* net, void* tab, int w_size, int h_size, int d_size, int last_dim, int biased);

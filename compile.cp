@@ -35,8 +35,9 @@ defines_variables="-D MAX_LAYERS_NB=100 -D MAX_NETWORKS_NB=10 -D CUDA_THREADS_PE
 gcc_compile_dir="/usr/bin/gcc"
 openblas_include_dir="/opt/OpenBLAS/include/"
 openblas_lib_dir="/opt/OpenBLAS/lib"
-cuda_lib_path="/usr/local/cuda-11.8/lib64"
-compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
+cuda_lib_path="/usr/local/cuda-12.0/lib64"
+#compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
+compile_opt="-O3 -fPIC -Wall -Wno-unused-result -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
 
 ######################################################
 
@@ -91,7 +92,7 @@ then
 
 #compiling the cuda part if needed
 cd ./cuda
-/usr/local/cuda-11.8/bin/nvcc --compiler-bindir $gcc_compile_dir -Xcompiler "$compile_opt" \
+/usr/local/cuda-12.0/bin/nvcc --compiler-bindir $gcc_compile_dir -Xcompiler "$compile_opt" \
 -O3 -c $cuda_src $cuda_arg $defines_variables -lm
 echo "#####  End of CUDA compilation  #####"
 cd ..

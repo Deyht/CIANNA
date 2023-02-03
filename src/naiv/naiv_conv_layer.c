@@ -218,9 +218,9 @@ void forward_conv_layer(layer *current)
 			c_dr = current->previous->dropout_rate;
 		else
 			c_dr = 0.0;
-		c_dr = 1.0 - (((c_param->flat_f_size-1)*(1.0-c_dr) + 1)/c_param->flat_f_size);
+		c_dr = ((c_param->flat_f_size-1)*(1.0f-c_dr)+1)/c_param->flat_f_size;
 		//w_alpha = (1.0f - c_dr); //account for the bias node that is never dropped
-		w_alpha = (1.0/(1.0 + c_dr));
+		w_alpha = c_dr;
 	}
 	else
 		w_alpha = 1.0;
@@ -366,7 +366,7 @@ void backward_conv_layer(layer *current)
 			}
 		}
 		
-		update_weights(c_param->filters, c_param->update, c_param->flat_f_size*c_param->nb_filters);
+		update_weights(c_param->filters, c_param->update, net->learning_rate*net->weight_decay, c_param->flat_f_size*c_param->nb_filters);
 	}
 }
 

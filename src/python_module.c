@@ -42,15 +42,17 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	int i;
 	double bias = 0.1;
 	int dims[4] = {1,1,1,1}, nb_channels = 1, out_dim, b_size, network_id = nb_networks;
-	int dynamic_load = 0, no_logo = 0;
+	int dynamic_load = 0, no_logo = 0, adv_size = 0;
 	const char *py_mixed_precision = "off";
 	const char *comp_meth = "C_CUDA";
-	static char *kwlist[] = {"in_dim", "in_nb_ch", "out_dim", "bias", "b_size", "comp_meth", "network_id", "dynamic_load", "mixed_precision", "no_logo", NULL};
+	static char *kwlist[] = {"in_dim", "in_nb_ch", "out_dim", "bias", "b_size", "comp_meth", "network_id", 
+		"dynamic_load", "mixed_precision", "no_logo", "adv_size", NULL};
 	
 	b_size = 10;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oii|disiisi", kwlist, &py_dims, &nb_channels, &out_dim, &bias, &b_size, &comp_meth, &network_id, &dynamic_load, &py_mixed_precision, &no_logo))
-	    return Py_None;
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oii|disiisii", kwlist, &py_dims, &nb_channels, &out_dim, &bias, 
+		&b_size, &comp_meth, &network_id, &dynamic_load, &py_mixed_precision, &no_logo, &adv_size))
+		return Py_None;
 	
 	for(i = 0; i < py_dims->dimensions[0] && i < 3; i++)
 	{
@@ -58,9 +60,9 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	}
 	dims[3] = nb_channels;
 	
-    init_network(network_id, dims, out_dim, bias, b_size, comp_meth, dynamic_load, py_mixed_precision, no_logo);
+	init_network(network_id, dims, out_dim, bias, b_size, comp_meth, dynamic_load, py_mixed_precision, no_logo, adv_size);
 	
-    return Py_None;
+	return Py_None;
 }
 
 
@@ -78,7 +80,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	static char *kwlist[] = {"dataset", "size", "input", "target", "network_id", "silent", NULL};
 
 	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOO|ii", kwlist, &dataset_type, &size, &py_data, &py_target, &network_id, &silent))
-	    return Py_None;
+		return Py_None;
 	
 	Py_BEGIN_ALLOW_THREADS
 	
@@ -379,8 +381,9 @@ static PyObject* py_dense(PyObject* self, PyObject *args, PyObject *kwargs)
 	static char *kwlist[] = {"nb_neurons", "activation", "bias", "prev_layer", "drop_rate", "strict_size", "network", NULL};
 	layer* prev;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "i|sdidii", kwlist, &nb_neurons, &activation, &py_bias, &prev_layer, &drop_rate, &strict_size, &network_id))
-	    return Py_None;
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "i|sdidii", kwlist, &nb_neurons, &activation, &py_bias, 
+		&prev_layer, &drop_rate, &strict_size, &network_id))
+		return Py_None;
 
 	if(prev_layer == -1)
 		prev_layer = networks[network_id]->nb_layers - 1;
@@ -413,16 +416,17 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 	double drop_rate = 0.0, py_bias = 0.0/0.0; //use nan as "non specified value"
 	float *c_bias = NULL;
 	
-	static char *kwlist[] = {"f_size", "nb_filters", "stride", "padding", "int_padding", "activation", "bias", "prev_layer", "input_shape", "drop_rate", "network", NULL};
+	static char *kwlist[] = {"f_size", "nb_filters", "stride", "padding", "int_padding", "activation", "bias", 
+		"prev_layer", "input_shape", "drop_rate", "network", NULL};
 	layer* prev;
 	
 	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|OOOsdiOdi", kwlist, &py_f_size, &nb_filters, &py_stride, &py_padding, 
 		&py_int_padding, &activation, &py_bias, &prev_layer, &py_input_shape, &drop_rate, &network_id))
-	    return Py_None;   
+		return Py_None;   
 	
 	if(prev_layer == -1)
-	    prev_layer = networks[network_id]->nb_layers - 1;
-	    
+		prev_layer = networks[network_id]->nb_layers - 1;
+		
 	if(py_f_size != NULL) //this one should never be null anyway
 		for(i = 0; i < py_f_size->dimensions[0] && i < 3; i++)
 			C_f_size[i]  = *(int *)(py_f_size->data  + i*py_f_size->strides[0]);
@@ -452,7 +456,8 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	conv_create(networks[network_id], prev, C_f_size, nb_filters, C_stride, C_padding, C_int_padding, C_input_shape, activation, c_bias, drop_rate, NULL, 0);
+	conv_create(networks[network_id], prev, C_f_size, nb_filters, C_stride, C_padding, 
+		C_int_padding, C_input_shape, activation, c_bias, drop_rate, NULL, 0);
 	
 	return Py_None;
 }
@@ -461,19 +466,20 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	int i;
-	int prev_layer = -1, network_id = nb_networks-1, C_pool_type = MAX_pool;
+	int prev_layer = -1, network_id = nb_networks-1, global = 0;
 	PyArrayObject *py_pool_size;
 	const char *s_pool_type = "MAX";
 	int C_pool_size[3] = {1,1,1};
 	double drop_rate = 0.0;
-	static char *kwlist[] = {"p_size", "prev_layer", "drop_rate", "p_type", "network", NULL};
+	static char *kwlist[] = {"p_size", "prev_layer", "drop_rate", "p_type", "p_global", "network", NULL};
 	layer* prev;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|Oidsi", kwlist, &py_pool_size, &prev_layer, &drop_rate, &s_pool_type, &network_id))
-	    return Py_None;
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|Oidsii", kwlist, &py_pool_size, &prev_layer, 
+		&drop_rate, &s_pool_type, &global, &network_id))
+		return Py_None;
 	
 	if(prev_layer == -1)
-	    prev_layer = networks[network_id]->nb_layers - 1;
+		prev_layer = networks[network_id]->nb_layers - 1;
 
 	// Set default to 2 for all dim > 1
 	for(i = 0; i < 3; i++)
@@ -483,61 +489,225 @@ static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 	for(i = 0; i < py_pool_size->dimensions[0] && i < 3; i++)
 		C_pool_size[i]  = *(int *)(py_pool_size->data  + i*py_pool_size->strides[0]);
 
-	if(strcmp(s_pool_type, "MAX") == 0)
-		C_pool_type = MAX_pool;
-	else if(strcmp(s_pool_type, "AVG") == 0)
-		C_pool_type = AVG_pool;
-	else
-		C_pool_type = MAX_pool;
 	
 	if(prev_layer < 0)
 		prev = NULL;
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	pool_create(networks[network_id], prev, C_pool_size, C_pool_type, drop_rate);
+	pool_create(networks[network_id], prev, C_pool_size, s_pool_type, global, drop_rate);
 	
 	return Py_None;
 }
 
+
+static PyObject* py_set_frozen_layers(PyObject* self, PyObject *args, PyObject *kwargs)
+{	
+	int i;
+	int network_id = nb_networks-1;
+	PyArrayObject *py_froz_array = NULL;
+	int *c_froz_array = NULL;
+	static char *kwlist[] = {"froz_array", "network",NULL};
+	
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O|i", kwlist, &py_froz_array, &network_id))
+		return Py_None;
+	
+	if(py_froz_array != NULL && py_froz_array->dimensions[0] > 0)
+	{
+		c_froz_array = (int*) calloc(py_froz_array->dimensions[0],sizeof(int));
+		for(i = 0; i < py_froz_array->dimensions[0]; i++)
+			c_froz_array[i] = *(int *)(py_froz_array->data  + i*py_froz_array->strides[0]);
+	
+		set_frozen_layers(networks[network_id], c_froz_array, py_froz_array->dimensions[0]);
+	}
+	
+	return Py_None;
+}
+
+
+static PyObject* py_set_IoU_limits(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	float *IoU_limits_array = NULL;
+	PyObject *py_IoU_limits_array = NULL;
+	float good_IoU_lim = -2.0f, low_IoU_best_box_assoc = -2.0f, min_prob_IoU_lim = -2.0f, min_obj_IoU_lim = -2.0f;
+	float min_class_IoU_lim = -2.0f, min_param_IoU_lim = -2.0f, diff_IoU_lim = -2.0f, diff_obj_lim = -2.0f;
+	npy_intp dims[1];
+	static char *kwlist[] = {"good_IoU_lim", "low_IoU_best_box_assoc", "min_prob_IoU_lim", "min_obj_IoU_lim",
+		"min_class_IoU_lim", "min_param_IoU_lim", "diff_IoU_lim", "diff_obj_lim", NULL};
+	
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|ffffffff", kwlist, 
+		&good_IoU_lim, &low_IoU_best_box_assoc, &min_prob_IoU_lim, &min_obj_IoU_lim,
+		&min_class_IoU_lim, &min_param_IoU_lim, &diff_IoU_lim, &diff_obj_lim))
+		return Py_None;
+	
+	IoU_limits_array = (float*) calloc(8, sizeof(float));
+	
+	IoU_limits_array[0] = good_IoU_lim;
+	IoU_limits_array[1] = low_IoU_best_box_assoc;
+	IoU_limits_array[2] = min_prob_IoU_lim;
+	IoU_limits_array[3] = min_obj_IoU_lim;
+	IoU_limits_array[4] = min_class_IoU_lim;
+	IoU_limits_array[5] = min_param_IoU_lim;
+	IoU_limits_array[6] = diff_IoU_lim;
+	IoU_limits_array[7] = diff_obj_lim;
+	
+	dims[0] = 8;
+	py_IoU_limits_array = PyArray_SimpleNewFromData(1, dims, NPY_FLOAT, (void*)IoU_limits_array);
+	
+	return py_IoU_limits_array;
+}
+
+
+static PyObject* py_set_fit_parts(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	int *fit_parts_array = NULL;
+	PyObject *py_fit_parts_array = NULL;
+	int position = -2, size = -2, probability = -2, objectness = -2, classes = -2, parameters = -2;
+	npy_intp dims[1];
+	static char *kwlist[] = {"position", "size", "probability", "objectness", "classes", "parameters", NULL};
+	
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|iiiiii", kwlist, 
+		&position, &size, &probability, &objectness, &classes, &parameters))
+		return Py_None;
+	
+	fit_parts_array = (int*) calloc(6, sizeof(int));
+	
+	fit_parts_array[0] = position;
+	fit_parts_array[1] = size;
+	fit_parts_array[2] = probability;
+	fit_parts_array[3] = objectness;
+	fit_parts_array[4] = classes;
+	fit_parts_array[5] = parameters;
+
+	
+	dims[0] = 6;
+	py_fit_parts_array = PyArray_SimpleNewFromData(1, dims, NPY_INT, (void*)fit_parts_array);
+	
+	return py_fit_parts_array;
+}
+
+
+static PyObject* py_set_error_scales(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	float *error_scales_array = NULL;
+	PyObject *py_error_scales_array = NULL;
+	float position = -1.0f, size = -1.0f, probability = -1.0f, objectness = -1.0f, classes = -1.0f, parameters = -1.0f;
+	npy_intp dims[1];
+	static char *kwlist[] = {"position", "size", "probability", "objectness", "classes", "parameters", NULL};
+	
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|ffffff", kwlist, 
+		&position, &size, &probability, &objectness, &classes, &parameters))
+		return Py_None;
+	
+	error_scales_array = (float*) calloc(6, sizeof(float));
+	
+	error_scales_array[0] = position;
+	error_scales_array[1] = size;
+	error_scales_array[2] = probability;
+	error_scales_array[3] = objectness;
+	error_scales_array[4] = classes;
+	error_scales_array[5] = parameters;
+
+	
+	dims[0] = 6;
+	py_error_scales_array = PyArray_SimpleNewFromData(1, dims, NPY_FLOAT, (void*)error_scales_array);
+	
+	return py_error_scales_array;
+}
+
+
+static PyObject* py_set_sm_single(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	float *sm_single_array = NULL;
+	PyObject *py_sm_single_array = NULL;
+	float slope = -1.0f, max = 100000.0f, min = -100000.0f;
+	npy_intp dims[1];
+	static char *kwlist[] = {"slope", "fmin", "fmax", NULL};
+	
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|fff", kwlist, &slope, &min, &max))
+		return Py_None;
+	
+	sm_single_array = (float*) calloc(3, sizeof(float));
+	
+	sm_single_array[0] = slope;
+	sm_single_array[1] = max;
+	sm_single_array[2] = min;
+	
+	dims[0] = 3;
+	py_sm_single_array = PyArray_SimpleNewFromData(1, dims, NPY_FLOAT, (void*)sm_single_array);
+	
+	return py_sm_single_array;
+}
+
+
+static PyObject* py_set_slopes_and_maxes(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	int i, j;
+	float *slopes_and_maxes = NULL;
+	PyObject *py_slopes_and_maxes = NULL;
+	PyArrayObject *py_position = NULL, *py_size = NULL, *py_probability = NULL;
+	PyArrayObject *py_objectness = NULL, *py_classes = NULL, *py_parameters = NULL;
+	PyArrayObject *local[6];
+	npy_intp dims[2];
+	static char *kwlist[] = {"position", "size", "probability","objectness", "classes", "parameters", NULL};
+	
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|OOOOOO", kwlist, 
+		&py_position, &py_size, &py_probability, &py_objectness, &py_classes, &py_parameters))
+		return Py_None;
+	
+	slopes_and_maxes = (float*) calloc(6*3, sizeof(float));
+	
+	local[0] = py_position; local[1] = py_size; local[2] = py_probability;
+	local[3] = py_objectness; local[4] = py_classes; local[5] = py_parameters;
+	
+	for(i = 0; i < 6; i++)
+	{
+		if(local[i] != NULL)
+		{
+			for(j = 0; j < 3; j++)
+				slopes_and_maxes[i*3+j] = *((float*)(local[i]->data + j * local[i]->strides[0]));
+		}
+		else
+		{
+			slopes_and_maxes[i*3] = -1.0f; 
+			slopes_and_maxes[i*3+1] = 100000.0f; 
+			slopes_and_maxes[i*3+2] = -100000.0f;
+		}
+	}
+		
+	dims[0] = 6; dims[1] = 3;
+	py_slopes_and_maxes = PyArray_SimpleNewFromData(2, dims, NPY_FLOAT, (void*)slopes_and_maxes);
+	
+	return py_slopes_and_maxes;
+}
+
+
 static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	int i,j;
-	int nb_box = 0, nb_class = 0, nb_param = 0, max_nb_obj_per_image = 0, IoU_type;
-	int strict_box_size_association = 0, fit_dim = 0, rand_startup = -1, network_id = 0;
+	int nb_box = 0, nb_class = 0, nb_param = 0, max_nb_obj_per_image = 0;
+	int strict_box_size_association = 0, fit_dim = 0, rand_startup = -1, network_id = 0, class_softmax = 0, diff_flag = 0;
 	double rand_prob_best_box_assoc = -1.0f, min_prior_forced_scaling = -1.0f;
 	PyArrayObject *py_prior_w = NULL, *py_prior_h = NULL, *py_prior_d = NULL, *py_prior_noobj_prob = NULL;
 	float *C_prior_w = NULL, *C_prior_h = NULL, *C_prior_d = NULL, *C_prior_noobj_prob = NULL;
 	PyArrayObject *py_error_scales = NULL, *py_slopes_and_maxes = NULL, *py_param_ind_scales = NULL, *py_IoU_limits = NULL, *py_fit_parts = NULL;
-	const char* IoU_type_char = "empty";
+	const char *IoU_type_char = "empty", *error_type = "empty";
 	float *error_scales = NULL, **slopes_and_maxes = NULL, *param_ind_scales = NULL, *IoU_limits = NULL;
 	int *fit_parts = NULL;
 	float* temp;
-	static char *kwlist[] = {"nb_box", "nb_class", "nb_param", "max_nb_obj_per_image", "prior_w", "prior_h", "prior_d", "prior_noobj_prob", "error_scales", "slopes_and_maxes", "param_ind_scales", "IoU_limits", "fit_parts", "IoU_type", "strict_box_size", "fit_dim", "rand_startup", "rand_prob_best_box_assoc", "min_prior_forced_scaling", "network", NULL};
+	static char *kwlist[] = {"nb_box", "nb_class", "nb_param", "max_nb_obj_per_image", "prior_w", "prior_h",
+		"prior_d", "prior_noobj_prob", "error_scales", "slopes_and_maxes", "param_ind_scales", "IoU_limits",
+		"fit_parts", "IoU_type", "strict_box_size", "fit_dim", "rand_startup", "rand_prob_best_box_assoc", 
+		"min_prior_forced_scaling", "class_softmax", "diff_flag", "network", "error_type", NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiiiO|OOOOOOOOsiiiddi", kwlist, 
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiiiO|OOOOOOOOsiiiddiiis", kwlist, 
 			&nb_box, &nb_class, &nb_param, &max_nb_obj_per_image, &py_prior_w, &py_prior_h, &py_prior_d, &py_prior_noobj_prob, 
 			&py_error_scales, &py_slopes_and_maxes, &py_param_ind_scales, &py_IoU_limits, &py_fit_parts, 
 			&IoU_type_char, &strict_box_size_association, &fit_dim, &rand_startup, &rand_prob_best_box_assoc,
-			&min_prior_forced_scaling, &network_id))
-	    return PyLong_FromLong(0);
-
+			&min_prior_forced_scaling, &class_softmax, &diff_flag, &network_id, &error_type))
+		return PyLong_FromLong(0);
+	
 	// All default values are defined in activ_functions.c
-	
-	if(strcmp(IoU_type_char, "IoU") == 0)
-		IoU_type = IOU;
-	else if(strcmp(IoU_type_char, "GIoU") == 0)
-		IoU_type = GIOU;
-	else if(strcmp(IoU_type_char, "DIoU") == 0)
-		IoU_type = DIOU;
-	else if(strcmp(IoU_type_char, "DIoU2") == 0)
-		IoU_type = DIOU2;
-	else
-	{
-		printf("Warning: Unrecognized IoU type: %s, fallback to default GIoU\n", IoU_type_char);
-		IoU_type = GIOU;
-	}
-	
 	if(py_prior_w != NULL)
 	{
 		C_prior_w = (float*) calloc(nb_box,sizeof(float));
@@ -584,7 +754,8 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 			slopes_and_maxes[i] = &temp[i*3];
 		for(i = 0; i < 6; i++)
 			for(j = 0; j < 3; j++)
-				slopes_and_maxes[i][j] = *(float *)(py_slopes_and_maxes->data + i*py_slopes_and_maxes->strides[0] + j*py_slopes_and_maxes->strides[1]);
+				slopes_and_maxes[i][j] = *(float *)(py_slopes_and_maxes->data 
+					+ i*py_slopes_and_maxes->strides[0] + j*py_slopes_and_maxes->strides[1]);
 	}
 	
 	if(py_param_ind_scales != NULL)
@@ -596,29 +767,29 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 	
 	if(py_IoU_limits != NULL)
 	{
-		IoU_limits = (float*) calloc(6, sizeof(float));
-		for(i = 0; i < 6; i++)
+		IoU_limits = (float*) calloc(8, sizeof(float));
+		for(i = 0; i < 8; i++)
 			IoU_limits[i] = *(float *)(py_IoU_limits->data + i*py_IoU_limits->strides[0]);
 	}
 	
 	if(py_fit_parts != NULL)
 	{
-		fit_parts = (int*) calloc(5, sizeof(int));
-		for(i = 0; i < 5; i++)
+		fit_parts = (int*) calloc(6, sizeof(int));
+		for(i = 0; i < 6; i++)
 			fit_parts[i] = *(int *)(py_fit_parts->data + i*py_fit_parts->strides[0]);
 	}
 	
 	return PyLong_FromLong(set_yolo_params(networks[network_id], nb_box, nb_class, nb_param, max_nb_obj_per_image, 
-		IoU_type, C_prior_w, C_prior_h, C_prior_d, C_prior_noobj_prob, fit_dim, strict_box_size_association, 
+		IoU_type_char, C_prior_w, C_prior_h, C_prior_d, C_prior_noobj_prob, fit_dim, strict_box_size_association, 
 		rand_startup, rand_prob_best_box_assoc, min_prior_forced_scaling, error_scales, 
-		slopes_and_maxes, param_ind_scales, IoU_limits, fit_parts));
+		slopes_and_maxes, param_ind_scales, IoU_limits, fit_parts, class_softmax, diff_flag, error_type));
 }
 
 static PyObject* perf_eval(PyObject* self, PyObject* args)
 {
 	int network_id = nb_networks - 1;
 	if(!PyArg_ParseTuple(args, "|i", &network_id))
-	    return Py_None;
+		return Py_None;
 
 	perf_eval_display(networks[network_id]);
 	
@@ -628,14 +799,14 @@ static PyObject* perf_eval(PyObject* self, PyObject* args)
 
 static PyObject* py_load_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	char *file = "relative_path_to_the_save_file_location_which_must_be_long_enough";
-	int epoch, network_id = nb_networks-1, f_bin = 0;
-	static char *kwlist[] = {"file", "epoch", "network", "bin", NULL};
+	const char *file = "relative_path_to_the_save_file_location_which_must_be_long_enough";
+	int epoch, network_id = nb_networks-1, nb_layers = -1, f_bin = 0;
+	static char *kwlist[] = {"file", "epoch", "network", "nb_layers", "bin",NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "si|ii", kwlist, &file, &epoch, &network_id, &f_bin))
-	    return Py_None;
-	    
-	load_network(networks[network_id], file, epoch, f_bin);
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "si|iii", kwlist, &file, &epoch, &network_id, &nb_layers, &f_bin))
+		return Py_None;
+		
+	load_network(networks[network_id], file, epoch, nb_layers, f_bin);
 	
 	return Py_None;
 }
@@ -649,23 +820,20 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 	
 	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_every = 0, network_id = nb_networks-1;
 	int shuffle_gpu = 1, shuffle_every = 1, silent = 0, save_bin = 0;
-	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 1.0;
-	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "decay", "confmat", "save_every", "save_bin", "network", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "silent", NULL};
+	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 1.0, py_weight_decay = 0.0;
+	static char *kwlist[] = {"nb_epoch", "learning_rate", "end_learning_rate", "control_interv", "momentum", "lr_decay", 
+		"weight_decay", "confmat", "save_every", "save_bin", "network", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "silent", NULL};
 	
-	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|diddiiiiiidi", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_every, &save_bin, &network_id, &shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &silent))
-	    return Py_None;
-	
-	if(silent == 0)
-		printf("\nNetwork %d training with :\n  nb_epoch: %d, control_interv: %d, save_every: %d, save_bin: %d \n  learning_rate: %g, end_learning_rate: %g , momentum: %0.2f, decay: %g \n  confmat: %d, shuffle_gpu: %d , shuffle_every: %d, TC_scale_factor: %g\n", 
-			network_id, py_nb_epoch, py_control_interv, save_every, save_bin, py_learning_rate, py_end_learning_rate, py_momentum, 
-			py_decay, py_confmat, shuffle_gpu, shuffle_every, py_TC_scale_factor);
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "id|didddiiiiiidi", kwlist, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, 
+		&py_control_interv, &py_momentum, &py_decay, &py_weight_decay, &py_confmat, &save_every, &save_bin, &network_id, 
+		&shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &silent))
+		return Py_None;
 		
 	// GIL MACRO : Allow to serialize C thread with python threads
 	Py_BEGIN_ALLOW_THREADS
 	
-	train_network(networks[network_id], py_nb_epoch, py_control_interv, 
-		py_learning_rate, py_end_learning_rate, py_momentum, py_decay, py_confmat, save_every, save_bin, shuffle_gpu, shuffle_every, py_TC_scale_factor);
+	train_network(networks[network_id], py_nb_epoch, py_control_interv, py_learning_rate, py_end_learning_rate, 
+		py_momentum, py_decay, py_weight_decay, py_confmat, save_every, save_bin, shuffle_gpu, shuffle_every, py_TC_scale_factor, silent);
 		
 	Py_END_ALLOW_THREADS
 
@@ -675,12 +843,12 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 
 static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	int step = -1, repeat = 1, network_id = nb_networks-1, C_drop_mode = AVG_MODEL, no_error = 0, saving = 1;
+	int step = -1, repeat = 1, network_id = nb_networks-1, C_drop_mode = AVG_MODEL, no_error = 0, saving = 1, silent = 0;
 	const char *drop_mode = "AVG_MODEL";
-	static char *kwlist[] = {"step", "repeat", "network_id", "saving", "drop_mode", "no_error", NULL};
+	static char *kwlist[] = {"step", "repeat", "network_id", "saving", "drop_mode", "no_error", "silent", NULL};
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|iiiisi", kwlist, &step, &repeat, &network_id, &saving, &drop_mode, &no_error))
-	    return Py_None;
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|iiiisii", kwlist, &step, &repeat, &network_id, &saving, &drop_mode, &no_error, &silent))
+		return Py_None;
 	
 	if(step == -1)
 		step = networks[network_id]->epoch;
@@ -689,7 +857,7 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 	{
 		C_drop_mode = AVG_MODEL;
 	}
-    else if(strcmp(drop_mode, "MC_MODEL") == 0)
+	else if(strcmp(drop_mode, "MC_MODEL") == 0)
 	{
 		C_drop_mode = MC_MODEL;
 	}
@@ -698,7 +866,7 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 	
 	Py_BEGIN_ALLOW_THREADS
 	
-	forward_testset(networks[network_id], step, saving, repeat, C_drop_mode);
+	forward_testset(networks[network_id], step, saving, repeat, C_drop_mode, silent);
 	
 	Py_END_ALLOW_THREADS
 	
@@ -709,18 +877,21 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 // Experimental function for now, only for development purpose
 static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	
 	int py_nb_epoch, py_control_interv = 1, py_confmat = 0, save_every = 0, gen_id = nb_networks-2, disc_id = nb_networks-1;
 	int shuffle_gpu = 1, shuffle_every = 1, silent = 0, disc_only = 0;
-	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 1.0, py_gen_disc_lr_ratio = 2.0;
-	static char *kwlist[] = {"gen_id", "disc_id", "nb_epoch", "learning_rate", "end_learning_rate", "gen_disc_lr_ratio","control_interv", "momentum", "decay", "confmat", "save_every", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "disc_only", "silent", NULL};
+	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0;
+	double py_TC_scale_factor = 1.0, py_gen_disc_lr_ratio = 2.0;
+	static char *kwlist[] = {"gen_id", "disc_id", "nb_epoch", "learning_rate", "end_learning_rate", "gen_disc_lr_ratio", "control_interv",
+		 "momentum", "decay", "confmat", "save_every", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "disc_only", "silent", NULL};
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiid|ddiddiiiidiu", kwlist, &gen_id, &disc_id, &py_nb_epoch, &py_learning_rate, &py_end_learning_rate, &py_gen_disc_lr_ratio, 
-		&py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_every, &shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &disc_only, &silent))
-	    return Py_None;
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiid|ddiddiiiidiu", kwlist, &gen_id, &disc_id, &py_nb_epoch, &py_learning_rate, 
+		&py_end_learning_rate, &py_gen_disc_lr_ratio, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_every, 
+		&shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &disc_only, &silent))
+		return Py_None;
 	
 	if(silent == 0)
-		printf("py_nb_epoch %d, py_control_interv %d, py_learning_rate %g, py_end_learning_rate %g , py_momentum %0.2f, py_decay %g, py_confmat %d, save_every %d, shuffle_gpu %d , shuffle_every %d, TC_scale_factor %g\n", 
+		printf("py_nb_epoch %d, py_control_interv %d, py_learning_rate %g, py_end_learning_rate %g , py_momentum %0.2f, \
+			py_decay %g, py_confmat %d, save_every %d, shuffle_gpu %d , shuffle_every %d, TC_scale_factor %g\n", 
 			py_nb_epoch, py_control_interv, py_learning_rate, py_end_learning_rate, py_momentum, 
 			py_decay, py_confmat, save_every, shuffle_gpu, shuffle_every, py_TC_scale_factor);
 	
@@ -728,7 +899,7 @@ static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
 	Py_BEGIN_ALLOW_THREADS
 	
 	train_gan(networks[gen_id], networks[disc_id], py_nb_epoch, py_control_interv, py_learning_rate, py_end_learning_rate, 
-		py_momentum, py_decay, py_gen_disc_lr_ratio, save_every, 0, shuffle_gpu, shuffle_every, disc_only, py_TC_scale_factor);
+		py_momentum, py_decay, py_gen_disc_lr_ratio, save_every, 0, shuffle_gpu, shuffle_every, disc_only, py_TC_scale_factor, silent);
 	
 	Py_END_ALLOW_THREADS
 
@@ -741,38 +912,41 @@ static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
 //############################################################
 
 static PyMethodDef CIANNAMethods[] = {
-    { "init", (PyCFunction)py_init_network, METH_VARARGS | METH_KEYWORDS, "Initialize network basic shapes and properties" },
-    { "create_dataset", (PyCFunction)py_create_dataset, METH_VARARGS | METH_KEYWORDS, "Allocate dataset structure" },
-    { "delete_dataset", (PyCFunction)py_delete_dataset, METH_VARARGS | METH_KEYWORDS, "Free dataset structure" },
-    { "swap_data_buffers", py_swap_data_buffers, METH_VARARGS, "Put the selected buffered dataset as current dataset for training"},
-    /*{ "write_formated_dataset", (PyCFunction)py_write_formated_dataset, METH_VARARGS | METH_KEYWORDS, "Write a proper numpy table onto a formated binary dataset file"},*/
-    /*{ "load_formated_dataset", (PyCFunction)py_load_formated_dataset, METH_VARARGS | METH_KEYWORDS, "Read a formated binary dataset file and directly store it into a network dataset"},*/
-    /*{ "set_normalize_factors", (PyCFunction)py_set_normalize_factors, METH_VARARGS | METH_KEYWORDS, "Set normalization factor for transformation on all the datasets subsequently loaded (with formated loading) in the C framework"},*/
-    { "linear", (PyCFunction)py_linear, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to Linear"},
-    { "relu", (PyCFunction)py_relu, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to ReLU"},
-    { "logistic", (PyCFunction)py_logistic, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to Logistic"},
-    { "softmax", (PyCFunction)py_softmax, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to Softmax"},
-    { "yolo", (PyCFunction)py_yolo, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to YOLO"},
-    { "dense", (PyCFunction)py_dense, METH_VARARGS | METH_KEYWORDS, "Add a dense layer to the network" },
-    { "conv",(PyCFunction)py_conv, METH_VARARGS | METH_KEYWORDS, "Add a convolutional layer to the network" },
-    { "set_yolo_params",(PyCFunction)py_set_yolo_params, METH_VARARGS | METH_KEYWORDS, "Set parameters for YOLO output layout" },
-    { "pool",(PyCFunction)py_pool, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },
-    { "perf_eval", perf_eval, METH_VARARGS, "Display each layer time in ms and in percent of the total networj time" },
-    { "load", (PyCFunction)py_load_network, METH_VARARGS | METH_KEYWORDS, "Load a previous network structure pre-trained from a file" },
-    { "train", (PyCFunction)py_train_network, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
-    { "forward", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },
-    #ifdef CUDA
-    { "gan_train", (PyCFunction)py_gan_train, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
-    #endif
-    { NULL, NULL, 0, NULL }
+	{ "init", (PyCFunction)py_init_network, METH_VARARGS | METH_KEYWORDS, "Initialize network basic shapes and properties" },
+	{ "create_dataset", (PyCFunction)py_create_dataset, METH_VARARGS | METH_KEYWORDS, "Allocate dataset structure" },
+	{ "delete_dataset", (PyCFunction)py_delete_dataset, METH_VARARGS | METH_KEYWORDS, "Free dataset structure" },
+	{ "swap_data_buffers", py_swap_data_buffers, METH_VARARGS, "Put the selected buffered dataset as current dataset for training"},
+	{ "linear", (PyCFunction)py_linear, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to Linear"},
+	{ "relu", (PyCFunction)py_relu, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to ReLU"},
+	{ "logistic", (PyCFunction)py_logistic, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to Logistic"},
+	{ "softmax", (PyCFunction)py_softmax, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to Softmax"},
+	{ "yolo", (PyCFunction)py_yolo, METH_VARARGS | METH_KEYWORDS, "Create the string layout corresponding to YOLO"},
+	{ "dense", (PyCFunction)py_dense, METH_VARARGS | METH_KEYWORDS, "Add a dense layer to the network" },
+	{ "conv",(PyCFunction)py_conv, METH_VARARGS | METH_KEYWORDS, "Add a convolutional layer to the network" },
+	{ "pool",(PyCFunction)py_pool, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },
+	{ "set_frozen_layers",(PyCFunction)py_set_frozen_layers, METH_VARARGS | METH_KEYWORDS, "Freeze the selected layers' weights for training" },
+	{ "set_IoU_limits",(PyCFunction)py_set_IoU_limits, METH_VARARGS | METH_KEYWORDS, "Create an array from a list of IoU limits" },
+	{ "set_fit_parts",(PyCFunction)py_set_fit_parts, METH_VARARGS | METH_KEYWORDS, "Create an array from a list of parts of the YOLO loss function" },
+	{ "set_error_scales",(PyCFunction)py_set_error_scales, METH_VARARGS | METH_KEYWORDS, "Create an array from a list of error scaling" },
+	{ "set_sm_single",(PyCFunction)py_set_sm_single, METH_VARARGS | METH_KEYWORDS, "Create an array from slope, min and max parameters for various activations" },
+	{ "set_slopes_and_maxes",(PyCFunction)py_set_slopes_and_maxes, METH_VARARGS | METH_KEYWORDS, "Adjunct or create arrays representing all slopes and maxes" },
+	{ "set_yolo_params",(PyCFunction)py_set_yolo_params, METH_VARARGS | METH_KEYWORDS, "Set parameters for YOLO output layout" },
+	{ "perf_eval", perf_eval, METH_VARARGS, "Display each layer time in ms and in percent of the total networj time" },
+	{ "load", (PyCFunction)py_load_network, METH_VARARGS | METH_KEYWORDS, "Load a previous network structure pre-trained from a file" },
+	{ "train", (PyCFunction)py_train_network, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
+	{ "forward", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },
+	#ifdef CUDA
+	{ "gan_train", (PyCFunction)py_gan_train, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
+	#endif
+	{ NULL, NULL, 0, NULL }
 };
 
 static struct PyModuleDef CIANNA = {
-    PyModuleDef_HEAD_INIT,
-    "CIANNA",
-    "Convolutional Interactive Artificial Neural Network by/for Astrophysicists",
-    -1,
-    CIANNAMethods
+	PyModuleDef_HEAD_INIT,
+	"CIANNA",
+	"Convolutional Interactive Artificial Neural Networks by/for Astrophysicists",
+	-1,
+	CIANNAMethods
 };
 
 
@@ -782,440 +956,16 @@ PyMODINIT_FUNC PyInit_CIANNA(void)
 	import_array();
 	
 	printf("###################################################################\n\
-Importing CIANNA Python module V-p.0.6.3 , by D.Cornu\n\
+Importing CIANNA Python module V-p.0.6.4 , by D.Cornu\n\
 ###################################################################\n\n");
 
 	PyObject *m;
-    m = PyModule_Create(&CIANNA);
-    if (m == NULL)
-        return NULL;
+	m = PyModule_Create(&CIANNA);
+	if (m == NULL)
+		return NULL;
 	
-    return m;
+	return m;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-// Outdated (non functional anymore) formated dataset approach. Kept for possible futur re-integration.
-// Should be replaced by the new dynamic loading capabilities of create/swap/delete dataset functions 
-/*
-static PyObject* py_write_formated_dataset(PyObject* self, PyObject *args, PyObject *kwargs)
-{
-	int i, j, k, l, m;
-	const char *filename;
-	const char *input_data_type, *output_data_type;
-	int input_data_type_C = c_FP32, output_data_type_C = c_FP32;
-	PyArrayObject *py_data = NULL, *py_target = NULL;
-	int size, flat = 0;
-	int network_id = nb_networks-1;
-	int datasize;
-	int silent_mode = 0;
-	static char *kwlist[] = {"filename", "size", "input", "input_dtype", "target", "output_dtype", "flat", "network_id", "silent", NULL};
-
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOsOs|iii", kwlist, &filename, &size, &py_data, &input_data_type, &py_target, &output_data_type, &flat, &network_id, &silent_mode))
-	    return Py_None;
-	
-	if(py_data == NULL || py_target == NULL)
-	{
-		printf("ERROR : non recognized numpy array in write formated dataset \n");
-		exit(EXIT_FAILURE);
-	}
-	
-	if(strcmp(input_data_type,"UINT8") == 0)
-		input_data_type_C = c_UINT8;
-	else if(strcmp(input_data_type,"UINT16") == 0)
-		input_data_type_C = c_UINT16;
-	else if(strcmp(input_data_type,"FP32") == 0)
-		input_data_type_C = c_FP32;
-	else
-	{
-		printf("ERROR : Unsuported datatype %s\n", input_data_type);
-		exit(EXIT_FAILURE);
-	}
-	
-	if(silent_mode == 0)
-	{
-		printf("Saving formated file: %s\n", filename);
-	}
-	
-	FILE *f = NULL;
-	f = fopen(filename, "wb");
-	
-	fwrite(&size, sizeof(int), 1, f);
-	fwrite(&networks[network_id]->input_width, sizeof(int), 1, f);
-	fwrite(&networks[network_id]->input_height, sizeof(int), 1, f);
-	fwrite(&networks[network_id]->input_depth, sizeof(int), 1, f);
-	fwrite(&networks[network_id]->output_dim, sizeof(int), 1, f);
-	
-	// As for the C function, this one could probably be strongly simplified to avoid repetition
-	switch(input_data_type_C)
-	{
-		case c_UINT8:
-		{
-			unsigned char *temp_input;
-			datasize = sizeof(unsigned char);
-			temp_input = (unsigned char *) calloc(networks[network_id]->input_dim, datasize);
-			
-			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
-			{
-				for(j = 0; j < networks[network_id]->batch_size; j++)
-				{
-					if(i*networks[network_id]->batch_size + j >= size)
-						continue;
-					for(k = 0; k < networks[network_id]->input_depth; k++)
-					{
-						for(l = 0; l < networks[network_id]->input_height; l++)
-							for(m = 0; m < networks[network_id]->input_width; m++)
-							{
-								if(!flat)
-		temp_input[k * networks[network_id]->input_height 
-			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
-			= (unsigned char) *(float*)(py_data->data + (i*networks[network_id]->batch_size 
-			* networks[network_id]->input_depth*networks[network_id]->input_height 
-			+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
-			+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
-								else
-		temp_input[k * networks[network_id]->input_height
-			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
-			= (unsigned char) *(float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
-			* py_data->strides[0] + (k*networks[network_id]->input_height 
-			* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
-			* py_data->strides[1]);	
-							}
-					}
-					fwrite(temp_input, datasize, networks[network_id]->input_dim, f);
-				}
-			}
-			free(temp_input);
-			break;
-		}
-			
-		case c_UINT16:
-		{
-			unsigned short *temp_input;
-			datasize = sizeof(unsigned short);
-			temp_input = (unsigned short *) calloc(networks[network_id]->input_dim, datasize);
-			
-			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
-			{
-				for(j = 0; j < networks[network_id]->batch_size; j++)
-				{
-					if(i*networks[network_id]->batch_size + j >= size)
-						continue;
-					for(k = 0; k < networks[network_id]->input_depth; k++)
-					{
-						for(l = 0; l < networks[network_id]->input_height; l++)
-							for(m = 0; m < networks[network_id]->input_width; m++)
-							{
-								if(!flat)
-		temp_input[k * networks[network_id]->input_height 
-			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
-			= (unsigned short) *(float*)(py_data->data + (i*networks[network_id]->batch_size 
-			* networks[network_id]->input_depth*networks[network_id]->input_height 
-			+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
-			+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
-								else
-		temp_input[k * networks[network_id]->input_height
-			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
-			= (unsigned short) *(float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
-			* py_data->strides[0] + (k*networks[network_id]->input_height 
-			* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
-			* py_data->strides[1]);	
-							}
-					}
-					fwrite(temp_input, datasize, networks[network_id]->input_dim, f);
-				}
-			}
-			free(temp_input);
-			break;
-		}
-		case c_FP32:
-		default:
-		{
-			float *temp_input;
-			datasize = sizeof(float);
-			temp_input = (float *) calloc(networks[network_id]->input_dim, datasize);
-			
-			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
-			{
-				for(j = 0; j < networks[network_id]->batch_size; j++)
-				{
-					if(i*networks[network_id]->batch_size + j >= size)
-						continue;
-					for(k = 0; k < networks[network_id]->input_depth; k++)
-					{
-						for(l = 0; l < networks[network_id]->input_height; l++)
-							for(m = 0; m < networks[network_id]->input_width; m++)
-							{
-								if(!flat)
-		temp_input[k * networks[network_id]->input_height 
-			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
-			= *(float*)(py_data->data + (i*networks[network_id]->batch_size 
-			* networks[network_id]->input_depth*networks[network_id]->input_height 
-			+ j*networks[network_id]->input_depth*networks[network_id]->input_height 
-			+ k*networks[network_id]->input_height + l)*py_data->strides[0] + m*py_data->strides[1]);
-								else
-		temp_input[k * networks[network_id]->input_height
-			* networks[network_id]->input_width + l * networks[network_id]->input_width + m]
-			= *(float*)(py_data->data + (i * networks[network_id]->batch_size + j) 
-			* py_data->strides[0] + (k*networks[network_id]->input_height 
-			* networks[network_id]->input_width + l * networks[network_id]->input_width + m) 
-			* py_data->strides[1]);	
-							}
-					}
-					fwrite(temp_input, datasize, networks[network_id]->input_dim, f);
-				}
-			}
-			free(temp_input);
-			break;
-		}
-	}
-	
-	if(strcmp(output_data_type,"UINT8") == 0)
-		output_data_type_C = c_UINT8;
-	else if(strcmp(output_data_type,"UINT16") == 0)
-		output_data_type_C = c_UINT16;
-	else if(strcmp(output_data_type,"FP32") == 0)
-		output_data_type_C = c_FP32;
-	else
-	{
-		printf("ERROR : Unsuported datatype %s\n", output_data_type);
-		exit(EXIT_FAILURE);
-	}
-	
-	switch(output_data_type_C)
-	{
-		case c_UINT8:
-		{
-			unsigned char *temp_output;
-			datasize = sizeof(unsigned char);
-			temp_output = (unsigned char *) calloc(networks[network_id]->output_dim, datasize);
-			
-			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
-				for(j = 0; j < networks[network_id]->batch_size; j++)
-				{
-					if(i*networks[network_id]->batch_size + j >= size)
-						continue;
-					for(k = 0; k < networks[network_id]->output_dim; k++)
-						temp_output[k]
-						= (unsigned char) *(float*)(py_target->data + i * (networks[network_id]->batch_size 
-						* py_target->strides[0]) + j * py_target->strides[0] + k 
-						* py_target->strides[1]);
-					fwrite(temp_output, datasize, networks[network_id]->output_dim, f);
-				}
-			free(temp_output);
-			break;
-		}
-			
-		case c_UINT16:
-		{
-			unsigned short *temp_output;
-			datasize = sizeof(unsigned short);
-			temp_output = (unsigned short *) calloc(networks[network_id]->output_dim, datasize);
-			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
-				for(j = 0; j < networks[network_id]->batch_size; j++)
-				{
-					if(i*networks[network_id]->batch_size + j >= size)
-						continue;
-					for(k = 0; k < networks[network_id]->output_dim; k++)
-						temp_output[k]
-						= (unsigned short) *(float*)(py_target->data + i * (networks[network_id]->batch_size 
-						* py_target->strides[0]) + j * py_target->strides[0] + k 
-						* py_target->strides[1]);
-					fwrite(temp_output, datasize, networks[network_id]->output_dim, f);
-				}
-			free(temp_output);
-			break;
-		}
-			
-		case c_FP32:
-		default:
-		{
-			float *temp_output;
-			datasize = sizeof(float);
-			temp_output = (float *) calloc(networks[network_id]->output_dim, datasize);
-			for(i = 0; i < (size - 1) / networks[network_id]->batch_size + 1; i++)
-				for(j = 0; j < networks[network_id]->batch_size; j++)
-				{
-					if(i*networks[network_id]->batch_size + j >= size)
-						continue;
-					for(k = 0; k < networks[network_id]->output_dim; k++)
-						temp_output[k]
-						= *(float*)(py_target->data + i * (networks[network_id]->batch_size 
-						* py_target->strides[0]) + j * py_target->strides[0] + k 
-						* py_target->strides[1]);
-					fwrite(temp_output, datasize, networks[network_id]->output_dim, f);
-				}
-			free(temp_output);
-			break;
-		}
-	}
-	
-	fclose(f);
-	
-	return Py_None;
-}
-*/
-
-/*
-static PyObject* py_load_formated_dataset(PyObject* self, PyObject *args, PyObject *kwargs)
-{
-	Dataset data;
-	const char *dataset_type;
-	const char *filename;
-	const char *input_data_type, *output_data_type;
-	int input_data_type_C = c_FP32, output_data_type_C = c_FP32;
-	int network_id = nb_networks-1, silent = 0;
-	static char *kwlist[] = {"dataset", "filename", "input_dtype", "output_dtype", "network_id", "silent", NULL};
-
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "ssss|ii", kwlist, &dataset_type, &filename, &input_data_type, &output_data_type, &network_id, &silent))
-	    return Py_None;
-	
-	if(strcmp(input_data_type,"UINT8") == 0)
-		input_data_type_C = c_UINT8;
-	else if(strcmp(input_data_type,"UINT16") == 0)
-		input_data_type_C = c_UINT16;
-	else if(strcmp(input_data_type,"FP32") == 0)
-		input_data_type_C = c_FP32;
-	else
-	{
-		printf("ERROR : Unsuported datatype %s\n", input_data_type);
-		exit(EXIT_FAILURE);
-	}
-	
-	
-	if(strcmp(output_data_type,"UINT8") == 0)
-		output_data_type_C = c_UINT8;
-	else if(strcmp(output_data_type,"UINT16") == 0)
-		output_data_type_C = c_UINT16;
-	else if(strcmp(output_data_type,"FP32") == 0)
-		output_data_type_C = c_FP32;
-	else
-	{
-		printf("ERROR : Unsuported datatype %s\n", output_data_type);
-		exit(EXIT_FAILURE);
-	}
-	
-	if(silent == 0)
-		printf("Loading dataset from file %s ...",filename);
-	
-	struct timeval time;
-	
-	init_timing(&time);
-	data = load_formated_dataset(networks[network_id], filename, input_data_type_C, output_data_type_C);
-	if(silent == 0)
-		printf("Time load %f\n",ellapsed_time(time));
-	init_timing(&time);
-	normalize_dataset(networks[network_id], data);
-	if(silent == 0)
-		printf("Time normalise %f\n",ellapsed_time(time));
-	
-	if(networks[network_id]->compute_method == C_CUDA)
-	{
-		#ifdef CUDA
-		if(networks[network_id]->cu_inst.dynamic_load == 0)
-			cuda_convert_dataset(networks[network_id], &data);
-		#endif
-	}
-	//else if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->dynamic_load == 1 
-	//				&& networks[network_id]->use_cuda_TC)
-	//	cuda_convert_host_dataset_FP32(networks[network_id], &data);
-	
-	if(strcmp(dataset_type,"TRAIN") == 0)
-	{
-		//printf("Training set loaded\n");
-		networks[network_id]->train = data;
-	}
-	else if(strcmp(dataset_type,"VALID") == 0)
-	{
-		//printf("Valid set loaded\n");
-		networks[network_id]->valid = data;
-	}
-	else if(strcmp(dataset_type,"TEST") == 0)
-	{
-		//printf("Testing test loaded\n");
-		networks[network_id]->test = data;
-	}
-	else if(strcmp(dataset_type,"TRAIN_buf") == 0)
-	{
-		//printf("Testing test loaded\n");
-		networks[network_id]->train_buf = data;
-	}
-	else if(strcmp(dataset_type,"VALID_buf") == 0)
-	{
-		//printf("Testing test loaded\n");
-		networks[network_id]->valid_buf = data;
-	}
-	else if(strcmp(dataset_type,"TEST_buf") == 0)
-	{
-		//printf("Testing test loaded\n");
-		networks[network_id]->test_buf = data;
-	}
-	
-	if(silent == 0)
-		printf(" Done!\n");
-		
-	return Py_None;
-}
-*/
-
-
-/*
-static PyObject* py_set_normalize_factors(PyObject* self, PyObject *args, PyObject *kwargs)
-{
-	PyArrayObject *offset_input, *norm_input, *offset_output, *norm_output;
-	float *c_offset_input, *c_norm_input, *c_offset_output, *c_norm_output;
-	int dim_size_input, dim_size_output;
-	int network_id = nb_networks-1;
-	static char *kwlist[] = {"offset_in", "norm_in", "dim_in", "offset_out", "norm_out", "dim_out", "network_id", NULL};
-	int i;
-
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "OOiOOi|i", kwlist, &offset_input, &norm_input, &dim_size_input, &offset_output, &norm_output, &dim_size_output, &network_id))
-		return Py_None;
-		
-	if(networks[network_id]->input_dim != dim_size_input*offset_input->dimensions[0])
-	{
-		printf("ERROR : Input dimensions do not match dataset to normalize ...\n");
-		exit(EXIT_FAILURE);
-	}
-	
-	if(networks[network_id]->output_dim != dim_size_output*offset_output->dimensions[0])
-	{
-		printf("ERROR : Input dimensions do not match dataset to normalize ...\n");
-		exit(EXIT_FAILURE);
-	}
-	
-	c_offset_input = (float*) calloc(offset_input->dimensions[0], sizeof(float));
-	c_norm_input = (float*) calloc(norm_input->dimensions[0], sizeof(float));
-	c_offset_output = (float*) calloc(offset_output->dimensions[0], sizeof(float));
-	c_norm_output = (float*) calloc(norm_output->dimensions[0], sizeof(float));
-	
-	for(i = 0; i < offset_input->dimensions[0]; i++)
-		c_offset_input[i] = *(float *)(offset_input->data + i*offset_input->strides[0]);
-	for(i = 0; i < norm_input->dimensions[0]; i++)
-		c_norm_input[i] = *(float *)(norm_input->data + i*norm_input->strides[0]);
-	for(i = 0; i < offset_output->dimensions[0]; i++)
-		c_offset_output[i] = *(float *)(offset_output->data + i*offset_output->strides[0]);
-	for(i = 0; i < norm_output->dimensions[0]; i++)
-		c_norm_output[i] = *(float *)(norm_output->data + i*norm_output->strides[0]);
-	
-	printf("%f %f %f %f\n", c_offset_input[0], c_norm_input[0], c_offset_output[0], c_norm_output[0]);
-	
-	set_normalize_dataset_parameters(networks[network_id], c_offset_input, c_norm_input, dim_size_input,
-		c_offset_output, c_norm_output, dim_size_output);
-	
-	return Py_None;
-}
-*/
-
 
 
 

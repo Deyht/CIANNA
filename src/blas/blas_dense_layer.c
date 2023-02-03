@@ -92,7 +92,7 @@ void blas_forward_dense_layer(layer *current)
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
 		prev_drop_rate = current->previous->dropout_rate;
-		w_alpha = (1.0f/(1.0f + prev_drop_rate));
+		w_alpha = ((d_param->in_size-1)*(1.0f-prev_drop_rate)+1)/d_param->in_size;
 	}
 	else
 	{
@@ -177,7 +177,7 @@ void blas_backward_dense_layer(layer* current)
 			d_param->nb_neurons+1, ref_input, d_param->in_size, current->c_network->momentum,
 			d_param->update, d_param->nb_neurons+1);
 		
-		update_weights(d_param->weights, d_param->update, d_param->in_size*(d_param->nb_neurons+1));
+		update_weights(d_param->weights, d_param->update, net->learning_rate*net->weight_decay, d_param->in_size*(d_param->nb_neurons+1));
 	}
 }
 

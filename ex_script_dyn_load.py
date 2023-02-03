@@ -109,7 +109,7 @@ cnn.create_dataset("TEST", size=10000, input=data_test, target=target_test)
 #Used to load a saved network at a given epoch
 load_step = 0
 if(load_step > 0):
-	cnn.load_network("net_save/net0_s%04d.dat"%(load_step), load_step)
+	cnn.load("net_save/net0_s%04d.dat"%(load_step), load_step)
 else:
 	cnn.conv(f_size=i_ar([5,5]), nb_filters=8, padding=i_ar([2,2]), activation="RELU")
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
@@ -125,7 +125,7 @@ for k in range(0,40):
 	t = Thread(target=data_augm)
 	t.start()
 	
-	cnn.train(nb_epoch=1, learning_rate=0.0004, momentum=0.9, control_interv=10 , confmat=1, shuffle_every=0, save_every=0, silent=1)
+	cnn.train(nb_epoch=1, learning_rate=0.0004, momentum=0.9, control_interv=10 , confmat=1, shuffle_every=0, save_every=0, silent=0)
 	
 	t.join()
 		

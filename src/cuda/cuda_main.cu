@@ -104,7 +104,7 @@ void cuda_create_host_table(network* net, void **tab, int size)
 }
 
 #define cuda_convert_table_fct(name, type)																			\
-size_t cuda_convert_table_##name(void **tab, size_t size)															\
+size_t cuda_convert_table_##name(void **tab, size_t size, int keep_host)											\
 {																													\
 	void* temp_tab;																									\
 	size_t l_vram = 0;																								\
@@ -124,17 +124,18 @@ size_t cuda_convert_table_##name(void **tab, size_t size)															\
 	cudaMalloc(tab, size*sizeof(type));																				\
 	l_vram += size*sizeof(type);																					\
 	cudaMemcpy(*tab, temp_aux, size*sizeof(type),cudaMemcpyHostToDevice);											\
-	free(temp_aux);																									\
+	if(keep_host == 0)																								\
+		free(temp_aux);																								\
 																													\
 	return l_vram;																									\
 }
 
-size_t cuda_convert_table(network* net, void **tab, size_t size)
+size_t cuda_convert_table(network* net, void **tab, size_t size, int keep_host)
 {	
-	return net->cu_inst.cu_auxil_fcts.cu_convert_table_fct(tab, size);
+	return net->cu_inst.cu_auxil_fcts.cu_convert_table_fct(tab, size, keep_host);
 }
 
-size_t cuda_convert_table_int(int **tab, int size)
+size_t cuda_convert_table_int(int **tab, int size, int keep_host)
 {
 	int* temp_tab;
 	size_t l_vram = 0;
@@ -144,7 +145,8 @@ size_t cuda_convert_table_int(int **tab, int size)
 	cudaMalloc(tab, size*sizeof(int));
 	cudaMemcpy(*tab, temp_tab, size*sizeof(int),cudaMemcpyHostToDevice);
 	l_vram += size*sizeof(int);
-	free(temp_tab);
+	if(keep_host == 0)
+		free(temp_tab);
 	
 	return l_vram;
 }
@@ -218,7 +220,7 @@ void cuda_get_table(network* net, void *cuda_table, void *table, int size)
 #define cuda_put_table_fct(name, type)																				\
 void cuda_put_table_##name(void *cuda_table, void *table, int size)													\
 {																													\
-	cudaMemcpy(cuda_table, table, size*sizeof(type), cudaMemcpyHostToDevice);										\
+	cudaMemcpy((type*)cuda_table, (type*)table, size*sizeof(type), cudaMemcpyHostToDevice);							\
 }
 
 void cuda_put_table(network* net, void *cuda_table, void *table, int size)
@@ -423,20 +425,25 @@ void cuda_master_weight_copy(network* net, float *master, void *copy, int size)
 
 
 #define cuda_update_weights_kernel(name, type)																		\
-__global__ void cuda_update_weights_##name(float *weights, void* update, int size, float TC_scale_factor)			\
+__global__ void cuda_update_weights_##name(float *weights, void* update, 											\
+	float weight_decay, int size, float TC_scale_factor)															\
 {																													\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
+	type *c_update = ((type*)update);																				\
 																													\
 	if(i < size)																									\
-		weights[i] -= (float) ((type*)update)[i] / (TC_scale_factor);												\
+	{	/*Here the weight_decay variable include the learning rate scaling*/										\
+		c_update[i] -= weight_decay*weights[i];																		\
+		weights[i] -= ((float)c_update[i] / TC_scale_factor);														\
+	}																												\
 }
 
 
-void cuda_update_weights(network* net, void *weights, void* update, int size)
+void cuda_update_weights(network* net, void *weights, void* update, float weight_decay, int size)
 {
 	cu_blocks = (size + cu_threads - 1) / cu_threads;
 	net->cu_inst.cu_auxil_fcts.cu_update_weights_kernel<<< cu_blocks, cu_threads >>>
-		((float*)weights, update, size, TC_scale_factor);
+		((float*)weights, update, weight_decay, size, TC_scale_factor);
 }
 
 //Could be updated to follow new template construction if needed
@@ -773,6 +780,7 @@ void cuda_host_only_shuffle_##name(network *net, Dataset data)														\
 	int i, j, k;																									\
 	type temp;																										\
 	int pos, pos2, batch, batch2;																					\
+	type **c_input, **c_target;																						\
 																													\
 	for(i = 0; i < data.size - 1; i++)																				\
 	{																												\
@@ -782,20 +790,23 @@ void cuda_host_only_shuffle_##name(network *net, Dataset data)														\
 		pos2 = j%net->batch_size;																					\
 		batch2 = j/net->batch_size;																					\
 																													\
+		c_input = (type**)data.input;																				\
+		c_target = (type**)data.target;																				\
+																													\
 		for(k = 0; k < net->input_dim+1; k++)																		\
 		{																											\
-			temp = ((type**)data.input)[batch][pos*(net->input_dim + 1) + k];										\
-			((type**)data.input)[batch][pos*(net->input_dim + 1) + k] = 											\
-				((type**)data.input)[batch2][pos2*(net->input_dim + 1) + k];										\
-			((type**)data.input)[batch2][pos2*(net->input_dim + 1) + k] = temp;										\
+			temp = ((type*)c_input[batch])[pos*(net->input_dim + 1) + k];											\
+			((type*)c_input[batch])[pos*(net->input_dim + 1) + k] = 												\
+				((type*)c_input[batch2])[pos2*(net->input_dim + 1) + k];											\
+			((type*)c_input[batch2])[pos2*(net->input_dim + 1) + k] = temp;											\
 		}																											\
 																													\
 		for(k = 0; k < net->output_dim; k++)																		\
 		{																											\
-			temp = ((type**)data.target)[batch][pos*net->output_dim + k];											\
-			((type**)data.target)[batch][pos*net->output_dim + k] = 												\
-				((type**)data.target)[batch2][pos2*net->output_dim + k];											\
-			((type**)data.target)[batch2][pos2*net->output_dim + k] = temp;											\
+			temp = ((type*)c_target[batch])[pos*net->output_dim + k];												\
+			((type*)c_target[batch])[pos*net->output_dim + k] = 													\
+				((type*)c_target[batch2])[pos2*net->output_dim + k];												\
+			((type*)c_target[batch2])[pos2*net->output_dim + k] = temp;												\
 		}																											\
 	}																												\
 }

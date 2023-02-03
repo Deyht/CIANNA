@@ -1,3 +1,72 @@
+===== V-0.9.3.2 =====
+ (interface V-0.6.4)
+
+/!\ Break compatibility with previous save formats, interface keywords, and MC-drop prediction format /!\
+
+====    Interface related    ====
+
+- Add a silent option to forward and modify the option on dataset handling to allow true no-output prediction
+  (useful for real-time predictions, e.g, camera feed)
+- Add two new compact "confmat" display: confmat = 2, with only Precision / Recall and global accuracy displayed
+  confmat = 3, with only global accuracy. (Can be useful to reduce output footprint when working with many classes).
+- Add a new "adv_size" keyword in init_network that defines the size of the progress bar display.
+  (useful to reduce output width footprint for small display or to allow smaller terminal width)
+- Add a "nb_layers" keyword in cnn load to get only the first N layers of a saved network (e.g if used on a pre-training task).
+  New layers can be added after the ones that have been loaded to fit the new task.
+- Add a "class_softmax" keyword in the "set_yolo_params" function (more information in low level)
+- Modify the monitoring output of YOLO => now display the mean IoU for all targets, the mean Probability for all targets, 
+  and the proportion of targets that have a prediction above "goog_IoU_lim".
+- Relax the input size check when loading a saved network. This helps change input resolution for translational equivariant networks.
+- Add a "global" keyword for pool_create following low-level modification (ignore set filter size, but the parameter is still mandatory).
+- Add a weight_decay keyword in the train network function. Change the previous "decay" keyword to "lr_decay" to prevent confusion.
+- Add a set_frozen_layers function in both interfaces. It takes as an argument an integer array to specify which layers should be frozen.
+  Frozen layers will not update their weights during training. The frozen status where already included in the low-level layer code
+  for GAN but was not accessible in the high-level interface before. This status can now be updated manually at any time.
+- Add new interface functions that allow constructing the several required configuration arrays for YOLO setup. These functions help
+  generate the properly formatted array from a more explicit list of keywords, with better handling of default values if a keyword is
+  not specified. e.g "set_error_scales", "fit_parts", "set_IoU_lims", "set_slopes_and_maxes", "set_sm_single".
+- Add a new YOLO keyword that specifies the use of the "difficult" flag (see low-level)
+- Add a new YOLO keyword that controls the type of error display (see low-level)
+
+
+==== Low-level modifications ====
+
+- /!\ Fix an error in YOLO error and deriv that could contaminate association tables between subsequent batches.
+  Prediction output was not directly affected, but the association process was corrupted during training, impacting the compute of the error gradient.
+  This bug might have impacted the predictive performance of YOLO networks trained on older versions.
+- Validated with the latest CUDA 12.0 (no significant performance difference observed atm with the current version)
+- Fix a global keyword error that was preventing the proper compilation of non-CUDA compute methods when not compiling the CUDA compute method.
+- Small adjustment to default activation limits (better support for FP16).
+- Add the possibility not to fit the position in the YOLO loss (in addition to all other fit_parts options).
+- Fix an error in the computation of dropout weight scaling for dense layers and ensure consistency between all compute methods
+- Add support for Softmax / Cross Entropy activation and loss for YOLO classification. Add a "class_softmax" parameter to
+  the YOLO initialization function to "opt-in", the default remains logistic / MSE activation and loss for the moment.
+- Add an experimental "joint classification and detection" option for the YOLO layer. Relatively simple at the moment: any target image with nb_box
+  set to -1 will consider that the provided box (still has to be defined by the user in the target vector) can only be predicted with an IoU equivalent
+  to good_IoU_lim, also update the class and parameters but not positions and sizes.
+- Add a "GLOBAL" variant for pooling layers. The filter size is automatically set to the whole spatial dimension of the previous layer.
+  Also relax some constraints for pooling layers construction (e.g. now allowed as the first layer). Also moved the type "char" interpretation to the C code.
+- Add weight decay in all the versions of weight updates. The amount of weight decay is specified as a parameter in the train_network function (default 0).
+  In practice, the weight decay is scaled by the learning_rate and added to the weight update quantity before its application, so it is included in the momentum.
+- /!\ Change the MC-dropout prediction scheme. Previously all batches in the dataset were fully forwarded, and this process was repeated for the 
+  specified number of repetitions. Now the first layer that presents dropout is flagged, and each batch is forwarded only once before that layer, and the forward
+  repetition is only done after this layer. This helps reduce the total amount of computation and data movements and strongly improves prediction speed for network
+  architectures where only the last few layers have dropout. The output layout is changed to follow the new ordering. The disadvantages are that the batch_size used
+  for inference has to be known to reshape the output; and that the average loss is now computed as an average over all prediction repetitions 
+  (same for other averaged monitor quantities).
+- Add a new optional "difficult" flag to the target of object detection with YOLO. This flag allows to specify that some objects are difficult for a variety of reasons 
+  (apparent size, occlusion, small apparent fraction, ...). During the training process, objects with this flag will be updated through positive reinforcement only. 
+  This behavior is controlled by two new hyper-parameters in "IoU_limits": a diff_IoU_lim, which corresponds to a minimum IoU between prediction and target; 
+  and a diff_obj_lim, which corresponds to a minimum predicted objecteness. Difficult objects still act as targets for the "Good but not best" association but 
+  can be locked as a complete target only if the predictions respect the two IoU and objectness conditions.
+- Change the YOLO error computation for display (/!\ does not affect error gradient computation). It now supports two modes: "Complete": which mimics all non-random aspects
+  of the association process used for the gradient computation. "Natural": which ignores most of the association tricks to display a more continuous error evolution during training.
+  The idea behind this choice is that the use of several association tricks like: the strict box size association, the low IoU best bow association, the handling of 
+  "difficult" objects, all the cascading loss limits, ... ; it can result in an apparent increase in predicted output error because the network is progressively trying to 
+  fit more (and more difficult) objects over time. To avoid possible confusion between this type of complex loss behavior and a classical overtraining, the "natural"
+  error display mode allows to deactivate all the association tricks for error display, effectively computing error on a fixed number of targets 
+  (atm difficult objects do not result in a match for "natural" display but still count for good but not best association).
+  
 
 ********************************************
 ===== V-0.9.3.1 =====
@@ -10,39 +79,39 @@
 - Fix the B.perf display for the last batch for cases where data.size % batch_size != 0.
 - Add display of previously missing hyper-parameters for YOLO.
 - Moved some remaining default hyper-parameters setting from the Python interface to the C backend.
-  This allow more consistency and fine control, and also ease the use of the direct C interface if required.
+  This allows more consistency and fine control, and also ease the use of the direct C interface if required.
 
-==== Low level modifications ====
+==== Low-level modifications ====
 
 - Tested support for the new Nvidia Ada Lovelace architecture, working great on Ubuntu 20.04 with CUDA 11.8 and driver 520.
-- Fix an activation error for ReLU, all comp_meth (no impact on results, but remove possible out of bound access).
+- Fix an activation error for ReLU, all comp_meth (no impact on results, but remove possible out-of-bound access).
 - Fix an error introduced in V-0.9.3.0 on the transfer of YOLO parameters "all IoU limits" to the GPU memory, 
   which was causing the crash of any network with nb_param > 0.
 - Modify the YOLO association process introduced in V-9.3.0 to correct a condition-specific error with CUDA comp_method.
-  The error was occurring when the size of nb_box x max_nb_obj_per_image was too large. In the previous version, a vector of this size
-  was allocated in each CUDA thread local memory, which is too small for this in some cases. The present correction rework the association
-  so it preserves the search for "Good but not best" for all target boxes, but then search for best IoU and prior distances only on
-  the target present in the current grid element. Also update the CPU version to preserve consistency between compute methods.
+  The error was occurring when the size of nb_box x max_nb_obj_per_image was too large. In the previous version, a vector of this size was allocated 
+  in each CUDA thread local memory, which is too small for this in some cases. The present correction reworks the association, so it preserves
+  the search for "Good but not best" for all target boxes, but then search for best IoU and prior distances only on the target present in the current grid element.
+  Also update the CPU version to preserve consistency between compute methods.
 - In addition to the previous point, all dynamically allocated arrays inside YOLO-specific kernels have been moved to global GPU memory.
-  This change do not affect the results but strongly improve the compute performance of the YOLO layer and remove all possibility of 
+  This change does not affect the results but strongly improves the compute performance of the YOLO layer and removes all possibility of 
   exceeding the CUDA thread local memory through specific network configuration.
-- Instead of using a single definition of DIoU there is now two : "DIoU" to use the direct distance ratio
+- Instead of using a single definition of DIoU there are now two: "DIoU" to use the direct distance ratio
   and "DIoU2" to use the squared distance ratio (which is the classical definition).
 - Small refinement of the association process for cases with multiple identical priors: 
- 	+ In the case of "best theoretical prior association": the process now search for the best theoretical prior but if it 
+ 	+ In the case of "best theoretical prior association": the process now searches for the best theoretical prior, but if it 
  	  corresponds to several identical priors it will select the one for which the prediction has the best IoU with the target 
  	  (still excluding priors already associated to a previous target).
 	+ In the case of "smallest prior" association, the smallest prior is now searched (and not assumed to be the first one) and
-	  if there is multiple occurrence of this prior it will select the one for which the prediction has the best IoU with the target.
-  Note: All these refinement do not change the fact that the "next target" to process is selected in order of best IoU with available boxes
+	  if there are multiple occurrences of this prior, it will select the one for which the prediction has the best IoU with the target.
+  Note: All these refinements do not change the fact that the "next target" to process is selected in order of best IoU with available boxes
   (only impacted by "strict box size association").
-	+ Also removed some conditions that was granting a bypass of strict box association. 
-	  This condition is now absolutely strict (even for random startup) and the constrains it implies should 
-	  only be leveraged by using more boxes or using a larger range of strict association.  
-- Add "max_nb_obj_per_image" as a mandatory parameter for YOLO layer configuration. This allows to allocate the working spaces required by
-  the previous points. It will also serve for a new verification step on the dimension of "net output size", which correspond to the target array.
-- Fix an error that was not properly updating the deriv error and error compute in YOLO network if the number of target in the image was 0.
- 
+	+ Also removed some conditions that were granting a bypass of strict box association. 
+	  This condition is now absolutely strict (even for random startup), and the constraints it implies should only be leveraged by using more boxes
+	  or using a larger range of strict association.  
+- Add "max_nb_obj_per_image" as a mandatory parameter for YOLO layer configuration. This allows the allocation of the working spaces required by 
+  the previous points, and it is also used in a new verification step on the dimension of "net output size", which corresponds to the target array.
+- Fix an error that was not correctly updating the deriv error and error compute in YOLO network if the number of targets in the image was 0.
+
 
 ********************************************
 ===== V-0.9.3.0 =====
@@ -57,7 +126,7 @@
   in the perf eval display
   
 
-==== Low level modifications ====
+==== Low-level modifications ====
 
 - Fix an error that was preventing the use of a flat input since the last dropout update
 - Fix an indexing error in the loss display computation
@@ -65,12 +134,12 @@
 - Add more (and better) default values to the YOLO parameters. More optional keywords in set_yolo_params.
 - Change the default bias value for YOLO layer to 0.5 
   (better for parameter regression with LIN activation, no apparent negative impact on other parameters)
-- Refine the probability derivative error compute to avoid impossible targets with low bit count datatypes.
+- Refine the Probability derivative error compute to avoid impossible targets with low bit count datatypes.
 - Correct a definition error in the DIoU (now properly uses squared distances). 
-  It is unclear if it would be better for cases like SDCs => support for both types of DIoU might come at some point.
+  It is still being determined if it would be better for cases like SDCs => support for both types of DIoU might come at some point.
 - Switch back to objectness being (P x IoU). The sole IoU value was too often not informative. 
   Still, keep the Probability-only output with specific fined-grained settings.
-- Move almost all YOLO default setting to the low level C init functions (rather than being in the Python interface).
+- Move almost all YOLO default setting to the low-level C init functions (rather than being in the Python interface).
 
 -   *********************    COMPLETE REWORK OF THE ASSOCIATION PROCESS DURING YOLO TRAINING    ********************* 
 	+ Associations are now made in the order of the best IoU for all targets in the same grid element.
@@ -89,14 +158,13 @@
 		that can be associated or not, this new number is user defined 
 		(the default value is 2 best theoretical Priors that can be used as the best match).
 		Repetition of the same box Prior count for only one in the number of best Priors authorized, but they all remain open.
-	+ ~~If all the "good" Priors are used, the target will fall in the case of "no good enough prediction found"
+	+ If all the "good" Priors are used, the target will fall in the case of "no good enough prediction found".
 		and will search for the best Prior outside the best theoretical Prior range. This is useful to force all the Priors to
 		represent an object in case of a very crowded region in the image.~~ (Removed in 9.3.1)
-	+ ~~Finally, note that with this definition, the only way for a target to not be associated with any prediction box
+	+ Finally, note that with this definition, the only way for a target not to be associated with any prediction box
 		is when there are more targets than Priors in a grid cell.~~ (Not true anymore in 9.3.1)
   Most fine-grained associations only apply when computing the YOLO layer error propagation. 
-  The displayed error remains based on the best IoU association only, so it remains representative of the evolution 
-  of the network final performance.
+  The displayed error remains based on the best IoU association only, so it remains representative of the network's final performance evolution.
 
 - Add diversity to the "fit_param" behavior (per output part):
 	+ fit_param = 1 : compute the output loss using the target
@@ -127,7 +195,7 @@
 - Simplify several interface function names (when non-ambiguous).
 - Fix dynamic load for a bug in GIL threading and update the new interface.
 
-==== Low level modifications ====
+==== Low-level modifications ====
 
 - Activation function sub_parameters can now be customized on a layer-per-layer basis 
 (e.g., beta for Logistic or saturation and leaking factor for RELU).
@@ -135,7 +203,7 @@
   now every layer bias value defines the bias added to its own input matrix. 
   This was already the case for conv layers but not for dense layers. Following the bias propagation through a pivot method,
   a dense layer now updates the bias of the previous dense layer weight matrix (instead of its own). 
-  In all cases, the "in_bias" parameter in init_network function remains mandatory and will ALWAYS OVERWRITE any bias 
+  In all cases, the "in_bias" parameter in the init_network function remains mandatory and will ALWAYS OVERWRITE any bias 
   value specified locally for the first layer. Saves, load, and interface functions have been updated accordingly.
 - bias_value and dropout are now members of the default layer structure (and no more related to the layer type structure).
 - Correction of an error (segfault) that was occurring when forwarding the test dataset using 
@@ -155,7 +223,7 @@ compute_method = BLAS or NAIV while CIANNA was also compiled with the CUDA optio
 
 - Update the Python interface for network and layer creation with more default values and automated 1D->2D->3D completion for the C function call.
 - Remove (comment) the formatted I/O-related functions from the interface (depreciated). 
-The use of dynamic data loading is now recommended for large datasets by using the recent behavior of "create" and "swap" dataset functions (will add an example script asap).
+  The use of dynamic data loading is now recommended for large datasets by using the recent behavior of "create" and "swap" dataset functions (will add an example script asap).
 - Related to the previous point: all datasets created from the python interface must NOT include a bias value (bias parameter depreciated). The bias addition is managed automatically.
 - A new example file ex_script_dyn_load.py is provided to illustrate how to use the dynamic data loading functions. The wiki page will be extended to provide more in-depth details.
 - Unified saving parameter naming in code, the keyword is now "save_every" and can be <= 0 value to indicate that the network should not be saved automatically.
@@ -164,14 +232,14 @@ Consequently, they are no more present in the default git repo structure.
 - Add a CIANNA logo display in ascii art. It can be turned off by setting the no-logo parameter to 1.
 - Fix spacing in some terminal displays, and remove unnecessary logs in the default output.
 
-==== Low level modifications ====
+==== Low-level modifications ====
 
-- Add internal padding user control. Allows to create increasing size convolutional layers
-  (int_padding is a required parameter for layer create for now, no default).
+- Add internal padding user control. Allows to create convolutional layers that increase the spatial dimensionality
+  (int_padding is a required parameter for layer creation at the moment, no default).
 - Add experimental support (CUDA Only) for GAN construction and training. Classical GAN works partially (call for Batch Norm addition to CIANNA).
      Add some experimental functions in the perspective of semi-supervised GAN implementation. (not accessible through the interface for now).
 - Add the option to save and load networks in a binary format (forward results are already possible in binary)
-- Fix remaining edge error on classical convolution.
+- Fix remaining edge errors on classical convolution.
 - Fix the global behavior of transposed convolution (both for the new user-controlled Tr.Conv and the automated one in backprop).
 - Fix a discrepancy between CUDA and CPU implementation in dropout for dense layers (errors in both compute methods might remain for the AVG_MODEL inference).
 - Fix an import issue that could occur in a specific environment when compiling the python interface.

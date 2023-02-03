@@ -253,7 +253,7 @@ size_t cuda_convert_conv_layer(layer *current)
 		case FP32C_FP32A:
 		case TF32C_FP32A:
 			vram_approx += cuda_convert_table(net, &(c_param->filters), c_param->nb_filters 
-				* (c_param->flat_f_size + c_param->TC_padding));
+				* (c_param->flat_f_size + c_param->TC_padding),0);
 			c_param->FP32_filters = c_param->filters;
 			break;
 		
@@ -295,30 +295,30 @@ size_t cuda_convert_conv_layer(layer *current)
 	}
 
 	vram_approx += cuda_convert_table(net, &(c_param->update), c_param->nb_filters 
-		* (c_param->flat_f_size + c_param->TC_padding));
+		* (c_param->flat_f_size + c_param->TC_padding),0);
 	
 	vram_approx += cuda_convert_table(net, &(c_param->rotated_filters), c_param->nb_filters 
-		* (c_param->flat_f_size-1));
+		* (c_param->flat_f_size-1),0);
 	
 	vram_approx += cuda_convert_table(net, &(current->output), c_param->nb_filters 
-		* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
+		* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size,0);
 	vram_approx += cuda_convert_table(net, &(current->delta_o), c_param->nb_filters 
-		* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
+		* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size,0);
 		
 	if(current->previous != NULL && current->previous->type == DENSE)
 		vram_approx += cuda_convert_table(net, &(c_param->temp_delta_o), c_param->prev_depth * c_param->prev_size[0] 
-			* c_param->prev_size[1] * c_param->prev_size[2] * current->c_network->batch_size);
+			* c_param->prev_size[1] * c_param->prev_size[2] * current->c_network->batch_size,0);
 	
 	vram_approx += cuda_convert_table(net, &(c_param->im2col_input), 
 		((c_param->flat_f_size + c_param->TC_padding) * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) 
-		* net->batch_size);
+		* net->batch_size,0);
 	vram_approx += cuda_convert_table(net, &(c_param->im2col_delta_o), 
 		net->batch_size * ((size_t)c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]) 
-		* (c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters));
+		* (c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters),0);
 	
 	if(current->dropout_rate > 0.01f)
 	{
-		vram_approx += cuda_convert_table_int(&(c_param->dropout_mask), c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
+		vram_approx += cuda_convert_table_int(&(c_param->dropout_mask), c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]),0);
 		vram_approx += (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t);
 	}
 	cudaMalloc((void**) &c_param->block_state, (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t));
@@ -430,13 +430,11 @@ void cuda_forward_conv_layer(layer *current)
 		}
 		else
 		{
-			//c_dr = 1.0f - (((c_param->flat_f_size-1)*(1.0f-c_dr) + 1)/c_param->flat_f_size);
 			c_dr = ((c_param->flat_f_size-1)*(1.0f-c_dr)+1)/c_param->flat_f_size;
-			//w_alpha = (1.0f - c_dr);       //account for the bias node that is never dropped
 			if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-				*((half*)w_alpha) = c_dr/*(1.0f/(2.0 - c_dr))*/;	
+				*((half*)w_alpha) = c_dr;	
 			else
-				*((float*)w_alpha) = c_dr/*(1.0f/(2.0 - c_dr))*/;
+				*((float*)w_alpha) = c_dr;
 		}
 	}
 	else
@@ -620,7 +618,7 @@ void cuda_backward_conv_layer(layer *current)
 			c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * net->batch_size,
 			cu_momentum, c_param->update, cuda_data_type, 
 			(c_param->flat_f_size + c_param->TC_padding), cuda_compute_type, CUBLAS_GEMM_DEFAULT);
-		cuda_update_weights(net, c_param->FP32_filters, c_param->update, 
+		cuda_update_weights(net, c_param->FP32_filters, c_param->update, net->learning_rate*net->weight_decay,
 			(c_param->flat_f_size + c_param->TC_padding) * c_param->nb_filters);
 	}
 }

@@ -51,7 +51,7 @@ A full **step-by-step installation guide** of CIANNA and its dependencies from a
 CIANNA is codded in C99 and requires at least a C compiler. Additionally, it supports several compute methods:
 - **C_NAIV**: No dependency, straightforward CPU implementation (mainly for pedagogical purposes). Support basic multi-CPU with OpenMP.
 - **C_BLAS**: Require [OpenBLAS](https://github.com/xianyi/OpenBLAS), much more optimized multi-CPU implementation. Non-matrix operations can also be multi-threaded with OpenMP. An OpenMP installation for OpenBLAS is advised, **compilation with the USE_OPENMP=1 option**.
-- **C_CUDA**: (Recommended) Most efficient implementation relying on Nvidia GPUs. It should work on GPUs from Maxwell to Ada Lovelace / Hopper architecture and can be compiled using CUDA 9.0 to [CUDA 11.8](https://developer.nvidia.com/cuda-downloads), the most recent being recommended.
+- **C_CUDA**: (Recommended) Most efficient implementation relying on Nvidia GPUs. It should work on GPUs from Maxwell to Ada Lovelace / Hopper architecture and can be compiled using CUDA 9.0 to [CUDA 12.0](https://developer.nvidia.com/cuda-downloads), the most recent being recommended.
 
 More details are provided on the [System Requirements](https://github.com/Deyht/CIANNA/wiki/1\)-System-Requirements) wiki page.
 
@@ -117,7 +117,7 @@ Then, the interface can be built automatically by adding the PY_INTERF argument 
 
 #### License
 
-These files are Copyright &copy; 2020 [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
+These files are Copyright &copy; 2023 [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
 
 &nbsp;
 

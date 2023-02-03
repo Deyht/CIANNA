@@ -36,11 +36,11 @@ void print_pool_type(FILE *f, int type, int f_bin)
 	{
 		default:
 		case MAX_pool:
-			sprintf(temp_string,"(MAX)");
+			sprintf(temp_string,"MAX");
 			break;
 			
 		case AVG_pool:
-			sprintf(temp_string,"(AVG)");
+			sprintf(temp_string,"AVG");
 			break;
 	}
 	
@@ -56,20 +56,20 @@ void get_string_pool_type(char* str, int type)
 	{
 		default:
 		case MAX_pool:
-			sprintf(str,"(MAX)");
+			sprintf(str,"MAX");
 			break;
 		
 		case AVG_pool:
-			sprintf(str,"(AVG)");
+			sprintf(str,"AVG");
 			break;
 	}
 }
 
-int load_pool_type(char *type)
+int load_pool_type(const char *type)
 {
-	if(strcmp(type, "(MAX)") == 0)
+	if(strcmp(type, "MAX") == 0)
 		return MAX_pool;
-	else if(strcmp(type, "(AVG)") == 0)
+	else if(strcmp(type, "AVG") == 0)
 		return AVG_pool;
 	else
 		return MAX_pool;
@@ -87,7 +87,7 @@ void pool_define_activation_param(layer *current)
 	((linear_param*)current->activ_param)->biased_dim = ((linear_param*)current->activ_param)->dim;
 }
 
-void pool_create(network *net, layer* previous, int *pool_size, int pool_type, float drop_rate)
+void pool_create(network *net, layer* previous, int *pool_size, const char *char_pool_type, int global, float drop_rate)
 {
 	int k;
 	long long int mem_approx = 0;
@@ -111,7 +111,8 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 	p_param->p_size = (int*) calloc(3, sizeof(int));
 	for(k = 0; k < 3; k++)
 		p_param->p_size[k] = pool_size[k];
-	p_param->pool_type = pool_type;
+	p_param->pool_type = load_pool_type(char_pool_type);
+	p_param->global = global;
 	
 	if(previous == NULL)
 	{
@@ -123,8 +124,8 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 		//input pointer must be set at the begining of forward
 		current->input = net->input;
 		
-		printf("ERROR : Starting with a pooling layer is currently not allowed.\n");
-		exit(EXIT_FAILURE);
+		//printf("ERROR : Starting with a pooling layer is currently not allowed.\n");
+		//exit(EXIT_FAILURE);
 	}
 	else
 	{
@@ -141,19 +142,24 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 				printf("ERROR : Bad network design, no use of two succesiv pooling layer.\n");
 				exit(EXIT_FAILURE);
 				break;
-			
 		}
+		
 		current->input = previous->output;
 	}
 	
-	if(p_param->prev_size[0] % pool_size[0] != 0 || p_param->prev_size[1] % pool_size[1] || p_param->prev_size[2] % pool_size[2])
+	if(global)
+		for(k = 0; k < 3; k++)
+			p_param->p_size[k] = p_param->prev_size[k];
+	
+	if(p_param->global == 0 && (p_param->prev_size[0] % p_param->p_size[0] != 0 || p_param->prev_size[1] % p_param->p_size[1] || p_param->prev_size[2] % p_param->p_size[2]))
 	{
-		printf("ERROR : Pool layer can not handle unheaven activation map size for now, please change network architecture.\n");
+		printf("ERROR : Non global Pool layer can not handle unheaven activation map size for now, please change network architecture.\n");
 		exit(EXIT_FAILURE);
 	}
 	
 	for(k = 0; k < 3; k++)
-		p_param->nb_area[k] = p_param->prev_size[k] / pool_size[k];
+		p_param->nb_area[k] = p_param->prev_size[k] / p_param->p_size[k];
+	
 	p_param->nb_maps = p_param->prev_depth;
 	
 	p_param->pool_map = (int*) malloc(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
@@ -205,14 +211,14 @@ void pool_create(network *net, layer* previous, int *pool_size, int pool_type, f
 	}
 	
 	char s_pool_type[10];
-	get_string_pool_type(s_pool_type, pool_type);
+	get_string_pool_type(s_pool_type, p_param->pool_type);
 	
 	printf("L:%d - Pooling layer layer created, type %s:\n\
-\t Input: %dx%dx%dx%d, Output: %dx%dx%dx%d, P. size: %dx%dx%d, dropout rate: %f\n\
+\t Input: %dx%dx%dx%d, Output: %dx%dx%dx%d, P. size: %dx%dx%d, Global: %d, dropout rate: %f\n\
 \t Approx layer RAM/VRAM requirement: %d MB\n",
 		net->nb_layers, s_pool_type, p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
 		p_param->prev_depth, p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
-		p_param->nb_maps, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], current->dropout_rate,
+		p_param->nb_maps, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->global, current->dropout_rate,
 		(int)(mem_approx/1000000));
 	
 }
@@ -226,12 +232,13 @@ void pool_save(FILE *f, layer *current, int f_bin)
 	{
 		fwrite(&layer_type, sizeof(char), 1, f);
 		fwrite(p_param->p_size, sizeof(int), 3, f);
+		fwrite(&p_param->global, sizeof(int), 1, f);
 		fwrite(&current->dropout_rate, sizeof(float), 1, f);
 		print_pool_type(f, p_param->pool_type, f_bin);
-	}	
+	}
 	else
 	{
-		fprintf(f, "P%dx%dx%d_%fd", p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], current->dropout_rate);
+		fprintf(f, "P%dx%dx%d:%d_%fd", p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], p_param->global, current->dropout_rate);
 		print_pool_type(f, p_param->pool_type, f_bin);
 		fprintf(f, "\n\n");
 	}
@@ -239,7 +246,7 @@ void pool_save(FILE *f, layer *current, int f_bin)
 
 void pool_load(network *net, FILE *f, int f_bin)
 {
-	int p_size[3];
+	int p_size[3], global;
 	float dropout_rate;
 	char s_pool_type[40];
 	layer* previous;
@@ -249,18 +256,19 @@ void pool_load(network *net, FILE *f, int f_bin)
 	if(f_bin)
 	{
 		fread(p_size, sizeof(int), 3, f);
+		fread(&global, sizeof(int), 1, f);
 		fread(&dropout_rate, sizeof(float), 1, f);
 		fread(s_pool_type, sizeof(char), 40, f);
 	}
 	else
-		fscanf(f, "%dx%dx%d_%fd%s\n", &p_size[0], &p_size[1], &p_size[2], &dropout_rate, s_pool_type);
+		fscanf(f, "%dx%dx%d:%d_%fd%s\n", &p_size[0], &p_size[1], &p_size[2], &global, &dropout_rate, s_pool_type);
 	
 	if(net->nb_layers <= 0)
 		previous = NULL;
 	else
 		previous = net->net_layers[net->nb_layers-1];
 	
-	pool_create(net, previous, p_size, load_pool_type(s_pool_type), dropout_rate);
+	pool_create(net, previous, p_size, s_pool_type, global, dropout_rate);
 	
 }
 
