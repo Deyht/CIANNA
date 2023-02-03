@@ -35,7 +35,7 @@ Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use
 - Simple MNIST example script  
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deyht/CIANNA/blob/CIANNA_dev/ex_script.ipynb)  
 
-- Simple example of a YOLO detection network on the PASCAL-VOC 2007 test dataset
+- Simple example of a YOLO detection network on the PASCAL-VOC 2007 test dataset  
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Deyht/CIANNA/blob/CIANNA_dev/YOLO_CIANNA_object_detection_example_on_PASCAL_VOC.ipynb)  
 
 - More complete YOLO example on the full PASCAL-VOC dataset but with a smaller network (from [IRMIA 2022](https://github.com/Deyht/IRMIA_2022) summer school)  
