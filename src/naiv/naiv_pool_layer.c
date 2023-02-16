@@ -118,7 +118,8 @@ void avg_pooling_fct
 void deltah_max_pool_cont_fct
 	(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 
 	int pool_size_w, int pool_size_h, int pool_size_d, 
-	int len, int batch_size, int image_size, int w_size, int h_size)
+	int w_size, int h_size, int d_size,
+	int w_size_out, int h_size_out, int d_size_out, int length)
 {
 	int i;
 	float* delta_o = (float*) i_delta_o;
@@ -126,16 +127,27 @@ void deltah_max_pool_cont_fct
 	float* delta_o_unpool = NULL;
 	
 	#pragma omp parallel for private(delta_o_unpool) schedule(guided, 2)
-	for(i = 0; i < len*image_size; i++)
+	for(i = 0; i < length; i++)
 	{
-		/*add mask of locations*/
-		delta_o_unpool = t_delta_o_unpool + (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d
-			+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h
-			+ ((i%(w_size*h_size))%w_size) * pool_size_w +
-			+ ((pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 
-			+ (((pool_map[i])%(pool_size_w*pool_size_h))/pool_size_w) * w_size * pool_size_w
-			+ (((pool_map[i])%(pool_size_w*pool_size_h))%pool_size_w);
+		int map_batch, in_im_pos;
+		int pos_x, pos_y, pos_z;
+		int pool_x, pool_y, pool_z;
+		
+		map_batch = i / (w_size_out*h_size_out*d_size_out);
+		in_im_pos =  i % (w_size_out*h_size_out*d_size_out);
+		pos_z = in_im_pos / (w_size_out*h_size_out);
+		pos_y = (in_im_pos % (w_size_out*h_size_out)) / w_size_out;
+		pos_x = (in_im_pos % (w_size_out*h_size_out)) % w_size_out;
+		
+		pool_z = pool_map[i]/(pool_size_w*pool_size_h);
+		pool_y = (pool_map[i] % (pool_size_w*pool_size_h)) / pool_size_w;
+		pool_x = (pool_map[i] % (pool_size_w*pool_size_h)) % pool_size_w;
 	
+		/*add mask of locations*/
+		delta_o_unpool = t_delta_o_unpool + map_batch * w_size * h_size * d_size
+			+ pos_z * pool_size_d * w_size*h_size + pos_y * pool_size_h * w_size + pos_x * pool_size_w
+			+ pool_z * w_size * h_size + pool_y * w_size + pool_x;
+		
 		*delta_o_unpool = delta_o[i];
 	}
 }
@@ -144,28 +156,37 @@ void deltah_max_pool_cont_fct
 void deltah_avg_pool_cont_fct
 	(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 
 	int pool_size_w, int pool_size_h, int pool_size_d,
-	int len, int batch_size, int image_size, int w_size, int h_size)
+	int w_size, int h_size, int d_size,
+	int w_size_out, int h_size_out, int d_size_out, int length)
 {
-	int i, x, y, z;
+	int i;
 	
 	float* delta_o = (float*) i_delta_o;
 	float* t_delta_o_unpool = (float*) i_delta_o_unpool;
 	float* delta_o_unpool = NULL;
 	
-	#pragma omp parallel for private(delta_o_unpool, x, y, z) schedule(guided, 2)
-	for(i = 0; i < len*image_size; i++)
+	#pragma omp parallel for private(delta_o_unpool) schedule(guided, 2)
+	for(i = 0; i < length; i++)
 	{
-		/*add mask of locations*/
-		delta_o_unpool = t_delta_o_unpool + (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d
-						+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h
-						+ ((i%(w_size*h_size))%w_size) * pool_size_w;
+		int map_batch, in_im_pos;
+		int pos_x, pos_y, pos_z;
+		int x, y, z;
 	
-		for(x = 0; x < pool_size_d; x++)
+		map_batch = i / (w_size_out*h_size_out*d_size_out);
+		in_im_pos =  i % (w_size_out*h_size_out*d_size_out);
+		pos_z = in_im_pos / (w_size_out*h_size_out);
+		pos_y = (in_im_pos % (w_size_out*h_size_out)) / w_size_out;
+		pos_x = (in_im_pos % (w_size_out*h_size_out)) % w_size_out;
+	
+		/*add mask of locations*/
+		delta_o_unpool = t_delta_o_unpool + map_batch * w_size * h_size * d_size
+			+ pos_z * pool_size_d * w_size*h_size + pos_y * pool_size_h * w_size + pos_x * pool_size_w;
+	
+		for(z = 0; z < pool_size_d; z++)
 			for(y = 0; y < pool_size_h; y++)
-				for(z = 0; z < pool_size_w; z++)
-					 delta_o_unpool[(x) * w_size * h_size * pool_size_w * pool_size_h 
-						+ (y) * w_size * pool_size_w + (z)] 
-						= (delta_o[i]);
+				for(x = 0; x < pool_size_w; x++)
+					 delta_o_unpool[z * w_size * h_size	+ y * w_size + x]
+						= (float)delta_o[i]/(pool_size_w*pool_size_h*pool_size_d);
 	}
 }
 
@@ -286,17 +307,17 @@ void backward_pool_layer(layer* current)
 				case MAX_pool:
 					deltah_max_pool_cont_fct(current->delta_o, current->previous->delta_o, 
 						p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
-						net->length, net->batch_size, p_param->nb_maps 
-						* p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2], 
-						p_param->nb_area[0], p_param->nb_area[1]);
+						p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2],
+						p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2],
+						net->batch_size * p_param->nb_maps * p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]);
 					break;
 				
 				case AVG_pool:
 					deltah_avg_pool_cont_fct(current->delta_o, current->previous->delta_o, 
 						p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
-						net->length, net->batch_size, p_param->nb_maps 
-						* p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2],
-						p_param->nb_area[0], p_param->nb_area[1]);
+						p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2],
+						p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2],
+						net->batch_size * p_param->nb_maps * p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]);
 					break;
 			}
 		}

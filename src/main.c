@@ -162,13 +162,13 @@ int main()
 	
 	int pooling[3] = {2,2,1};
 	
-	conv_create(net, NULL, f_size, 8, stride, padding, int_pad, NULL, "RELU", NULL, 0.0, NULL, 0);
+	conv_create(net, NULL, f_size, 8, stride, padding, int_pad, NULL, "RELU", NULL, 0.0, NULL, -1.0, NULL, 0);
 	pool_create(net, net->net_layers[net->nb_layers-1], pooling, "MAX", 0, 0.0);
-	conv_create(net, net->net_layers[net->nb_layers-1], f_size, 16, stride, padding, int_pad, NULL, "RELU", NULL, 0.0, NULL, 0);
+	conv_create(net, net->net_layers[net->nb_layers-1], f_size, 16, stride, padding, int_pad, NULL, "RELU", NULL, 0.0, NULL, -1.0, NULL, 0);
 	pool_create(net, net->net_layers[net->nb_layers-1], pooling, "MAX", 0, 0.0);
-	dense_create(net, net->net_layers[net->nb_layers-1], 256, "RELU", NULL, 0.5, 0, NULL, 0);
-	dense_create(net, net->net_layers[net->nb_layers-1], 128, "RELU", NULL, 0.2, 0, NULL, 0);
-	dense_create(net, net->net_layers[net->nb_layers-1], net->output_dim, "SOFTMAX", NULL, 0.0, 0, NULL, 0);
+	dense_create(net, net->net_layers[net->nb_layers-1], 256, "RELU", NULL, 0.5, 0, NULL, -1.0, NULL, 0);
+	dense_create(net, net->net_layers[net->nb_layers-1], 128, "RELU", NULL, 0.2, 0, NULL, -1.0, NULL, 0);
+	dense_create(net, net->net_layers[net->nb_layers-1], net->output_dim, "SOFTMAX", NULL, 0.0, 0, NULL, -1.0, NULL, 0);
 	
 	printf("Start learning phase ...\n");
 	

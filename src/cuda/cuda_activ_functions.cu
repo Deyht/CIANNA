@@ -188,7 +188,7 @@ __global__ void softmax_activation_kernel_##name(void *i_tab, int len, int dim, 
 	int j;																																		\
 	type* pos;																																	\
 	type vmax;																																	\
-	float normal = 0.000000001f;																												\
+	float normal = 0.0f;																														\
 	type* tab = (type*) i_tab;																													\
 																																				\
 	if(i >= size)																																\
@@ -206,6 +206,8 @@ __global__ void softmax_activation_kernel_##name(void *i_tab, int len, int dim, 
 		for(j = 0; j < dim; j++)																												\
 		{																																		\
 			pos[j] = exp_fct((float)(pos[j]-vmax));																								\
+			/*if((float)pos[j] < 0.001f)			*/																							\
+			/*	pos[j] = 0.0f;						*/																							\
 			normal += (float)pos[j];																											\
 		}																																		\
 		pos[dim] = 0.0f;																														\
@@ -263,10 +265,10 @@ __global__ void cross_entropy_output_error_kernel_##name																						\
 	if(i < len && (i+1)%(dim+1) != 0)																											\
 	{																																			\
 		pos = i - i/(dim+1);																													\
-		if(output[i] > (type)0.000000001f)																										\
+		if((float)output[i] > 0.000001f)																										\
 			output_error[i] = -(float)target[pos] * logf((float)output[i]);																		\
 		else																																	\
-			output_error[i] = -(float)target[pos] * logf((float)0.000000001f);																	\
+			output_error[i] = -(float)target[pos] * logf((float)0.000001f);																		\
 	}																																			\
 	else																																		\
 		output_error[i] = 0.0f;																													\

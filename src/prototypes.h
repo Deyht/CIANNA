@@ -87,13 +87,13 @@ int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int ma
 
 //dense_layer.c
 void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias, float drop_rate, 
-	int strict_size, FILE *f_load, int f_bin);
+	int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int f_bin);
 void dense_save(FILE *f, layer *current, int f_bin);
 void dense_load(network *net, FILE* f, int f_bin);
 
 //conv_layer.c
-void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, 
-	int *int_padding, int *in_shape, const char *activation, float *bias, float drop_rate, FILE *f_load, int f_bin);
+void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, int *int_padding, 
+	int *in_shape, const char* activation, float *bias, float drop_rate, const char *init_fct, float init_scaling, FILE *f_load, int f_bin);
 void conv_save(FILE *f, layer *current, int f_bin);
 void conv_load(network *net, FILE *f, int f_bin);
 
@@ -102,11 +102,15 @@ void pool_save(FILE *f, layer *current, int f_bin);
 void pool_load(network *net, FILE *f, int f_bin);
 
 //initializers.c
+int get_init_type(const char *s_init);
 double random_uniform(void);
 double random_normal(void);
-void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding);
-void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding);
-
+void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void lecun_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void lecun_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void rand_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void rand_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
 
 //######################################
 
@@ -130,10 +134,12 @@ void avg_pooling_fct(void* i_input, void* i_output, int* pool_map,
 	int w_size_out, int h_size_out, int d_size_out, int length);
 void deltah_max_pool_cont_fct(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 
 	int pool_size_w, int pool_size_h, int pool_size_d, 
-	int len, int batch_size, int image_size, int w_size, int h_size);
+	int w_size, int h_size, int d_size,
+	int w_size_out, int h_size_out, int d_size_out, int length);
 void deltah_avg_pool_cont_fct(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 
 	int pool_size_w, int pool_size_h, int pool_size_d,
-	int len, int batch_size, int image_size, int w_size, int h_size);
+	int w_size, int h_size, int d_size,
+	int w_size_out, int h_size_out, int d_size_out, int length);
 void dropout_select_pool(int* mask, int size, float drop_rate);
 void dropout_apply_pool(void* i_table, int batch_size, int dim, int* mask, int size);
 

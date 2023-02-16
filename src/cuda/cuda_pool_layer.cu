@@ -100,7 +100,7 @@ __global__ void avg_pooling_kernel_##name																			\
 		for(x = 0; x < pool_size_d; x++)																			\
 			for(y = 0; y < pool_size_h; y++)																		\
 				for(z = 0; z < pool_size_w; z++)																	\
-					r_avg += (double) input[pos + x*w_size*h_size + y*w_size + z];									\
+					r_avg += (float) input[pos + x*w_size*h_size + y*w_size + z];									\
 																													\
 		output[pos_out] = (type) (r_avg/(pool_size_w*pool_size_h*pool_size_d));										\
 	}																												\
@@ -110,22 +110,34 @@ __global__ void avg_pooling_kernel_##name																			\
 __global__ void deltah_max_pool_cont_##name																			\
 	(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 														\
 	int pool_size_w, int pool_size_h, int pool_size_d, 																\
-	int len, int batch_size, int image_size, int w_size, int h_size)												\
+	int w_size, int h_size, int d_size, 																			\
+	int w_size_out, int h_size_out, int d_size_out, int length)														\
 {																													\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
+																													\
+	int map_batch, in_im_pos;																						\
+	int pos_x, pos_y, pos_z;																						\
+	int pool_x, pool_y, pool_z;																						\
 																													\
 	type* delta_o = (type*) i_delta_o;																				\
 	type* delta_o_unpool = (type*) i_delta_o_unpool;																\
 																													\
-	if(i < len*image_size)																							\
+	if(i < length)																									\
 	{																												\
+		map_batch = i / (w_size_out*h_size_out*d_size_out);															\
+		in_im_pos =  i % (w_size_out*h_size_out*d_size_out);														\
+		pos_z = in_im_pos / (w_size_out*h_size_out);																\
+		pos_y = (in_im_pos % (w_size_out*h_size_out)) / w_size_out;													\
+		pos_x = (in_im_pos % (w_size_out*h_size_out)) % w_size_out;													\
+																													\
+		pool_z = pool_map[i]/(pool_size_w*pool_size_h);																\
+		pool_y = (pool_map[i] % (pool_size_w*pool_size_h)) / pool_size_w;											\
+		pool_x = (pool_map[i] % (pool_size_w*pool_size_h)) % pool_size_w;											\
+																													\
 		/*add mask of locations*/																					\
-		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d			\
-			+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h										\
-			+ ((i%(w_size*h_size))%w_size) * pool_size_w +															\
-			+ ((pool_map[i])/(pool_size_w*pool_size_h)) * w_size*h_size * pool_size_w*pool_size_h 					\
-			+ (((pool_map[i])%(pool_size_w*pool_size_h))/pool_size_w) * w_size * pool_size_w						\
-			+ (((pool_map[i])%(pool_size_w*pool_size_h))%pool_size_w);												\
+		delta_o_unpool += map_batch * w_size * h_size * d_size														\
+			+ pos_z * pool_size_d * w_size*h_size + pos_y * pool_size_h * w_size + pos_x * pool_size_w				\
+			+ pool_z * w_size * h_size + pool_y * w_size + pool_x;													\
 																													\
 		*delta_o_unpool = delta_o[i];																				\
 	}																												\
@@ -136,26 +148,34 @@ __global__ void deltah_max_pool_cont_##name																			\
 __global__ void deltah_avg_pool_cont_##name																			\
 	(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 														\
 	int pool_size_w, int pool_size_h, int pool_size_d,																\
-	int len, int batch_size, int image_size, int w_size, int h_size)												\
+	int w_size, int h_size, int d_size, 																			\
+	int w_size_out, int h_size_out, int d_size_out, int length)														\
 {																													\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
+																													\
+	int map_batch, in_im_pos;																						\
+	int pos_x, pos_y, pos_z;																						\
 	int x, y, z;																									\
 																													\
 	type* delta_o = (type*) i_delta_o;																				\
 	type* delta_o_unpool = (type*) i_delta_o_unpool;																\
 																													\
-	if(i < len*image_size)																							\
+	if(i < length)																									\
 	{																												\
-		delta_o_unpool += (i/(w_size*h_size)) * (w_size*h_size) * pool_size_w * pool_size_h * pool_size_d			\
-						+ ((i%(w_size*h_size))/w_size) * w_size * pool_size_w * pool_size_h							\
-						+ ((i%(w_size*h_size))%w_size) * pool_size_w;												\
+		map_batch = i / (w_size_out*h_size_out*d_size_out);															\
+		in_im_pos =  i % (w_size_out*h_size_out*d_size_out);														\
+		pos_z = in_im_pos / (w_size_out*h_size_out);																\
+		pos_y = (in_im_pos % (w_size_out*h_size_out)) / w_size_out;													\
+		pos_x = (in_im_pos % (w_size_out*h_size_out)) % w_size_out;													\
 																													\
-		for(x = 0; x < pool_size_d; x++)																			\
+		delta_o_unpool += map_batch * w_size * h_size * d_size														\
+			+ pos_z * pool_size_d * w_size*h_size + pos_y * pool_size_h * w_size + pos_x * pool_size_w;				\
+																													\
+		for(z = 0; z < pool_size_d; z++)																			\
 			for(y = 0; y < pool_size_h; y++)																		\
-				for(z = 0; z < pool_size_w; z++)																	\
-					 delta_o_unpool[(x) * w_size * h_size * pool_size_w * pool_size_h 								\
-						+ (y) * w_size * pool_size_w + (z)] 														\
-						= (type)((float)delta_o[i]);																\
+				for(x = 0; x < pool_size_w; x++)																	\
+					 delta_o_unpool[z * w_size * h_size	+ y * w_size + x] 											\
+						= (type)((float)delta_o[i]/(pool_size_w*pool_size_h*pool_size_d));							\
 	}																												\
 }
 
@@ -404,15 +424,17 @@ void cuda_backward_pool_layer(layer* current)
 				case MAX_pool:
 					net->cu_inst.cu_pool_fcts.max_deltah_pool_fct<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, 
 						p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
-						net->length, net->batch_size, p_param->nb_maps 
-						* p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2], p_param->nb_area[0], p_param->nb_area[1]);
+						p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2],
+						p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2],
+						net->batch_size * p_param->nb_maps * p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]);
 					break;
 				
 				case AVG_pool:
 					net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, 
 						p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
-						net->length, net->batch_size, p_param->nb_maps 
-						* p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2], p_param->nb_area[0], p_param->nb_area[1]);
+						p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2],
+						p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2],
+						net->batch_size * p_param->nb_maps * p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]);
 					break;
 			}
 		}

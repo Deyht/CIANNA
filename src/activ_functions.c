@@ -324,7 +324,7 @@ void set_relu_activ(layer *current, int size, int dim, int biased_dim, const cha
 	param->dim = dim;
 	param->biased_dim = biased_dim;
 	param->saturation = 800.0f;
-	param->leaking_factor = 0.1f;
+	param->leaking_factor = 0.05f;
 	current->bias_value = 0.1f;
 	
 	temp = strstr(activ, "_S");
@@ -601,7 +601,7 @@ void set_softmax_activ(layer *current, int dim, int biased_dim)
 	
 	param->dim = dim;
 	param->biased_dim = dim;
-	current->bias_value = -1.0f;
+	current->bias_value = 0.1f;
 }
 
 
@@ -619,12 +619,12 @@ void softmax_activation_fct(void *tab, int len, int dim, int size)
 	int j;
 	float *pos;
 	float vmax;
-	float normal = 0.0000001f;
+	float normal = 0.000001f;
 	
 	#pragma omp parallel for private(j, pos, vmax, normal) schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
-		normal = 0.0000001f;
+		normal = 0.000001f;
 		if(i < len)
 		{
 			pos = (float*)tab + i*(dim+1);
@@ -720,10 +720,10 @@ void cross_entropy_output_error(void *output_error, void *output, void *target, 
 		if(i < len && (i+1)%(dim+1) != 0)
 		{
 			pos = i - i/(dim+1);
-			if(f_output[i] > 0.00001f)
+			if(f_output[i] > 0.000001f)
 				f_output_error[i] = -f_target[pos]*logf(f_output[i]);
 			else
-				f_output_error[i] = -f_target[pos]*logf(0.00001f);
+				f_output_error[i] = -f_target[pos]*logf(0.000001f);
 		}
 		else
 			f_output_error[i] = 0.0f;

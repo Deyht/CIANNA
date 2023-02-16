@@ -375,19 +375,19 @@ static PyObject* py_yolo(PyObject* self, PyObject *args, PyObject *kwargs)
 static PyObject* py_dense(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	int nb_neurons, prev_layer = -1, network_id = nb_networks-1, strict_size = 0;
-	const char *activation = "RELU";
-	double drop_rate = 0.0, py_bias = 0.0/0.0;
+	const char *activation = "RELU", *init_fct = "xavier";
+	double drop_rate = 0.0, py_bias = 0.0/0.0, init_scaling=-1.0;
 	float *c_bias = NULL;
-	static char *kwlist[] = {"nb_neurons", "activation", "bias", "prev_layer", "drop_rate", "strict_size", "network", NULL};
+	static char *kwlist[] = {"nb_neurons", "activation", "bias", "prev_layer", "drop_rate",
+		"strict_size", "init_fct", "init_scaling", "network", NULL};
 	layer* prev;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "i|sdidii", kwlist, &nb_neurons, &activation, &py_bias, 
-		&prev_layer, &drop_rate, &strict_size, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "i|sdidisdi", kwlist, &nb_neurons, &activation, &py_bias, 
+		&prev_layer, &drop_rate, &strict_size, &init_fct, &init_scaling, &network_id))
 		return Py_None;
 
 	if(prev_layer == -1)
 		prev_layer = networks[network_id]->nb_layers - 1;
-	
 	
 	//if(py_bias == py_bias) //portable but not compatible with fast math
 	if(!isnan(py_bias)) //work with math.h only for C99 and later
@@ -401,7 +401,7 @@ static PyObject* py_dense(PyObject* self, PyObject *args, PyObject *kwargs)
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	dense_create(networks[network_id], prev, nb_neurons, activation, c_bias, drop_rate, strict_size, NULL, 0);
+	dense_create(networks[network_id], prev, nb_neurons, activation, c_bias, drop_rate, strict_size, init_fct, init_scaling, NULL, 0);
 	
 	return Py_None;
 }
@@ -412,16 +412,16 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 	int nb_filters, prev_layer = -1, network_id = nb_networks-1;
 	PyArrayObject *py_f_size = NULL, *py_stride = NULL, *py_padding = NULL, *py_int_padding = NULL, *py_input_shape = NULL;
 	int C_f_size[3] = {1,1,1}, C_stride[3] = {1,1,1}, C_padding[3] = {0,0,0}, C_int_padding[3] = {0,0,0}, C_input_shape[4];
-	const char *activation = "RELU";
-	double drop_rate = 0.0, py_bias = 0.0/0.0; //use nan as "non specified value"
+	const char *activation = "RELU", *init_fct = "xavier";
+	double drop_rate = 0.0, py_bias = 0.0/0.0, init_scaling=-1.0;
 	float *c_bias = NULL;
 	
 	static char *kwlist[] = {"f_size", "nb_filters", "stride", "padding", "int_padding", "activation", "bias", 
-		"prev_layer", "input_shape", "drop_rate", "network", NULL};
+		"prev_layer", "input_shape", "drop_rate", "init_fct", "init_scaling", "network", NULL};
 	layer* prev;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|OOOsdiOdi", kwlist, &py_f_size, &nb_filters, &py_stride, &py_padding, 
-		&py_int_padding, &activation, &py_bias, &prev_layer, &py_input_shape, &drop_rate, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oi|OOOsdiOdsdi", kwlist, &py_f_size, &nb_filters, &py_stride, &py_padding, 
+		&py_int_padding, &activation, &py_bias, &prev_layer, &py_input_shape, &drop_rate, &init_fct, &init_scaling, &network_id))
 		return Py_None;   
 	
 	if(prev_layer == -1)
@@ -457,7 +457,7 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 		prev = networks[network_id]->net_layers[prev_layer];
 		
 	conv_create(networks[network_id], prev, C_f_size, nb_filters, C_stride, C_padding, 
-		C_int_padding, C_input_shape, activation, c_bias, drop_rate, NULL, 0);
+		C_int_padding, C_input_shape, activation, c_bias, drop_rate, init_fct, init_scaling, NULL, 0);
 	
 	return Py_None;
 }

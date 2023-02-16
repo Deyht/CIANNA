@@ -74,7 +74,8 @@ void dense_define_activation_param(layer *current, const char* activ)
 }
 
 
-void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias, float drop_rate, int strict_size, FILE *f_load, int f_bin)
+void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias, float drop_rate, 
+	int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int f_bin)
 {
 	int i, j;
 	//float bias_padding_value; //depreciated
@@ -90,6 +91,8 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 	net->net_layers[net->nb_layers] = current;
 	current->c_network = net;
 	net->nb_layers++;
+	
+	printf("L:%d - Creating dense layer ...\n", net->nb_layers);
 	
 	d_param = (dense_param*) malloc(sizeof(dense_param));
 	
@@ -188,7 +191,6 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 				}
 				else
 				{
-					printf("In Other\n");
 					*((float*)((dense_param*)previous->param)->weights + ((((dense_param*)previous->param)->nb_neurons+1)
 						*((dense_param*)previous->param)->in_size - 1)) = 
 						(float) current->bias_value/current->previous->bias_value;
@@ -199,13 +201,31 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 		}
 		//Should add a defaut weight init depending on the activation function
 		//Should add user control over the init
-		if(1)
-		{
-			xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0);
-		}
-		else
-		{
+		if(init_scaling < 0)
+			init_scaling = 1.0f;
 		
+		//Should add a defaut weight init depending on the activation function
+		switch(get_init_type(init_fct))
+		{
+			default:
+			case N_XAVIER:
+				xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				break;
+			case U_XAVIER:
+				xavier_uniform(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				break;
+			case N_LECUN:
+				lecun_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				break;
+			case U_LECUN:
+				lecun_uniform(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				break;
+			case N_RAND:
+				rand_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				break;
+			case U_RAND:
+				rand_uniform(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				break;
 		}
 	}
 	else
@@ -253,10 +273,9 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 	
 	char activ[40];
 	print_string_activ_param(current, activ);
-	printf("L:%d - Dense layer created:\n \
-\t Input: %d, Nb. Neurons: %d, Activation: %s, Bias: %0.2f, Dropout: %0.2f\n\
+	printf("\t Input: %d, Nb. Neurons: %d, Activation: %s, Bias: %0.2f, Dropout: %0.2f\n\
 \t Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",
-		net->nb_layers, d_param->in_size,  d_param->nb_neurons, 
+		d_param->in_size,  d_param->nb_neurons, 
 		activ, current->bias_value, current->dropout_rate,
 		(d_param->nb_neurons+1)*d_param->in_size, (int)(mem_approx/1000000));
 	net->total_nb_param += (d_param->nb_neurons+1)*d_param->in_size;
@@ -379,7 +398,7 @@ void dense_load(network *net, FILE* f, int f_bin)
 	else
 		previous = net->net_layers[net->nb_layers-1];
 
-	dense_create(net, previous, nb_neurons, activ_type, &bias, dropout_rate, 1, f, f_bin);
+	dense_create(net, previous, nb_neurons, activ_type, &bias, dropout_rate, 1, NULL, -1.0, f, f_bin);
 }
 
 

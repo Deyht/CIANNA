@@ -614,8 +614,8 @@ void update_weights(void *weights, void* update, float weight_decay, int size)
 	//No pragma parallel. No perf improvement. Must be re-tested since addition of weight decay
 	for(i = 0; i < size; i++)
 	{   //Here the weight_decay variable include the learning rate scaling
-		f_update[i] -= weight_decay*f_weights[i];
-		f_weights[i] -= f_update[i];
+		//f_update[i] -= weight_decay*f_weights[i]*f_weights[i];
+		f_weights[i] -= f_update[i] - weight_decay*f_weights[i]*f_weights[i];
 	}
 }
 
@@ -1131,15 +1131,10 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			
 			if(net->no_error == 0)
 			{
-				if(net->epoch == 1)
-				f_err = fopen("error.txt", "w+");
-				else
-					f_err = fopen("error.txt", "a");
+				
+				f_err = fopen("error.txt", "a");
 				if(f_err == NULL)
-				{
-					printf("ERROR: can not oppen error.txt !\n");
-					exit(EXIT_FAILURE);
-				}
+					f_err = fopen("error.txt", "w+");
 			
 				fprintf(f_err, "%d %g",  net->epoch, total_error/data.size);
 				if(net->net_layers[net->nb_layers-1]->type == CONV)
@@ -1359,6 +1354,9 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 		cuda_create_table_FP32(&net->cu_inst.output_error_cuda, net->batch_size * net->out_size);
 		#endif
 	}
+	
+	if(net->epoch == 0)
+		remove("error.txt");
 	
 	for(i = 0; i < nb_epochs; i++)
 	{

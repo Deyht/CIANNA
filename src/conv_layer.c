@@ -87,8 +87,8 @@ void conv_define_activation_param(layer *current, const char *activ)
 
 
 //Used to allocate a convolutionnal layer
-void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, 
-	int *int_padding, int *in_shape, const char* activation, float *bias, float drop_rate, FILE *f_load, int f_bin)
+void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, int *int_padding, 
+	int *in_shape, const char* activation, float *bias, float drop_rate, const char *init_fct, float init_scaling, FILE *f_load, int f_bin)
 {
 	int i, j, k;
 	long long int mem_approx = 0;
@@ -98,6 +98,8 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	net->net_layers[net->nb_layers] = current;
 	current->c_network = net;
 	net->nb_layers++;
+	
+	printf("L:%d - Creating convolutional layer ...\n", net->nb_layers);
 	
 	//allocate the space holder for conv layer parameters
 	c_param = (conv_param*) malloc(sizeof(conv_param));
@@ -252,16 +254,31 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	
 	if(f_load == NULL)
 	{	
-		//Should add a defaut weight init depending on the activation function
-		//Should add user control over the init
-		if(1)
-		{
-			//printf("Xavier normal init\n");
-			xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding);
-		}
-		else
-		{
+		if(init_scaling < 0)
+			init_scaling = 1.0f;
 		
+		//Should add a defaut weight init depending on the activation function
+		switch(get_init_type(init_fct))
+		{
+			default:
+			case N_XAVIER:
+				xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				break;
+			case U_XAVIER:
+				xavier_uniform(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				break;
+			case N_LECUN:
+				lecun_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				break;
+			case U_LECUN:
+				lecun_uniform(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				break;
+			case N_RAND:
+				rand_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				break;
+			case U_RAND:
+				rand_uniform(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				break;
 		}
 	}
 	else
@@ -307,12 +324,11 @@ void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int
 	
 	char activ[40];
 	print_string_activ_param(current, activ);
-	printf("L:%d - Convolutional layer created:\n\
-\t Input: %dx%dx%dx%d, Filters: %df %dx%dx%dx%d, Output: %dx%dx%dx%d \n\
+	printf("\t Input: %dx%dx%dx%d, Filters: %df %dx%dx%dx%d, Output: %dx%dx%dx%d \n\
 \t Stride: %dx%dx%d, padding: %dx%dx%d, int_padding: %dx%dx%d,  \n\
 \t Activation: %s, Bias: %0.2f, dropout rate: %0.2f\n\
 \t Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",
-		net->nb_layers, c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
+		c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
 		c_param->prev_depth, c_param->nb_filters, c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], c_param->prev_depth, 
 		c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], c_param->nb_filters,
 		c_param->stride[0], c_param->stride[1], c_param->stride[2], 
@@ -464,7 +480,7 @@ void conv_load(network *net, FILE *f, int f_bin)
 	else
 		previous = net->net_layers[net->nb_layers-1];
 	
-	conv_create(net, previous, f_size, nb_filters, stride, padding, int_padding, input_shape, activ_type, &bias, dropout_rate, f, f_bin);
+	conv_create(net, previous, f_size, nb_filters, stride, padding, int_padding, input_shape, activ_type, &bias, dropout_rate, NULL, -1.0, f, f_bin);
 }
 
 

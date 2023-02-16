@@ -143,10 +143,12 @@ struct cuda_pool_fcts
 		int w_size_out, int h_size_out, int d_size_out, int length);
 	void (*max_deltah_pool_fct)(void* i_delta_o, void* i_delta_o_unpool, int* pool_map,
 		int pool_size_w, int pool_size_h, int pool_size_d,
-		int len, int batch_size, int image_size, int w_size, int h_size);
+		int w_size, int h_size, int d_size,
+		int w_size_out, int h_size_out, int d_size_out, int length);
 	void (*avg_deltah_pool_fct)(void* i_delta_o, void* i_delta_o_unpool, int* pool_map,
 		int pool_size_w, int pool_size_h, int pool_size_d,
-		int len, int batch_size, int image_size, int w_size, int h_size);
+		int w_size, int h_size, int d_size,
+		int w_size_out, int h_size_out, int d_size_out, int length);
 	void (*drop_apply_fct)(void* i_table, int batch_size, int dim, int* mask, int size);
 	void (*typed_memset_fct)(void* i_table, int value, int size);
 };
