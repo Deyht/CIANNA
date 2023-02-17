@@ -46,7 +46,7 @@ print ("Done !", flush=True)
 #Details about the functions and parameters are given in the GitHub Wiki
 
 cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10, \
-		bias=0.1, b_size=128, comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP32C_FP32A") #Change to C_BLAS or C_NAIV
+		bias=0.1, b_size=24, comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP32C_FP32A") #Change to C_BLAS or C_NAIV
 
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
@@ -63,12 +63,12 @@ else:
 	cnn.conv(f_size=i_ar([5,5]), nb_filters=8, padding=i_ar([2,2]), activation="RELU")
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
 	cnn.conv(f_size=i_ar([5,5]), nb_filters=16, padding=i_ar([2,2]), activation="RELU")
-	cnn.pool(p_size=i_ar([2,2]), p_type="MAX", p_global=1)
+	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
 	cnn.dense(nb_neurons=256, activation="RELU", drop_rate=0.5)
 	cnn.dense(nb_neurons=128, activation="RELU", drop_rate=0.2)
 	cnn.dense(nb_neurons=10, strict_size=1, activation="SMAX")
 
-cnn.train(nb_epoch=30, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=10, TC_scale_factor=16.0)
+cnn.train(nb_epoch=10, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=10, TC_scale_factor=16.0)
 cnn.perf_eval()
 
 

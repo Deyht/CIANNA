@@ -1346,7 +1346,7 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			break;
 	}
 	
-	if(net->out_size != net->output_dim && net->net_layers[net->nb_layers-1]->activation_type != YOLO)
+	if(net->out_size != net->output_dim+1 && net->net_layers[net->nb_layers-1]->type == DENSE)
 	{
 		printf("\nERROR: last layer size does not match the expected output dimensions.\n");
 		exit(EXIT_FAILURE);
