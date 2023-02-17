@@ -28,7 +28,8 @@
 - Add a new YOLO keyword that specifies the use of the "difficult" flag (see low-level)
 - Add a new YOLO keyword that controls the type of error display (see low-level)
 - Add new keywords in conv and dense layer creation to control the type of weight initialization and a user scaling on the variance.
-
+- /!\ Add the "strict_size" keyword to the last layer in the example scripts to put the emphasis on the fact that any dense layer without the
+  keyword set can be automatically shrink when using Tensor Cores if its dimension is a multiple of 8 (e.g 1000 classes issue). 
 
 ==== Low-level modifications ====
 
@@ -49,7 +50,7 @@
   Also relax some constraints for pooling layers construction (e.g. now allowed as the first layer). Also moved the type "char" interpretation to the C code.
 - Fix an error in average pooling behavior through a rework of both type of pooling backprop functions.
 - Add weight decay in all the versions of weight updates (analog to an L2-norm). The amount of weight decay is specified as a parameter in the train_network function (default 0).
-  In practice, the weight decay is scaled by the learning_rate and applied outside of the momentum update.
+  In practice, the weight decay is scaled by the learning_rate and applied inside of the momentum update.
 - /!\ Change the MC-dropout prediction scheme. Previously all batches in the dataset were fully forwarded, and this process was repeated for the 
   specified number of repetitions. Now the first layer that presents dropout is flagged, and each batch is forwarded only once before that layer, and the forward
   repetition is only done after this layer. This helps reduce the total amount of computation and data movements and strongly improves prediction speed for network

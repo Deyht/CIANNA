@@ -117,7 +117,7 @@ else:
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
 	cnn.dense(nb_neurons=256, activation="RELU", drop_rate=0.5)
 	cnn.dense(nb_neurons=128, activation="RELU", drop_rate=0.2)
-	cnn.dense(nb_neurons=10, activation="SMAX")
+	cnn.dense(nb_neurons=10, strict_size=1, activation="SMAX")
 	
 
 for k in range(0,40):

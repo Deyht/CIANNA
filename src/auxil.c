@@ -614,8 +614,8 @@ void update_weights(void *weights, void* update, float weight_decay, int size)
 	//No pragma parallel. No perf improvement. Must be re-tested since addition of weight decay
 	for(i = 0; i < size; i++)
 	{   //Here the weight_decay variable include the learning rate scaling
-		//f_update[i] -= weight_decay*f_weights[i]*f_weights[i];
-		f_weights[i] -= f_update[i] - weight_decay*f_weights[i]*f_weights[i];
+		f_update[i] += weight_decay*f_weights[i];
+		f_weights[i] -= f_update[i];
 	}
 }
 

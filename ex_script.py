@@ -66,7 +66,7 @@ else:
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX", p_global=1)
 	cnn.dense(nb_neurons=256, activation="RELU", drop_rate=0.5)
 	cnn.dense(nb_neurons=128, activation="RELU", drop_rate=0.2)
-	cnn.dense(nb_neurons=10, activation="SMAX")
+	cnn.dense(nb_neurons=10, strict_size=1, activation="SMAX")
 
 cnn.train(nb_epoch=30, learning_rate=0.0004, momentum=0.9, confmat=1, save_every=10, TC_scale_factor=16.0)
 cnn.perf_eval()

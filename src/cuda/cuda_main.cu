@@ -433,8 +433,8 @@ __global__ void cuda_update_weights_##name(float *weights, void* update, 							
 																													\
 	if(i < size)																									\
 	{	/*Here the weight_decay variable include the learning rate scaling*/										\
-		/*c_update[i] -= weight_decay*weights[i]*weights[i];*/														\
-		weights[i] -= (float)(((float)c_update[i] - weight_decay*weights[i]*weights[i]) / TC_scale_factor);			\
+		c_update[i] += weight_decay*weights[i]*TC_scale_factor;												\
+		weights[i] -= (float)(((float)c_update[i]) / TC_scale_factor);												\
 	}																												\
 }
 
