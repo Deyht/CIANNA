@@ -83,7 +83,8 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 	layer* current;
 	
 	#ifdef CUDA
-	if(!strict_size && net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC != FP32C_FP32A && nb_neurons % 8 == 0)
+	if(f_load == NULL && !strict_size && net->compute_method == C_CUDA 
+		&& net->cu_inst.use_cuda_TC != FP32C_FP32A && nb_neurons % 8 == 0)
 		nb_neurons -= 1;
 	#endif
 	

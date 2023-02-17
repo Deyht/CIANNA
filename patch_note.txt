@@ -71,7 +71,8 @@
   (atm difficult objects do not result in a match for "natural" display but still count for good but not best association).
 - Restore diversity in weight initialization functions (Xavier, LeCun, normal and uniform variations) and allow their selection per layer along with a user control variance scaling.
 - Fix an error that was preventing the deletion of the "error.txt" file if the error compute interval was larger than 10 epochs.
-
+- Add a size check between output_size and output_dim to prevent user errors in the definition of the last layer (or to highlight that the strict_size keyword is required when using TC).
+  Also add a condition to the dense layer size alteration to ensure that it can only happen during network creation and not when loading a saved network.
 
 ********************************************
 ===== V-0.9.3.1 =====

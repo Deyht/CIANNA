@@ -1346,6 +1346,12 @@ void train_network(network* net, int nb_epochs, int control_interv, float u_begi
 			break;
 	}
 	
+	if(net->out_size != net->output_dim && net->net_layers[net->nb_layers-1]->activation_type != YOLO)
+	{
+		printf("\nERROR: last layer size does not match the expected output dimensions.\n");
+		exit(EXIT_FAILURE);
+	}
+	
 	net->output_error = (float*) calloc(net->batch_size * net->out_size, sizeof(float));
 	
 	if(net->compute_method == C_CUDA)
