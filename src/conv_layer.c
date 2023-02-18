@@ -456,7 +456,7 @@ void conv_load(network *net, FILE *f, int f_bin)
 	char activ_type[40];
 	layer *previous;
 	
-	printf("Loading conv layer, L:%d\n", net->nb_layers);
+	printf("Loading conv layer, L:%d\n", net->nb_layers+1);
 	
 	if(f_bin)
 	{

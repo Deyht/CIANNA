@@ -70,7 +70,7 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 	
 	float* f_tab = (float*) tab;
 
-	printf("Xavier Normal weight initialization\n");
+	printf("\t Xavier Normal weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
