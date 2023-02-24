@@ -274,7 +274,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 	
 	char activ[40];
 	print_string_activ_param(current, activ);
-	printf("\t Input: %d, Nb. Neurons: %d, Activation: %s, Bias: %0.2f, Dropout: %0.2f\n\
+	printf("\t Input: %d, Nb. Neurons: %d, Activation: %s, Bias: %0.2f, dropout rate: %0.2f\n\
 \t Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",
 		d_param->in_size,  d_param->nb_neurons, 
 		activ, current->bias_value, current->dropout_rate,
