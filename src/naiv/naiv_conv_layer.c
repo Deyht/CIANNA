@@ -27,10 +27,6 @@ static conv_param *c_param;
 
 //public are in prototypes.h
 
-//private
-static void forward_conv_layer(layer *current);
-static void backward_conv_layer(layer *current);
-
 
 //One of the most important function, aims to convert an image into a table that contains all the
 //areas that will be used for convolution. Highly redundant but still allows a significant speed up
@@ -129,6 +125,7 @@ void dropout_select_conv(int* mask, int size, float drop_rate)
 	//#pragma omp parallel for private(rand) schedule(guided,4)
 	//OMP overhead is too high for "small" dense layers
 	//Performance is limited by CPU cache size and speed regardless of core count
+	//AND can result in seed problem with random_uniform (see YOLO activ function for a proper example)
 	for(i = 0; i < size; i++)
 	{
 		rand = random_uniform();
@@ -139,32 +136,15 @@ void dropout_select_conv(int* mask, int size, float drop_rate)
 	}
 }
 
-void dropout_apply_conv(void* i_table, int batch_size, int dim, int* mask, int size) 
+void dropout_apply_conv(void* i_table, int* mask, int size)
 {
-	int i, j;
-	int c_depth, current_id, offset;
-
+	int i;
 	float* table = (float*) i_table;
 	
-	for(i = 0; i < batch_size; i++)
-	{
-		for(j = 0; j < size; j++)
-		{
-			c_depth = j / dim;
-			current_id = j % dim;
-			offset = dim*batch_size;
-			
-			table[i*dim + c_depth*offset + current_id] *= mask[j];
-		}
-	}
+	for(i = 0; i < size; i++)
+		table[i] *= mask[i];
 }
 
-
-void naiv_conv_define(layer *current)
-{
-	current->forward = forward_conv_layer;
-	current->backprop = backward_conv_layer;
-}
 
 void forward_conv_layer(layer *current)
 {
@@ -252,11 +232,10 @@ void forward_conv_layer(layer *current)
 	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		dropout_select_conv(c_param->dropout_mask, c_param->nb_filters 
-			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), current->dropout_rate);	
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);	
 		
-		dropout_apply_conv(current->output, net->batch_size, 
-			(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), c_param->dropout_mask, 
-			c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
+		dropout_apply_conv(current->output, c_param->dropout_mask, c_param->nb_filters 
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
 	}
 }
 
@@ -275,9 +254,8 @@ void backward_conv_layer(layer *current)
 	
 	if(current->dropout_rate > 0.01f)
 	{
-		dropout_apply_conv(current->delta_o, net->batch_size, 
-			(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), c_param->dropout_mask, 
-			c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
+		dropout_apply_conv(current->delta_o, c_param->dropout_mask, c_param->nb_filters 
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
 	}
 	
 	//######################## ERROR PROPAGATION ########################
@@ -371,6 +349,11 @@ void backward_conv_layer(layer *current)
 }
 
 
+void naiv_conv_define(layer *current)
+{
+	current->forward = forward_conv_layer;
+	current->backprop = backward_conv_layer;
+}
 
 
 

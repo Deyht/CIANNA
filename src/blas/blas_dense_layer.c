@@ -28,24 +28,12 @@ static dense_param *d_param;
 
 //public are in prototypes.h
 
-//private
-void blas_forward_dense_layer(layer *current);
-void blas_backward_dense_layer(layer* current);
-
-
-void blas_dense_define(layer *current)
-{
-	current->forward = blas_forward_dense_layer;
-	current->backprop = blas_backward_dense_layer;
-}
-
 
 void blas_forward_dense_layer(layer *current)
 {
 	double w_alpha;
 	int nb_area_w, nb_area_h, nb_area_d, depth;
 	void* ref_input;
-	
 	float prev_drop_rate = 0.0f;
 	
 	network* net = current->c_network;
@@ -108,8 +96,8 @@ void blas_forward_dense_layer(layer *current)
 	
 	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
-		dropout_select_dense(d_param->dropout_mask, d_param->nb_neurons+1, current->dropout_rate);
-		dropout_apply_dense(current->output, net->batch_size, d_param->nb_neurons, d_param->dropout_mask);
+		dropout_select_dense(d_param->dropout_mask, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
+		dropout_apply_dense(current->output, (d_param->nb_neurons+1)*net->batch_size, d_param->dropout_mask);
 	}
 }
 
@@ -124,8 +112,8 @@ void blas_backward_dense_layer(layer* current)
 	d_param = (dense_param*) current->param;
 	
 	if(current->dropout_rate > 0.01f)
-		dropout_apply_dense(current->delta_o, net->batch_size, d_param->nb_neurons,
-					d_param->dropout_mask);
+		dropout_apply_dense(current->delta_o,
+			(d_param->nb_neurons+1)*net->batch_size, d_param->dropout_mask);
 	
 	//######################## ERROR PROPAGATION ########################
 	ref_input = current->input;
@@ -182,7 +170,11 @@ void blas_backward_dense_layer(layer* current)
 }
 
 
-
+void blas_dense_define(layer *current)
+{
+	current->forward = blas_forward_dense_layer;
+	current->backprop = blas_backward_dense_layer;
+}
 
 
 

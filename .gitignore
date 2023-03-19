@@ -18,6 +18,7 @@ fwd_step_*.dat
 *.dat
 *.nvvp
 error.txt
+prof.txt
 input.dat
 mnist_dat
 ./net_save

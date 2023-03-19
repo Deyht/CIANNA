@@ -28,176 +28,163 @@ static pool_param *p_param;
 
 //public are in prototypes.h
 
-//private
-void cuda_forward_pool_layer(layer* current);
-void cuda_backward_pool_layer(layer* current);
-
-
-#define max_pooling_kernel(name, type)																				\
-__global__ void max_pooling_kernel_##name																			\
-	(void* i_input, void* i_output, int* pool_map,																	\
-	int pool_size_w, int pool_size_h, int pool_size_d, 																\
-	int w_size, int h_size, int d_size, 																			\
-	int w_size_out, int h_size_out, int d_size_out, int length)														\
-{																													\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
-	int k = blockIdx.y*blockDim.y + threadIdx.y;																	\
-	int x, y, z, x_max, y_max, z_max, pos, pos_x, pos_y, pos_z, pos_out;											\
-																													\
-	type* input  = (type*) i_input;																					\
-	type* output = (type*) i_output;																				\
-																													\
-	pos_z = i / (w_size_out*h_size_out); 																			\
-	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;																\
-	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;																\
-																													\
-	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);		\
-																													\
-	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;	\
-																													\
-	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)								\
-	{																												\
-		x_max = 0; y_max = 0; z_max = 0;																			\
-		for(x = 0; x < pool_size_d; x++)																			\
-			for(y = 0; y < pool_size_h; y++)																		\
-				for(z = 0; z < pool_size_w; z++)																	\
-					if(input[pos + x_max*w_size*h_size + y_max*w_size + z_max] 										\
-						< input[pos + x*w_size*h_size + y*w_size + z])												\
-					{																								\
-						x_max = x; y_max = y; z_max = z;															\
-					}																								\
-		pool_map[pos_out] = (x_max*pool_size_w*pool_size_h + y_max*pool_size_w + z_max);							\
-		output[pos_out] = input[pos + x_max*w_size*h_size + y_max*w_size + z_max];									\
-	}																												\
+#define max_pooling_kernel(name, type)																											\
+__global__ void max_pooling_kernel_##name																										\
+	(void* i_input, void* i_output, int* pool_map,																								\
+	int pool_size_w, int pool_size_h, int pool_size_d, 																							\
+	int w_size, int h_size, int d_size, 																										\
+	int w_size_out, int h_size_out, int d_size_out, int length)																					\
+{																																				\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int k = blockIdx.y*blockDim.y + threadIdx.y;																								\
+	int x, y, z, x_max, y_max, z_max, pos, pos_x, pos_y, pos_z, pos_out;																		\
+																																				\
+	type* input  = (type*) i_input;																												\
+	type* output = (type*) i_output;																											\
+																																				\
+	pos_z = i / (w_size_out*h_size_out); 																										\
+	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;																							\
+	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;																							\
+																																				\
+	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);									\
+																																				\
+	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;								\
+																																				\
+	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)															\
+	{																																			\
+		x_max = 0; y_max = 0; z_max = 0;																										\
+		for(x = 0; x < pool_size_d; x++)																										\
+			for(y = 0; y < pool_size_h; y++)																									\
+				for(z = 0; z < pool_size_w; z++)																								\
+					if(input[pos + x_max*w_size*h_size + y_max*w_size + z_max] 																	\
+						< input[pos + x*w_size*h_size + y*w_size + z])																			\
+					{																															\
+						x_max = x; y_max = y; z_max = z;																						\
+					}																															\
+		if(pool_map != NULL)																													\
+			pool_map[pos_out] = (x_max*pool_size_w*pool_size_h + y_max*pool_size_w + z_max);													\
+		output[pos_out] = input[pos + x_max*w_size*h_size + y_max*w_size + z_max];																\
+	}																																			\
 }
 
 
-#define avg_pooling_kernel(name, type)																				\
-__global__ void avg_pooling_kernel_##name																			\
-	(void* i_input, void* i_output, int* pool_map, 																	\
-	int pool_size_w, int pool_size_h, int pool_size_d,																\
-	int w_size, int h_size, int d_size, 																			\
-	int w_size_out, int h_size_out, int d_size_out, int length)														\
-{																													\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
-	int k = blockIdx.y*blockDim.y + threadIdx.y;																	\
-	int x, y, z, pos, pos_x, pos_y, pos_z, pos_out;																	\
-	double r_avg = 0.0f;																							\
-																													\
-	type* input  = (type*) i_input;																					\
-	type* output = (type*) i_output;																				\
-																													\
-	pos_z = i / (w_size_out*h_size_out); 																			\
-	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;																\
-	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;																\
-																													\
-	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);		\
-																													\
-	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;	\
-																													\
-	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)								\
-	{																												\
-		for(x = 0; x < pool_size_d; x++)																			\
-			for(y = 0; y < pool_size_h; y++)																		\
-				for(z = 0; z < pool_size_w; z++)																	\
-					r_avg += (float) input[pos + x*w_size*h_size + y*w_size + z];									\
-																													\
-		output[pos_out] = (type) (r_avg/(pool_size_w*pool_size_h*pool_size_d));										\
-	}																												\
+#define avg_pooling_kernel(name, type)																											\
+__global__ void avg_pooling_kernel_##name																										\
+	(void* i_input, void* i_output, int* pool_map, 																								\
+	int pool_size_w, int pool_size_h, int pool_size_d,																							\
+	int w_size, int h_size, int d_size, 																										\
+	int w_size_out, int h_size_out, int d_size_out, int length)																					\
+{																																				\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int k = blockIdx.y*blockDim.y + threadIdx.y;																								\
+	int x, y, z, pos, pos_x, pos_y, pos_z, pos_out;																								\
+	double r_avg = 0.0f;																														\
+																																				\
+	type* input  = (type*) i_input;																												\
+	type* output = (type*) i_output;																											\
+																																				\
+	pos_z = i / (w_size_out*h_size_out); 																										\
+	pos_y = (i % (w_size_out*h_size_out)) / w_size_out;																							\
+	pos_x = (i % (w_size_out*h_size_out)) % w_size_out;																							\
+																																				\
+	pos_out = k*(w_size_out*h_size_out*d_size_out) + pos_x + pos_y*w_size_out + pos_z*(w_size_out*h_size_out);									\
+																																				\
+	pos = k*w_size*h_size*d_size + pos_x*pool_size_w + pos_y*pool_size_h*w_size + pos_z*pool_size_d*w_size*h_size;								\
+																																				\
+	if(pos_x < w_size_out && pos_y < h_size_out && pos_z < d_size_out && k < length)															\
+	{																																			\
+		for(x = 0; x < pool_size_d; x++)																										\
+			for(y = 0; y < pool_size_h; y++)																									\
+				for(z = 0; z < pool_size_w; z++)																								\
+					r_avg += (float) input[pos + x*w_size*h_size + y*w_size + z];																\
+																																				\
+		output[pos_out] = (type) (r_avg/(pool_size_w*pool_size_h*pool_size_d));																	\
+	}																																			\
 }
 
-#define deltah_max_pool_cont(name, type)																			\
-__global__ void deltah_max_pool_cont_##name																			\
-	(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 														\
-	int pool_size_w, int pool_size_h, int pool_size_d, 																\
-	int w_size, int h_size, int d_size, 																			\
-	int w_size_out, int h_size_out, int d_size_out, int length)														\
-{																													\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
-																													\
-	int map_batch, in_im_pos;																						\
-	int pos_x, pos_y, pos_z;																						\
-	int pool_x, pool_y, pool_z;																						\
-																													\
-	type* delta_o = (type*) i_delta_o;																				\
-	type* delta_o_unpool = (type*) i_delta_o_unpool;																\
-																													\
-	if(i < length)																									\
-	{																												\
-		map_batch = i / (w_size_out*h_size_out*d_size_out);															\
-		in_im_pos =  i % (w_size_out*h_size_out*d_size_out);														\
-		pos_z = in_im_pos / (w_size_out*h_size_out);																\
-		pos_y = (in_im_pos % (w_size_out*h_size_out)) / w_size_out;													\
-		pos_x = (in_im_pos % (w_size_out*h_size_out)) % w_size_out;													\
-																													\
-		pool_z = pool_map[i]/(pool_size_w*pool_size_h);																\
-		pool_y = (pool_map[i] % (pool_size_w*pool_size_h)) / pool_size_w;											\
-		pool_x = (pool_map[i] % (pool_size_w*pool_size_h)) % pool_size_w;											\
-																													\
-		/*add mask of locations*/																					\
-		delta_o_unpool += map_batch * w_size * h_size * d_size														\
-			+ pos_z * pool_size_d * w_size*h_size + pos_y * pool_size_h * w_size + pos_x * pool_size_w				\
-			+ pool_z * w_size * h_size + pool_y * w_size + pool_x;													\
-																													\
-		*delta_o_unpool = delta_o[i];																				\
-	}																												\
+#define deltah_max_pool_cont(name, type)																										\
+__global__ void deltah_max_pool_cont_##name																										\
+	(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 																					\
+	int pool_size_w, int pool_size_h, int pool_size_d, 																							\
+	int w_size, int h_size, int d_size, 																										\
+	int w_size_out, int h_size_out, int d_size_out, int length)																					\
+{																																				\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+																																				\
+	int map_batch, in_im_pos;																													\
+	int pos_x, pos_y, pos_z;																													\
+	int pool_x, pool_y, pool_z;																													\
+																																				\
+	type* delta_o = (type*) i_delta_o;																											\
+	type* delta_o_unpool = (type*) i_delta_o_unpool;																							\
+																																				\
+	if(i < length)																																\
+	{																																			\
+		map_batch = i / (w_size_out*h_size_out*d_size_out);																						\
+		in_im_pos =  i % (w_size_out*h_size_out*d_size_out);																					\
+		pos_z = in_im_pos / (w_size_out*h_size_out);																							\
+		pos_y = (in_im_pos % (w_size_out*h_size_out)) / w_size_out;																				\
+		pos_x = (in_im_pos % (w_size_out*h_size_out)) % w_size_out;																				\
+																																				\
+		pool_z = pool_map[i]/(pool_size_w*pool_size_h);																							\
+		pool_y = (pool_map[i] % (pool_size_w*pool_size_h)) / pool_size_w;																		\
+		pool_x = (pool_map[i] % (pool_size_w*pool_size_h)) % pool_size_w;																		\
+																																				\
+		/*add mask of locations*/																												\
+		delta_o_unpool += map_batch * w_size * h_size * d_size																					\
+			+ pos_z * pool_size_d * w_size*h_size + pos_y * pool_size_h * w_size + pos_x * pool_size_w											\
+			+ pool_z * w_size * h_size + pool_y * w_size + pool_x;																				\
+																																				\
+		*delta_o_unpool = delta_o[i];																											\
+	}																																			\
 }
 
 
-#define deltah_avg_pool_cont(name, type)																			\
-__global__ void deltah_avg_pool_cont_##name																			\
-	(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 														\
-	int pool_size_w, int pool_size_h, int pool_size_d,																\
-	int w_size, int h_size, int d_size, 																			\
-	int w_size_out, int h_size_out, int d_size_out, int length)														\
-{																													\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																	\
-																													\
-	int map_batch, in_im_pos;																						\
-	int pos_x, pos_y, pos_z;																						\
-	int x, y, z;																									\
-																													\
-	type* delta_o = (type*) i_delta_o;																				\
-	type* delta_o_unpool = (type*) i_delta_o_unpool;																\
-																													\
-	if(i < length)																									\
-	{																												\
-		map_batch = i / (w_size_out*h_size_out*d_size_out);															\
-		in_im_pos =  i % (w_size_out*h_size_out*d_size_out);														\
-		pos_z = in_im_pos / (w_size_out*h_size_out);																\
-		pos_y = (in_im_pos % (w_size_out*h_size_out)) / w_size_out;													\
-		pos_x = (in_im_pos % (w_size_out*h_size_out)) % w_size_out;													\
-																													\
-		delta_o_unpool += map_batch * w_size * h_size * d_size														\
-			+ pos_z * pool_size_d * w_size*h_size + pos_y * pool_size_h * w_size + pos_x * pool_size_w;				\
-																													\
-		for(z = 0; z < pool_size_d; z++)																			\
-			for(y = 0; y < pool_size_h; y++)																		\
-				for(x = 0; x < pool_size_w; x++)																	\
-					 delta_o_unpool[z * w_size * h_size	+ y * w_size + x] 											\
-						= (type)((float)delta_o[i]/(pool_size_w*pool_size_h*pool_size_d));							\
-	}																												\
+#define deltah_avg_pool_cont(name, type)																										\
+__global__ void deltah_avg_pool_cont_##name																										\
+	(void* i_delta_o, void* i_delta_o_unpool, int* pool_map, 																					\
+	int pool_size_w, int pool_size_h, int pool_size_d,																							\
+	int w_size, int h_size, int d_size, 																										\
+	int w_size_out, int h_size_out, int d_size_out, int length)																					\
+{																																				\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+																																				\
+	int map_batch, in_im_pos;																													\
+	int pos_x, pos_y, pos_z;																													\
+	int x, y, z;																																\
+																																				\
+	type* delta_o = (type*) i_delta_o;																											\
+	type* delta_o_unpool = (type*) i_delta_o_unpool;																							\
+																																				\
+	if(i < length)																																\
+	{																																			\
+		map_batch = i / (w_size_out*h_size_out*d_size_out);																						\
+		in_im_pos =  i % (w_size_out*h_size_out*d_size_out);																					\
+		pos_z = in_im_pos / (w_size_out*h_size_out);																							\
+		pos_y = (in_im_pos % (w_size_out*h_size_out)) / w_size_out;																				\
+		pos_x = (in_im_pos % (w_size_out*h_size_out)) % w_size_out;																				\
+																																				\
+		delta_o_unpool += map_batch * w_size * h_size * d_size																					\
+			+ pos_z * pool_size_d * w_size*h_size + pos_y * pool_size_h * w_size + pos_x * pool_size_w;											\
+																																				\
+		for(z = 0; z < pool_size_d; z++)																										\
+			for(y = 0; y < pool_size_h; y++)																									\
+				for(x = 0; x < pool_size_w; x++)																								\
+					 delta_o_unpool[z * w_size * h_size	+ y * w_size + x] 																		\
+						= (type)((float)delta_o[i]/(pool_size_w*pool_size_h*pool_size_d));														\
+	}																																			\
 }
 
-__global__ void init_block_state_pool(unsigned int seed,  curandState_t* states)
+
+__global__ void cuda_dropout_select_pool(int* mask, int size, float drop_rate, void* states)
 {
-	curand_init((seed << 20) + blockIdx.x, /* the seed can be the same for each core, here we pass the time in from the CPU */
-              0, /* the sequence number should be different for each core (unless you want all
-                             cores to get the same sequence of numbers for some reason - use thread id! 
-			     Currently use an alternative definition with Id adjunct to seed*/
-              0, /* the offset is how much extra we advance in the sequence for each call, can be 0 */
-              &states[blockIdx.x]);
-}
-
-
-__global__ void cuda_dropout_select_pool(int* mask, int size, float drop_rate, curandState_t* states)
-{
-	int i = blockIdx.x;
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	curandState_t* c_states = (curandState_t*) states;
 	
 	float rand;
 	if(i < size)
 	{
-		rand = curand_uniform(&states[i]);
+		rand = curand_uniform(&c_states[i]);
 		if(rand < drop_rate)
 			mask[i] = 0;
 		else
@@ -205,28 +192,23 @@ __global__ void cuda_dropout_select_pool(int* mask, int size, float drop_rate, c
 	}
 }
 
-#define cuda_dropout_apply_pool(name, type) 																\
-__global__ void cuda_dropout_apply_pool_##name(void* i_table, int batch_size, int dim, int* mask, int size)	\
-{																											\
-	int j = blockIdx.x*blockDim.x + threadIdx.x;															\
-	int i = blockIdx.y*blockDim.y + threadIdx.y;															\
-																											\
-	int c_depth = j / dim;																					\
-	int current_id = j % dim;																				\
-	int offset = dim*batch_size;																			\
-																											\
-	type* table = (type*) i_table;																			\
-																											\
-	if(i < batch_size && j < size)																			\
-		table[i*dim + c_depth*offset + current_id] *= mask[j];												\
+#define cuda_dropout_apply_pool(name, type) 																									\
+__global__ void cuda_dropout_apply_pool_##name(void* i_table, int* mask, int size) 																\
+{ 																																				\
+	int i = blockIdx.x*blockDim.x + threadIdx.x; 																								\
+																																				\
+	type *table = (type*) i_table;																												\
+																																				\
+	if(i <size) 																																\
+		table[i] *= mask[i]; 																													\
 }
 
-#define cuda_typed_memset(name, type)																		\
-void cuda_typed_memset_##name(void* i_table, int value, int size)											\
-{																											\
-	type* table = (type*) i_table;																			\
-																											\
-	cudaMemset(table,  value, size * sizeof(type));															\
+#define cuda_typed_memset(name, type)																											\
+void cuda_typed_memset_##name(void* i_table, int value, int size)																				\
+{																																				\
+	type* table = (type*) i_table;																												\
+																																				\
+	cudaMemset(table,  value, size * sizeof(type));																								\
 }
 
 
@@ -303,12 +285,6 @@ void cuda_pool_init(network* net)
 	}
 }
 
-void cuda_pool_define(layer *current)
-{
-	current->forward = cuda_forward_pool_layer;
-	current->backprop = cuda_backward_pool_layer;
-}
-
 size_t cuda_convert_pool_layer(layer *current)
 {
 	p_param = (pool_param*)current->param;
@@ -316,21 +292,29 @@ size_t cuda_convert_pool_layer(layer *current)
 	
 	network* net = current->c_network;
 
-	vram_approx += cuda_convert_table_int(&(p_param->pool_map), p_param->nb_area[0] 
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size,0);
 	vram_approx += cuda_convert_table(net, &(current->output), p_param->nb_area[0] 
 		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size,0);
 	
-	vram_approx += cuda_convert_table(net, &(current->delta_o), p_param->nb_area[0] 
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size,0);
-		
 	if(current->dropout_rate > 0.01f)
 	{
-		vram_approx += cuda_convert_table_int(&(p_param->dropout_mask), p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]),0);
-		cudaMalloc((void**) &p_param->block_state, (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])) * sizeof(curandState_t));
-		vram_approx += (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])) * sizeof(curandState_t);
-		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-		init_block_state_pool<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)p_param->block_state);
+		vram_approx += cuda_convert_table_int(&(p_param->dropout_mask), p_param->nb_maps 
+			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size,0);
+		cudaMalloc((void**) &p_param->block_state, (p_param->nb_maps 
+			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size) * sizeof(curandState_t));
+		vram_approx += (p_param->nb_maps 
+			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size) * sizeof(curandState_t);
+		cu_blocks = (p_param->nb_maps 
+			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size + cu_threads - 1) / cu_threads;
+		init_block_state<<< cu_blocks, cu_threads>>>(time(NULL),(curandState_t*)p_param->block_state,
+			p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);
+	}
+	
+	if(!net->inference_only)
+	{
+		vram_approx += cuda_convert_table_int(&(p_param->pool_map), p_param->nb_area[0] 
+			* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size,0);
+		vram_approx += cuda_convert_table(net, &(current->delta_o), p_param->nb_area[0] 
+			* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size,0);
 	}
 	
 	return vram_approx;
@@ -376,17 +360,13 @@ void cuda_forward_pool_layer(layer* current)
 
 	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
-		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-		cuda_dropout_select_pool<<<cu_blocks, 1>>>(p_param->dropout_mask, p_param->nb_maps 
-			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), current->dropout_rate, (curandState_t*) p_param->block_state);	
+		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);
+		cuda_dropout_select_pool<<<cu_blocks, cu_threads>>>(p_param->dropout_mask, p_param->nb_maps 
+			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, 
+			current->dropout_rate, (curandState_t*) p_param->block_state);	
 		
-		dim3 threadsPerBlock(32, 8);
-		dim3 numBlocks((p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
-			(net->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
-		
-		net->cu_inst.cu_pool_fcts.drop_apply_fct<<<numBlocks, threadsPerBlock>>>(current->output, 
-			net->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]),
-			p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+		net->cu_inst.cu_pool_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, p_param->dropout_mask, 
+			p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])* net->batch_size);
 	}
 }
 
@@ -399,18 +379,16 @@ void cuda_backward_pool_layer(layer* current)
 	
 	if(current->dropout_rate > 0.01f)
 	{
-		dim3 threadsPerBlock(32, 8);
-		dim3 numBlocks((p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
-			(net->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
+		cu_blocks = (p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);
 		
-		net->cu_inst.cu_pool_fcts.drop_apply_fct<<<numBlocks, threadsPerBlock>>>(current->delta_o, 
-			net->batch_size, (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), 
-			p_param->dropout_mask, p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+		net->cu_inst.cu_pool_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->delta_o, p_param->dropout_mask, 
+			p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);
 	}
 
 	if(current->previous != NULL)
 	{
-		if(current->previous->type == CONV)
+		if(current->previous->type == CONV ||
+			(current->previous->type == NORM && current->previous->previous->type == CONV))
 		{		
 			net->cu_inst.cu_pool_fcts.typed_memset_fct(current->previous->delta_o, 0, p_param->nb_maps 
 				* p_param->prev_size[0] * p_param->prev_size[1] *p_param->prev_size[2]
@@ -443,7 +421,11 @@ void cuda_backward_pool_layer(layer* current)
 }
 
 
-
+void cuda_pool_define(layer *current)
+{
+	current->forward = cuda_forward_pool_layer;
+	current->backprop = cuda_backward_pool_layer;
+}
 
 
 

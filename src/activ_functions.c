@@ -51,17 +51,19 @@ void YOLO_deriv(layer *previous);
 void YOLO_deriv_output_error(layer *current);
 void YOLO_output_error(layer *current);
 
-void ReLU_activation_fct(void *tab, int len, int dim, float saturation, float leaking_factor, int size);
-void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, float saturation, float leaking_factor, int size);
+void ReLU_activation_fct(void *tab, int len, int dim, int bias_dim, float saturation, float leaking_factor, int size);
+void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, int biased_dim, float saturation, float leaking_factor, int size);
 void quadratic_deriv_output_error(void *delta_o, void *output, void *target, 
-	int dim, int len, int size);
+	int dim, int biased_dim, int offset, int len, int size);
 void quadratic_output_error(void *output_error, void *output, void *target, 
-	int dim, int len, int size);
-void logistic_activation_fct(void *tab, float beta, float saturation, int dim, int len, int size);
-void logistic_deriv_fct(void *deriv, void* value, float beta, int len, int dim, int size);
-void softmax_activation_fct(void *tab, int len, int dim, int size);
-void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int size);
-void cross_entropy_output_error(void *output_error, void *output, void *target, int len, int dim, int size);
+	int dim, int biased_dim, int offset, int len, int size);
+void logistic_activation_fct(void *tab, float beta, float saturation, int dim, int biased_dim, int len, int size);
+void logistic_deriv_fct(void *deriv, void* value, float beta, int len, int dim, int biased_dim, int size);
+void softmax_activation_fct(void *tab, int len, int dim, int biased_dim, int offset, int size);
+void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, 
+	int len, int dim, int biased_dim, int offset, int size);
+void cross_entropy_output_error(void *output_error, void *output, void *target, 
+	int len, int dim, int biased_dim, int offset, int size);
 
 //#####################################################
 
@@ -235,7 +237,7 @@ void print_activ_param(FILE *f, layer *current, int f_bin)
 	if(f_bin)
 		fwrite(temp_string, sizeof(char), 40, f);
 	else
-		fprintf(f, "%s", temp_string);
+		fprintf(f, "%s ", temp_string);
 }
 
 
@@ -266,7 +268,7 @@ void load_activ_param(layer *current, const char *activ)
 //		 Linear activation related functions
 //#####################################################
 
-void set_linear_activ(layer *current, int size, int dim, int biased_dim)
+void set_linear_activ(layer *current, int size, int dim, int biased_dim, int offset)
 {
 	current->activ_param = (linear_param*) malloc(sizeof(linear_param));
 	linear_param *param = (linear_param*)current->activ_param;	
@@ -274,6 +276,7 @@ void set_linear_activ(layer *current, int size, int dim, int biased_dim)
 	param->size = size;
 	param->dim = dim;
 	param->biased_dim = biased_dim;
+	param->offset = offset;
 	current->bias_value = 0.5f;
 }
 
@@ -292,15 +295,15 @@ void linear_deriv(layer *previous)
 void linear_deriv_output_error(layer *current)
 {
 	linear_param *param = (linear_param*)current->activ_param;
-	quadratic_deriv_output_error(current->delta_o, current->output,
-		current->c_network->target, (param->biased_dim)*current->c_network->length, param->dim, param->size);
+	quadratic_deriv_output_error(current->delta_o, current->output, current->c_network->target, 
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->offset, param->size);
 }
 
 void linear_output_error(layer *current)
 {	
 	linear_param *param = (linear_param*)current->activ_param;
-	quadratic_output_error(current->c_network->output_error, 
-		current->output, current->c_network->target, (param->biased_dim)*current->c_network->length, param->dim, param->size);
+	quadratic_output_error(current->c_network->output_error, current->output, current->c_network->target,
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->offset, param->size);
 }
 
 
@@ -313,7 +316,7 @@ void linear_output_error(layer *current)
 //		 ReLU activation related functions
 //#####################################################
 
-void set_relu_activ(layer *current, int size, int dim, int biased_dim, const char *activ)
+void set_relu_activ(layer *current, int size, int dim, int biased_dim, int offset, const char *activ)
 {
 	char *temp = NULL;
 
@@ -323,6 +326,7 @@ void set_relu_activ(layer *current, int size, int dim, int biased_dim, const cha
 	param->size = size;
 	param->dim = dim;
 	param->biased_dim = biased_dim;
+	param->offset = offset;
 	param->saturation = 800.0f;
 	param->leaking_factor = 0.05f;
 	current->bias_value = 0.1f;
@@ -342,15 +346,8 @@ void print_relu_activ_param(layer *current, char *activ)
 	sprintf(activ,"RELU_S%0.2f_L%0.2f", param->saturation, param->leaking_factor);
 }
 
-void ReLU_activation(layer *current)
-{
-	ReLU_param *param = (ReLU_param*)current->activ_param;
-	ReLU_activation_fct(current->output, param->size, param->dim, 
-		param->saturation, param->leaking_factor, param->size);
-}
-
 //Is in fact a leaky ReLU, to obtain true ReLU define leaking_factor to 0
-void ReLU_activation_fct(void *tab, int len, int dim, float saturation, float leaking_factor, int size)
+void ReLU_activation_fct(void *tab, int len, int dim, int biased_dim, float saturation, float leaking_factor, int size)
 {
 	int i;
 	float *f_tab = (float*) tab;
@@ -358,29 +355,38 @@ void ReLU_activation_fct(void *tab, int len, int dim, float saturation, float le
 	#pragma omp parallel for schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
-		if(i < len && (i+1)%(dim+1) != 0)
+		if(biased_dim > dim)
 		{
-			if(f_tab[i] <= 0.0f)
-				f_tab[i] *= leaking_factor;
-			else if(f_tab[i] > saturation)
-				f_tab[i] = saturation + (f_tab[i] - saturation)*leaking_factor;
+			if(i < len && (i+1)%(dim+1) != 0)
+			{
+				if(f_tab[i] <= 0.0f)
+					f_tab[i] *= leaking_factor;
+				else if(f_tab[i] > saturation)
+					f_tab[i] = saturation + (f_tab[i] - saturation)*leaking_factor;
+			}
+			else
+				f_tab[i] = 0.0f;
 		}
 		else
-			f_tab[i] = 0.0f;
+		{
+			int length_size = len/biased_dim;
+			int batch_size = size/biased_dim;
+			if(i % batch_size < length_size)
+			{
+				if(f_tab[i] <= 0.0f)
+					f_tab[i] *= leaking_factor;
+				else if(f_tab[i] > saturation)
+					f_tab[i] = saturation + (f_tab[i] - saturation)*(leaking_factor);
+			}
+			else
+				f_tab[i] = 0.0f;
+		}
 	}
 }
 
 
-void ReLU_deriv(layer *previous)
-{
-	ReLU_param *param = (ReLU_param*)previous->activ_param;
-	ReLU_deriv_fct(previous->delta_o, previous->output, param->size, param->dim,
-		param->saturation, param->leaking_factor, param->size);
-}
-
-
 //should be adapted for both conv and dense layer if dim is properly defined
-void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, float saturation, float leaking_factor, int size)
+void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, int biased_dim, float saturation, float leaking_factor, int size)
 {
 	int i;
 	float *f_deriv = (float*) deriv;
@@ -389,17 +395,50 @@ void ReLU_deriv_fct(void *deriv, void *value, int len, int dim, float saturation
 	#pragma omp parallel for schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
-		if(i < len && (i+1)%(dim+1) != 0)
+		if(biased_dim > dim)
 		{
-			if(f_value[i] <= 0.0f)
-				f_deriv[i] *= leaking_factor;
-			else if(f_deriv[i] > saturation)
-				f_deriv[i] *= leaking_factor;
+			if(i < len && (i+1)%(dim+1) != 0)
+			{
+				if(f_value[i] <= 0.0f)
+					f_deriv[i] *= leaking_factor;
+				else if(f_deriv[i] > saturation)
+					f_deriv[i] *= leaking_factor;
+			}
+			else
+				f_deriv[i] = 0.0f;
 		}
 		else
-			f_deriv[i] = 0.0f;
+		{
+			int length_size = len/biased_dim;
+			int batch_size = size/biased_dim;
+			if(i % batch_size < length_size)
+			{
+				if(f_value[i] <= 0.0f)
+					f_deriv[i] *= leaking_factor;
+				else if(f_deriv[i] > saturation)
+					f_deriv[i] *= leaking_factor;
+			}
+			else
+				f_deriv[i] = 0.0f;
+		}
 	}
 }
+
+void ReLU_activation(layer *current)
+{
+	ReLU_param *param = (ReLU_param*)current->activ_param;
+	ReLU_activation_fct(current->output, param->size, param->dim, param->biased_dim,
+		param->saturation, param->leaking_factor, param->size);
+}
+
+
+void ReLU_deriv(layer *previous)
+{
+	ReLU_param *param = (ReLU_param*)previous->activ_param;
+	ReLU_deriv_fct(previous->delta_o, previous->output, param->size, param->dim,
+		param->biased_dim, param->saturation, param->leaking_factor, param->size);
+}
+
 
 // Should re write a output function to take into account ReLU for Conv output format
 void ReLU_deriv_output_error(layer* current)
@@ -407,9 +446,9 @@ void ReLU_deriv_output_error(layer* current)
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	
 	quadratic_deriv_output_error(current->delta_o, current->output, current->c_network->target,
-		(param->biased_dim) * current->c_network->length, param->dim, param->size);
-	ReLU_deriv_fct(current->delta_o, current->output, 
-		param->size, param->dim, param->saturation, param->leaking_factor, param->size);
+		(param->biased_dim) * current->c_network->length, param->dim, param->biased_dim, param->offset, param->size);
+	ReLU_deriv_fct(current->delta_o, current->output, param->size, param->dim,
+		param->biased_dim, param->saturation, param->leaking_factor, param->size);
 }
 
 
@@ -417,13 +456,12 @@ void ReLU_output_error(layer* current)
 {
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	
-	quadratic_output_error(current->c_network->output_error, 
-		current->output, current->c_network->target, (param->biased_dim)*current->c_network->length, 
-		param->dim, param->size);
+	quadratic_output_error(current->c_network->output_error, current->output, current->c_network->target,
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->offset, param->size);
 }
 
 
-void quadratic_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int size)
+void quadratic_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int biased_dim, int offset, int size)
 {
 	int i;
 	int pos;
@@ -435,21 +473,34 @@ void quadratic_deriv_output_error(void *delta_o, void *output, void *target, int
 	#pragma omp parallel for private(pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{	
-		if(i < len && (i+1)%(dim+1) != 0)
+		if(biased_dim > dim)
 		{
-			pos = i - i/(dim+1);
-			f_delta_o[i] = (f_output[i] - f_target[pos]);
+			if(i < len && (i+1)%(dim+1) != 0)
+			{
+				pos = i - i/(dim+1);
+				f_delta_o[i] = (f_output[i] - f_target[pos]);
+			}
+			else
+				f_delta_o[i] = 0.0f;
 		}
 		else
 		{
-			f_delta_o[i] = 0.0f;
+			int length_size = len/biased_dim;
+			int batch_size = size/biased_dim;
+			if(i % batch_size < length_size)
+			{
+				pos = (i/offset) + (i % offset)*dim;
+				f_delta_o[i] = (f_output[i] - f_target[pos]);
+			}
+			else
+				f_delta_o[i] = 0.0f;
 		}
 	}
 }
 
 
 
-void quadratic_output_error(void *output_error, void *output, void *target, int len, int dim, int size)
+void quadratic_output_error(void *output_error, void *output, void *target, int len, int dim, int biased_dim, int offset, int size)
 {
 	int i;
 	int pos;
@@ -461,13 +512,28 @@ void quadratic_output_error(void *output_error, void *output, void *target, int 
 	#pragma omp parallel for private(pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
-		if(i < len && (i+1)%(dim+1) != 0)
+		if(biased_dim > dim)
 		{
-			pos = i - i/(dim+1);
-			f_output_error[i] = 0.5*(f_output[i] - f_target[pos])*(f_output[i] - f_target[pos]);
+			if(i < len && (i+1)%(dim+1) != 0)
+			{
+				pos = i - i/(dim+1);
+				f_output_error[i] = 0.5*(f_output[i] - f_target[pos])*(f_output[i] - f_target[pos]);
+			}
+			else
+				f_output_error[i] = 0.0f;
 		}
 		else
-			f_output_error[i] = 0.0f;
+		{
+			int length_size = len/biased_dim;
+			int batch_size = size/biased_dim;
+			if(i % batch_size < length_size)
+			{
+				pos = (i/offset) + (i % offset)*dim;
+				f_output_error[i] = 0.5*(f_output[i] - f_target[pos])*(f_output[i] - f_target[pos]);
+			}
+			else
+				f_output_error[i] = 0.0f;
+		}
 	}
 }
 
@@ -480,7 +546,7 @@ void quadratic_output_error(void *output_error, void *output, void *target, int 
 //#####################################################
 
 
-void set_logistic_activ(layer *current, int size, int dim, int biased_dim, const char *activ)
+void set_logistic_activ(layer *current, int size, int dim, int biased_dim, int offset, const char *activ)
 {
 	char *temp = NULL;
 
@@ -490,6 +556,7 @@ void set_logistic_activ(layer *current, int size, int dim, int biased_dim, const
 	param->size = size;
 	param->dim = dim;
 	param->biased_dim = biased_dim;
+	param->offset = offset;
 	param->saturation = 6.0f;
 	param->beta = 1.0f;
 	current->bias_value = -1.0f;
@@ -513,10 +580,11 @@ void print_logistic_activ_param(layer *current, char *activ)
 void logistic_activation(layer *current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
-	logistic_activation_fct(current->output, param->beta, param->saturation, (param->biased_dim)*current->c_network->length, param->dim, param->size);
+	logistic_activation_fct(current->output, param->beta, param->saturation, 
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->size);
 }
 
-void logistic_activation_fct(void *tab, float beta, float saturation, int len, int dim, int size)
+void logistic_activation_fct(void *tab, float beta, float saturation, int len, int dim, int biased_dim, int size)
 {
 	int i = 0;
 	
@@ -525,16 +593,31 @@ void logistic_activation_fct(void *tab, float beta, float saturation, int len, i
 	#pragma omp parallel for schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
-		if(i < len && (i+1)%(dim+1) != 0)
+		if(biased_dim > dim)
 		{
-			f_tab[i] = -beta*f_tab[i];
-			if(f_tab[i] > saturation)
-				f_tab[i] = saturation;
-			f_tab[i] = 1.0f/(1.0f + expf(f_tab[i]));
+			if(i < len && (i+1)%(dim+1) != 0)
+			{
+				f_tab[i] = -beta*f_tab[i];
+				if(f_tab[i] > saturation)
+					f_tab[i] = saturation;
+				f_tab[i] = 1.0f/(1.0f + expf(f_tab[i]));
+			}
+			else
+				f_tab[i] = 0.0f;
 		}
 		else
 		{
-			f_tab[i] = 0.0f;
+			int length_size = len/biased_dim;
+			int batch_size = size/biased_dim;
+			if(i % batch_size < length_size)
+			{
+				f_tab[i] = -beta*f_tab[i];
+				if(f_tab[i] > saturation)
+					f_tab[i] = saturation;
+				f_tab[i] = 1.0f/(1.0f + expf(f_tab[i]));
+			}
+			else
+				f_tab[i] = 0.0f;
 		}
 	}
 }
@@ -544,10 +627,10 @@ void logistic_deriv(layer *previous)
 {
 	logistic_param *param = (logistic_param*)previous->activ_param;
 	logistic_deriv_fct(previous->delta_o, previous->output, param->beta,
-		(param->biased_dim)*previous->c_network->length, param->dim, param->size);
+		(param->biased_dim)*previous->c_network->length, param->dim, param->biased_dim, param->size);
 }
 
-void logistic_deriv_fct(void *deriv, void* value, float beta, int len, int dim, int size)
+void logistic_deriv_fct(void *deriv, void* value, float beta, int len, int dim, int biased_dim, int size)
 {
 	int i;
 	
@@ -557,12 +640,22 @@ void logistic_deriv_fct(void *deriv, void* value, float beta, int len, int dim, 
 	#pragma omp parallel for schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
-		if(i < len && (i+1)%(dim+1) != 0)
+		if(biased_dim > dim)
 		{
-			f_deriv[i] *= beta*f_value[i]*(1.0-f_value[i]);
+			if(i < len && (i+1)%(dim+1) != 0)
+				f_deriv[i] *= beta*f_value[i]*(1.0-f_value[i]);
+			else
+				f_deriv[i] = 0.0f;
 		}
 		else
-			f_deriv[i] = 0.0f;
+		{
+			int length_size = len/biased_dim;
+			int batch_size = size/biased_dim;
+			if(i % batch_size < length_size)
+				f_deriv[i] *= beta*f_value[i]*(1.0-f_value[i]);
+			else
+				f_deriv[i] = 0.0f;
+		}
 	}
 }
 
@@ -570,19 +663,18 @@ void logistic_deriv_fct(void *deriv, void* value, float beta, int len, int dim, 
 void logistic_deriv_output_error(layer* current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
-	quadratic_deriv_output_error(current->delta_o, current->output,
-		current->c_network->target, (param->biased_dim)*current->c_network->length, param->dim, param->size);
+	quadratic_deriv_output_error(current->delta_o, current->output, current->c_network->target, 
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->offset, param->size);
 	logistic_deriv_fct(current->delta_o, current->output, param->beta,
-		(param->biased_dim)*current->c_network->length, param->dim, param->size);
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->size);
 	
 }
 
 void logistic_output_error(layer* current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
-	quadratic_output_error(current->c_network->output_error, 
-		current->output, current->c_network->target, (param->biased_dim)*current->c_network->length, 
-		param->dim, param->size);	
+	quadratic_output_error(current->c_network->output_error, current->output, current->c_network->target,
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->offset, param->size);	
 }
 
 //#####################################################
@@ -594,13 +686,14 @@ void logistic_output_error(layer* current)
 //#####################################################
 
 
-void set_softmax_activ(layer *current, int dim, int biased_dim)
+void set_softmax_activ(layer *current, int dim, int biased_dim, int offset)
 {
 	current->activ_param = (softmax_param*) malloc(sizeof(softmax_param));
 	softmax_param *param = (softmax_param*)current->activ_param;	
 	
 	param->dim = dim;
-	param->biased_dim = dim;
+	param->biased_dim = biased_dim;
+	param->offset = offset;
 	current->bias_value = 0.1f;
 }
 
@@ -608,53 +701,154 @@ void set_softmax_activ(layer *current, int dim, int biased_dim)
 void softmax_activation(layer *current)
 {
 	softmax_param *param = (softmax_param*)current->activ_param;
-	softmax_activation_fct(current->output, current->c_network->length, param->dim, current->c_network->batch_size);
+	softmax_activation_fct(current->output, current->c_network->length, param->dim, 
+		param->biased_dim, param->offset, current->c_network->batch_size);
 }
 
-void softmax_activation_fct(void *tab, int len, int dim, int size)
+void softmax_activation_fct(void *tab, int len, int dim, int biased_dim, int offset, int size)
 {
 	//difficult to optimize but can be invastigated
 	//provides a probabilistic output
 	int i;
 	int j;
-	float *pos;
+	float *pos, *off_pos;
 	float vmax;
-	float normal = 0.000001f;
+	float normal = 0.0f;
 	
-	#pragma omp parallel for private(j, pos, vmax, normal) schedule(guided,4)
+	#pragma omp parallel for private(j, pos, off_pos, vmax, normal) schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
-		normal = 0.000001f;
+		normal = 0.0f;
 		if(i < len)
 		{
-			pos = (float*)tab + i*(dim+1);
+			if(biased_dim > dim)
+				pos = (float*)tab + i*(biased_dim);
+			else
+				pos = (float*)tab + i;
 			
-			vmax = pos[0];
+			vmax = *pos;
 			for(j = 1; j < dim; j++)
-				if(pos[j] > vmax)
-					vmax = pos[j];
+			{
+				off_pos = pos + j*offset;
+				if(*off_pos > vmax)
+					vmax = *off_pos;
+			}
 			
 			for(j = 0; j < dim; j++)
-			{	
-				pos[j] = expf(pos[j]-vmax);
-				normal += pos[j];
-			}		
-			pos[dim] = 0.0f;
+			{
+				off_pos = pos + j*offset;
+				*off_pos = expf(*off_pos-vmax);
+				normal += *off_pos;
+			}
+			if(biased_dim > dim)
+				pos[dim] = 0.0f;
 			
 			for(j = 0; j < dim; j++)
-				pos[j] /= normal;
-			pos[dim] = 0.0f;
+			{
+				off_pos = pos + j*offset;
+				*off_pos /= normal;
+			}
+			if(biased_dim > dim)
+				pos[dim] = 0.0f;
 		}
 		else
 		{
-			pos = (float*)tab + i*(dim+1);		
+			if(biased_dim > dim)
+				pos = (float*)tab + i*(biased_dim);
+			else
+				pos = (float*)tab + i;
+				
 			for(j = 0; j < dim; j++)
-				pos[j] = 0.0f;
-			pos[dim] = 0.0f;
+			{
+				off_pos = pos + j*offset;
+				*off_pos = 0.0f;
+			}
+			if(biased_dim > dim)
+				pos[dim] = 0.0f;
 		}
 	}
 }
 
+
+void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int biased_dim, int offset, int size)
+{
+	int i;
+	int pos;
+	
+	float *f_delta_o = (float*) delta_o; 
+	float *f_output = (float*) output;
+	float *f_target = (float*) target;
+	
+	#pragma omp parallel for private(pos) schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		if(biased_dim > dim)
+		{
+			if(i < len && (i+1)%(dim+1) != 0)
+			{
+				pos = i - i/(dim+1);
+				f_delta_o[i] = (f_output[i] - f_target[pos]);
+			}
+			else
+				f_delta_o[i] = 0.0f;
+		}
+		else
+		{
+			int length_size = len/biased_dim;
+			int batch_size = size/biased_dim;
+			if(i % batch_size < length_size)
+			{
+				pos = (i/offset) + (i % offset)*dim;
+				f_delta_o[i] = (f_output[i] - f_target[pos]);
+			}
+			else
+				f_delta_o[i] = 0.0f;
+		}
+	}
+}
+
+void cross_entropy_output_error(void *output_error, void *output, void *target, int len, int dim, int biased_dim, int offset, int size)
+{
+	int i;
+	int pos;
+	
+	float *f_output_error = (float*) output_error;
+	float *f_output = (float*) output;
+	float *f_target = (float*) target;
+	
+	#pragma omp parallel for private(pos) schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		if(biased_dim > dim)
+		{
+			if(i < len && (i+1)%(dim+1) != 0)
+			{
+				pos = i - i/(dim+1);
+				if(f_output[i] > 0.000001f)
+					f_output_error[i] = -f_target[pos]*logf(f_output[i]);
+				else
+					f_output_error[i] = -f_target[pos]*logf(0.000001f);
+			}
+			else
+				f_output_error[i] = 0.0f;
+		}
+		else
+		{
+			int length_size = len/biased_dim;
+			int batch_size = size/biased_dim;
+			if(i % batch_size < length_size)
+			{
+				pos = (i/offset) + (i % offset)*dim;
+				if(f_output[i] > 0.000001f)
+					f_output_error[i] = -f_target[pos]*logf(f_output[i]);
+				else
+					f_output_error[i] = -f_target[pos]*logf(0.000001f);
+			}
+			else
+				f_output_error[i] = 0.0f;
+		}
+	}
+}
 
 void softmax_deriv(layer *previous)
 {
@@ -668,7 +862,7 @@ void softmax_deriv_output_error(layer *current)
 	softmax_param *param = (softmax_param*)current->activ_param;
 	cross_entropy_deriv_output_error(current->delta_o, current->output,
 		current->c_network->target, (param->biased_dim)*current->c_network->length, param->dim, 
-		(param->biased_dim)*current->c_network->batch_size);
+		param->biased_dim, param->offset, (param->biased_dim)*current->c_network->batch_size);
 		
 }
 
@@ -678,56 +872,8 @@ void softmax_output_error(layer *current)
 	softmax_param *param = (softmax_param*)current->activ_param;
 	cross_entropy_output_error(current->c_network->output_error,
 		current->output, current->c_network->target, (param->biased_dim)*current->c_network->length,
-		param->dim, (param->biased_dim)*current->c_network->batch_size);
+		param->dim, param->biased_dim, param->offset, (param->biased_dim)*current->c_network->batch_size);
 		
-}
-
-
-void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, int len, int dim, int size)
-{
-	int i;
-	int pos;
-	
-	float *f_delta_o = (float*) delta_o; 
-	float *f_output = (float*) output;
-	float *f_target = (float*) target;
-	
-	#pragma omp parallel for private(pos) schedule(guided,4)
-	for(i = 0; i < size; i++)
-	{
-		if(i < len && (i+1)%(dim+1) != 0)
-		{
-			pos = i - i/(dim+1);
-			f_delta_o[i] = (f_output[i] - f_target[pos]);
-		}
-		else
-			f_delta_o[i] = 0.0f;
-	}
-}
-
-void cross_entropy_output_error(void *output_error, void *output, void *target, int len, int dim, int size)
-{
-	int i;
-	int pos;
-	
-	float *f_output_error = (float*) output_error;
-	float *f_output = (float*) output;
-	float *f_target = (float*) target;
-	
-	#pragma omp parallel for private(pos) schedule(guided,4)
-	for(i = 0; i < size; i++)
-	{
-		if(i < len && (i+1)%(dim+1) != 0)
-		{
-			pos = i - i/(dim+1);
-			if(f_output[i] > 0.000001f)
-				f_output_error[i] = -f_target[pos]*logf(f_output[i]);
-			else
-				f_output_error[i] = -f_target[pos]*logf(0.000001f);
-		}
-		else
-			f_output_error[i] = 0.0f;
-	}
 }
 
 
@@ -1376,11 +1522,14 @@ void YOLO_deriv_error_fct
 	float diff_IoU_lim = y_param.IoU_limits[6], diff_obj_lim = y_param.IoU_limits[7];
 	int fit_pos = y_param.fit_parts[0], fit_size = y_param.fit_parts[1], fit_prob = y_param.fit_parts[2];
 	int fit_obj = y_param.fit_parts[3], fit_class = y_param.fit_parts[4], fit_param = y_param.fit_parts[5];
-
-	int c_pix;
 	
-	#pragma omp parallel for schedule(guided,4)
-	for(c_pix = 0; c_pix < size; c_pix++)
+	#pragma omp parallel
+	#ifdef OPEN_MP
+	{
+	srand((int)time(NULL) ^ omp_get_thread_num());
+	#endif
+	#pragma for schedule(guided,4)
+	for(int c_pix = 0; c_pix < size; c_pix++)
 	{
 		//All private variables inside the loop for convenience
 		//Should be marginal since one iteration cost is already high
@@ -1991,6 +2140,9 @@ void YOLO_deriv_error_fct
 			}
 		}
 	}
+	#ifdef OPEN_MP
+	}
+	#endif
 }
 
 // Only minimal optimisation has been performed for now => might be responsible for a significant portion of the total network time
@@ -2033,10 +2185,13 @@ void YOLO_error_fct
 	int fit_pos = y_param.fit_parts[0], fit_size = y_param.fit_parts[1], fit_prob = y_param.fit_parts[2];
 	int fit_obj = y_param.fit_parts[3], fit_class = y_param.fit_parts[4], fit_param = y_param.fit_parts[5];
 	
-	int c_pix;
-	
-	#pragma omp parallel for schedule(guided,4)
-	for(c_pix = 0; c_pix < size; c_pix++)
+	#pragma omp parallel
+	#ifdef OPEN_MP
+	{
+	srand((int)time(NULL) ^ omp_get_thread_num());
+	#endif
+	#pragma for schedule(guided,4)
+	for(int c_pix = 0; c_pix < size; c_pix++)
 	{	
 		float *output, *target, *output_error;
 		int *target_cell_mask, *box_locked;
@@ -2601,6 +2756,9 @@ void YOLO_error_fct
 			}
 		}
 	}
+	#ifdef OPEN_MP
+	}
+	#endif
 }
 
 

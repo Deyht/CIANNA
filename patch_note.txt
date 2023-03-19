@@ -30,6 +30,10 @@
 - Add new keywords in conv and dense layer creation to control the type of weight initialization and a user scaling on the variance.
 - /!\ Add the "strict_size" keyword to the last layer in the example scripts to put the emphasis on the fact that any dense layer without the
   keyword set can be automatically shrink when using Tensor Cores if its dimension is a multiple of 8 (e.g 1000 classes issue). 
+- Add an interface to the save network function. This change make renaming and format change of network saves easier.
+- Change the performance display to state the layer type.
+- Add the "inference_only" keyword in the init function (see low-level for details).
+- Add interface functions for the new "norm" layer type (see low-level for details). The keyword for this layer creation function are "group_size" and "set_off".
 
 ==== Low-level modifications ====
 
@@ -71,8 +75,25 @@
   (atm difficult objects do not result in a match for "natural" display but still count for good but not best association).
 - Restore diversity in weight initialization functions (Xavier, LeCun, normal and uniform variations) and allow their selection per layer along with a user control variance scaling.
 - Fix an error that was preventing the deletion of the "error.txt" file if the error compute interval was larger than 10 epochs.
-- Add a size check between output_size and output_dim to prevent user errors in the definition of the last layer (or to highlight that the strict_size keyword is required when using TC).
+- Add a size check between output_size and output_dim to prevent user errors in the definition of the last layer (or highlight that the strict_size keyword is mandatory when using TC).
   Also add a condition to the dense layer size alteration to ensure that it can only happen during network creation and not when loading a saved network.
+- Fix an error that was occurring when loading a network in text format with the "nb_layer" keyword set. Know "non" layer character between layers are properly ignored.
+- Move all the confmat function to CPU side (some functions where still on the GPU even so the batch output was already copied on the host for other operations).
+- Fix an error in all convolutional layers activation functions that could corrupt the activation map if the dataset size was not a multiple of the batch_size.
+- Add support for "output" activation functions to convolutional layers, so now a conv or pool layer with a spatial size of 1 can be used for classification using
+  either logistic or softmax output. All the necessary functions (error, deriv error, confmat, etc) are updated to account for the different data ordering of conv layers.
+  This modification is especially useful to construct input-size agnostic networks.
+- Add an "inference only" mode that can be set at network initialization to prevent allocation of all the memory related to the backpropagation. 
+  This should allow a significant memory saving when trained networks are deployed (especially on systems on light GPUs).
+- /!\ Add a new normalization layer. This layer is added with its own set of files for all compute methods and other layers have been adjusted to interact properly with this new layer.
+  For now only a "Group" Normalization type is allowed and the group size in user defined. It means that it is also possible to perform "Layer" normalization and "Instance"
+  normalization with the present implementation. The normalization layer does not allow an activation function to its output for now so it is recommended to use it between conv layers 
+  or between a conv and a pooling layer. A second user define parameter "set_off" allow to specify a number of "group" that should be forced to produce an identity transformation
+  between the input and the output of the layer. Note that dropout at any point in the network before a normalization layer is forbidden to prevent variance shifting, but they 
+  can be used in combination if dropout is placed after the last normalization layer.
+- Dropout has been changed in various ways. The init state of the random generator has been changed to ensure that each cuda thread is independent, and the drop mask is now computed
+  for each element in the batch (instead of one drop mask shared for all). Some ways of declaring dropout (between specific types of layers, etc) are now detected and forbidden
+  with a returned error message. Some of these interdiction might be removed in future version if they are found useful in specific contexts.
 
 ********************************************
 ===== V-0.9.3.1 =====

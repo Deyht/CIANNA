@@ -27,11 +27,6 @@ static pool_param *p_param;
 
 //public are in prototypes.h
 
-//private
-void forward_pool_layer(layer* current);
-void backward_pool_layer(layer* current);
-
-
 void max_pooling_fct
 	(void* i_input, void* i_output, int* pool_map,
 	int pool_size_w, int pool_size_h, int pool_size_d, 
@@ -72,6 +67,8 @@ void max_pooling_fct
 			}
 		}
 	}
+	
+	
 }
 
 
@@ -208,32 +205,15 @@ void dropout_select_pool(int* mask, int size, float drop_rate)
 	}
 }
 
-void dropout_apply_pool(void* i_table, int batch_size, int dim, int* mask, int size)
+void dropout_apply_pool(void* i_table, int* mask, int size)
 {
-	int i, j;
-	int c_depth, current_id, offset;
-
+	int i;
 	float* table = (float*) i_table;
 	
-	for(i = 0; i < batch_size; i++)
-	{
-		for(j = 0; j < size; j++)
-		{
-			c_depth = j / dim;
-			current_id = j % dim;
-			offset = dim*batch_size;
-			
-			table[i*dim + c_depth*offset + current_id] *= mask[j];
-		}
-	}
+	for(i = 0; i < size; i++)
+		table[i] *= mask[i];
 }
 
-
-void pool_define(layer *current)
-{
-	current->forward = forward_pool_layer;
-	current->backprop = backward_pool_layer;
-}
 
 void forward_pool_layer(layer* current)
 {
@@ -268,11 +248,10 @@ void forward_pool_layer(layer* current)
 	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		dropout_select_pool(p_param->dropout_mask, p_param->nb_maps 
-			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), current->dropout_rate);	
+			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, current->dropout_rate);	
 		
-		dropout_apply_pool(current->output, net->batch_size, 
-			(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), p_param->dropout_mask,
-			p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+		dropout_apply_pool(current->output, p_param->dropout_mask, p_param->nb_maps 
+			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);
 	}
 }
 
@@ -287,14 +266,14 @@ void backward_pool_layer(layer* current)
 
 	if(current->dropout_rate > 0.01f)
 	{
-		dropout_apply_pool(current->delta_o, net->batch_size,
-			(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]), p_param->dropout_mask,
-			p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+		dropout_apply_pool(current->delta_o, p_param->dropout_mask, p_param->nb_maps 
+			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);
 	}
 
 	if(current->previous != NULL)
 	{
-		if(current->previous->type == CONV)
+		if(current->previous->type == CONV ||
+			(current->previous->type == NORM && current->previous->previous->type == CONV))
 		{		
 			int size = p_param->nb_maps*p_param->prev_size[0]*p_param->prev_size[1]*p_param->prev_size[2]*net->batch_size;
 			float* f_tab = (float*) current->previous->delta_o;
@@ -326,6 +305,11 @@ void backward_pool_layer(layer* current)
 }
 
 
+void pool_define(layer *current)
+{
+	current->forward = forward_pool_layer;
+	current->backprop = backward_pool_layer;
+}
 
 
 

@@ -44,7 +44,7 @@ extern int verbose;
 void init_timing(struct timeval* tstart);
 float ellapsed_time(struct timeval tstart);
 void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, const char* compute_method_string, int u_dynamic_load, 
-	const char* cuda_TC_string, int no_logo, int adv_size);
+	const char* cuda_TC_string, int inference_only, int no_logo, int adv_size);
 Dataset create_dataset(network *net, int nb_elem);
 void free_dataset(Dataset *data);
 float clip(float n, float lower, float upper);
@@ -56,7 +56,7 @@ void normalize_dataset(network *net, Dataset c_data);
 void update_weights(void *weights, void* update, float weight_decay, int size);
 void perf_eval_display(network *net);
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat, int silent);
-void save_network(network *net, char *filename, int f_bin);
+void save_network(network *net, const char *filename, int f_bin);
 void load_network(network *net, const char *filename, int epoch, int nb_layers, int f_bin);
 void set_frozen_layers(network *net, int* tab, int dim);
 void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
@@ -71,13 +71,16 @@ void define_activation(layer *current);
 void output_error(layer* current);
 void output_deriv_error(layer* current);
 void print_activ_param(FILE *f, layer *current, int f_bin);
+void print_norm_param(FILE *f, layer *current, int f_bin);
 void print_string_activ_param(layer *current, char* activ);
+void print_string_norm_param(layer *current, char* norm);
 void load_activ_param(layer *current, const char *activ);
+void load_norm_param(layer *current, const char *norm);
 
-void set_linear_activ(layer *current, int size, int dim, int biased_dim);
-void set_relu_activ(layer *current, int size, int dim, int biased_dim, const char *activ);
-void set_logistic_activ(layer *current, int size, int dim, int biased_dim, const char *activ);
-void set_softmax_activ(layer *current, int dim, int biased_dim);
+void set_linear_activ(layer *current, int size, int dim, int biased_dim, int offset);
+void set_relu_activ(layer *current, int size, int dim, int biased_dim, int offset, const char *activ);
+void set_logistic_activ(layer *current, int size, int dim, int biased_dim, int offset, const char *activ);
+void set_softmax_activ(layer *current, int dim, int biased_dim, int offset);
 void set_yolo_activ(layer *current);
 int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, const char* IoU_type_char, 
 	float *prior_w, float *prior_h, float *prior_d,	float *yolo_noobj_prob_prior, int fit_dim, int strict_box_size, 
@@ -86,20 +89,27 @@ int set_yolo_params(network *net, int nb_box, int nb_class, int nb_param, int ma
 	int diff_flag, const char* error_type);
 
 //dense_layer.c
-void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias, float drop_rate, 
-	int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int f_bin);
+void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias,
+	float drop_rate, int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int f_bin);
 void dense_save(FILE *f, layer *current, int f_bin);
 void dense_load(network *net, FILE* f, int f_bin);
 
 //conv_layer.c
 void conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, int *int_padding, 
-	int *in_shape, const char* activation, float *bias, float drop_rate, const char *init_fct, float init_scaling, FILE *f_load, int f_bin);
+	int *in_shape, const char* activation, float *bias, float drop_rate, const char *init_fct, 
+	float init_scaling, FILE *f_load, int f_bin);
 void conv_save(FILE *f, layer *current, int f_bin);
 void conv_load(network *net, FILE *f, int f_bin);
 
-void pool_create(network *net, layer* previous, int *pool_size, const char *char_pool_type, int global, float drop_rate);
+//pool_layer.c
+void pool_create(network *net, layer* previous, int *pool_size, const char *char_pool_type, const char *activation, int global, float drop_rate);
 void pool_save(FILE *f, layer *current, int f_bin);
 void pool_load(network *net, FILE *f, int f_bin);
+
+//norm_layer.c
+void norm_create(network *net, layer *previous, const char *norm_type, int group_size, int set_off, FILE *f_load, int f_bin);
+void norm_save(FILE *f, layer *current, int f_bin);
+void norm_load(network *net, FILE *f, int f_bin);
 
 //initializers.c
 int get_init_type(const char *s_init);
@@ -123,6 +133,7 @@ void blas_conv_define(layer *current);
 void pool_define(layer *current);
 void naiv_dense_define(layer *current);
 void naiv_conv_define(layer *current);
+void naiv_norm_define(layer *current);
 
 void max_pooling_fct(void* i_input, void* i_output, int* pool_map,
 	int pool_size_w, int pool_size_h, int pool_size_d, 
@@ -141,16 +152,20 @@ void deltah_avg_pool_cont_fct(void* i_delta_o, void* i_delta_o_unpool, int* pool
 	int w_size, int h_size, int d_size,
 	int w_size_out, int h_size_out, int d_size_out, int length);
 void dropout_select_pool(int* mask, int size, float drop_rate);
-void dropout_apply_pool(void* i_table, int batch_size, int dim, int* mask, int size);
+void dropout_apply_pool(void* i_table, int* mask, int size);
 
 void flat_dense(void* in, void* out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 void reroll_batch(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
-void dropout_select_dense(int* mask, int size, float drop_rate);
-void dropout_apply_dense(void* table, int batch_size, int dim, int* mask);
+void dropout_select_dense(int* mask, int biased_dim, int size, float drop_rate);
+void dropout_apply_dense(void* table, int size, int* mask);
+void group_normalization_dense(void *i_tab, int b_length, int b_size,
+	int dim, int biased_dim, int group_size, int nb_group);
 
 void rotate_filter_matrix_fct(void* i_in, void* i_out, int nb_rows, int depth_size, int nb_filters_in, int len);
 void dropout_select_conv(int* mask, int size, float drop_rate);
-void dropout_apply_conv(void* i_table, int batch_size, int dim, int* mask, int size);
+void dropout_apply_conv(void* i_table, int* mask, int size);
+void group_normalization_conv(void *i_tab, int b_length, int b_size,
+	int group_size, int nb_group, int nb_filters, int flat_f_size);
 void im2col_fct_v5
 	(void* i_output, void* i_input, 
 	int image_size, int flat_image_size, 
@@ -180,6 +195,7 @@ void set_cu_learning_rate_and_momentum(network* net);
 extern float TC_scale_factor;
 extern cublasHandle_t cu_handle;
 extern cudaDataType cuda_data_type;
+
 #if defined(CUDA_OLD)
 extern cudaDataType cuda_compute_type;
 #else
@@ -189,10 +205,10 @@ void cuda_master_weight_FP32_to_FP32(float *master, void *copy, int size);
 void cuda_master_weight_FP32_to_FP16(float *master, void *copy, int size);
 void cuda_master_weight_FP32_to_BF16(float *master, void *copy, int size);
 void cuda_update_weights(network* net, void *weights, void* update, float weight_decay, int size);
+__global__ void init_block_state(unsigned int seed,  curandState_t* states, int size);
 
-//__global__ void cuda_update_weights_dropout(void *weights, void* update, int size, int *drop_mask, int dim);
-__device__ int cuda_argmax(void* tab, int dim_out);
 #endif
+
 void init_cuda(network* net);
 void cuda_set_TC_scale_factor(network* net, float val);
 void cuda_sync(void);
@@ -214,6 +230,7 @@ void cuda_get_table_FP32(void *cuda_table, void *table, int size);
 void cuda_get_table_to_FP32(network* net, void *cuda_table, float *table, int size, void* buffer);
 void cuda_get_table(network* net, void *cuda_table, void *table, int size);
 void cuda_put_table_FP32(void *cuda_table, void *table, int size);
+void cuda_get_typed_host_table(network* net, void *typed_table, float *out_table, int size);
 void cuda_put_table(network* net, void *cuda_table, void *table, int size);
 void cuda_print_table_FP32(void* tab, int size, int return_every);
 //void cuda_print_table_4d(network* net, void* tab, int w_size, int h_size, int d_size, int last_dim, int biased);
@@ -260,6 +277,10 @@ void cuda_pool_init(network* net);
 void cuda_pool_define(layer *current);
 size_t cuda_convert_pool_layer(layer *current);
 
+//cuda_norm_layer.cu
+void cuda_norm_init(network* net);
+void cuda_norm_define(layer *current);
+size_t cuda_convert_norm_layer(layer *current);
 	
 //######################################
 

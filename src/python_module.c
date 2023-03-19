@@ -42,16 +42,16 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	int i;
 	double bias = 0.1;
 	int dims[4] = {1,1,1,1}, nb_channels = 1, out_dim, b_size, network_id = nb_networks;
-	int dynamic_load = 0, no_logo = 0, adv_size = 0;
+	int dynamic_load = 0, no_logo = 0, adv_size = 0, inference_only = 0;
 	const char *py_mixed_precision = "off";
 	const char *comp_meth = "C_CUDA";
 	static char *kwlist[] = {"in_dim", "in_nb_ch", "out_dim", "bias", "b_size", "comp_meth", "network_id", 
-		"dynamic_load", "mixed_precision", "no_logo", "adv_size", NULL};
+		"dynamic_load", "mixed_precision", "inference_only", "no_logo", "adv_size", NULL};
 	
 	b_size = 10;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oii|disiisii", kwlist, &py_dims, &nb_channels, &out_dim, &bias, 
-		&b_size, &comp_meth, &network_id, &dynamic_load, &py_mixed_precision, &no_logo, &adv_size))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "Oii|disiisiii", kwlist, &py_dims, &nb_channels, &out_dim, &bias, 
+		&b_size, &comp_meth, &network_id, &dynamic_load, &py_mixed_precision, &inference_only, &inference_only, &no_logo, &adv_size))
 		return Py_None;
 	
 	for(i = 0; i < py_dims->dimensions[0] && i < 3; i++)
@@ -60,7 +60,7 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	}
 	dims[3] = nb_channels;
 	
-	init_network(network_id, dims, out_dim, bias, b_size, comp_meth, dynamic_load, py_mixed_precision, no_logo, adv_size);
+	init_network(network_id, dims, out_dim, bias, b_size, comp_meth, dynamic_load, py_mixed_precision, inference_only, no_logo, adv_size);
 	
 	return Py_None;
 }
@@ -378,8 +378,8 @@ static PyObject* py_dense(PyObject* self, PyObject *args, PyObject *kwargs)
 	const char *activation = "RELU", *init_fct = "xavier";
 	double drop_rate = 0.0, py_bias = 0.0/0.0, init_scaling=-1.0;
 	float *c_bias = NULL;
-	static char *kwlist[] = {"nb_neurons", "activation", "bias", "prev_layer", "drop_rate",
-		"strict_size", "init_fct", "init_scaling", "network", NULL};
+	static char *kwlist[] = {"nb_neurons", "activation", "bias", 
+		"prev_layer", "drop_rate","strict_size", "init_fct", "init_scaling", "network", NULL};
 	layer* prev;
 	
 	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "i|sdidisdi", kwlist, &nb_neurons, &activation, &py_bias, 
@@ -455,7 +455,6 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 		prev = NULL;
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
-		
 	conv_create(networks[network_id], prev, C_f_size, nb_filters, C_stride, C_padding, 
 		C_int_padding, C_input_shape, activation, c_bias, drop_rate, init_fct, init_scaling, NULL, 0);
 	
@@ -469,13 +468,14 @@ static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 	int prev_layer = -1, network_id = nb_networks-1, global = 0;
 	PyArrayObject *py_pool_size;
 	const char *s_pool_type = "MAX";
+	const char *activation = "LIN";
 	int C_pool_size[3] = {1,1,1};
 	double drop_rate = 0.0;
-	static char *kwlist[] = {"p_size", "prev_layer", "drop_rate", "p_type", "p_global", "network", NULL};
+	static char *kwlist[] = {"p_size", "prev_layer", "drop_rate", "p_type", "activation", "p_global", "network", NULL};
 	layer* prev;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|Oidsii", kwlist, &py_pool_size, &prev_layer, 
-		&drop_rate, &s_pool_type, &global, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|Oidssii", kwlist, &py_pool_size, &prev_layer, 
+		&drop_rate, &s_pool_type, &activation, &global, &network_id))
 		return Py_None;
 	
 	if(prev_layer == -1)
@@ -488,17 +488,42 @@ static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 	
 	for(i = 0; i < py_pool_size->dimensions[0] && i < 3; i++)
 		C_pool_size[i]  = *(int *)(py_pool_size->data  + i*py_pool_size->strides[0]);
-
 	
 	if(prev_layer < 0)
 		prev = NULL;
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	pool_create(networks[network_id], prev, C_pool_size, s_pool_type, global, drop_rate);
+	pool_create(networks[network_id], prev, C_pool_size, s_pool_type, activation, global, drop_rate);
 	
 	return Py_None;
 }
+
+
+static PyObject* py_norm(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	int prev_layer = -1, network_id = nb_networks-1;
+	const char *norm_type = "GN";
+	int group_size = 0, set_off = 0;
+	static char *kwlist[] = {"normalisation", "prev_layer", "group_size", "set_off", "network", NULL};
+	layer* prev;
+	
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|siiii", kwlist, &norm_type, &prev_layer, &group_size, &set_off, &network_id))
+		return Py_None;
+	
+	if(prev_layer == -1)
+		prev_layer = networks[network_id]->nb_layers - 1;
+	
+	if(prev_layer < 0)
+		prev = NULL;
+	else
+		prev = networks[network_id]->net_layers[prev_layer];
+		
+	norm_create(networks[network_id], prev, norm_type, group_size, set_off, NULL, 0);
+	
+	return Py_None;
+}
+
 
 
 static PyObject* py_set_frozen_layers(PyObject* self, PyObject *args, PyObject *kwargs)
@@ -811,6 +836,20 @@ static PyObject* py_load_network(PyObject* self, PyObject *args, PyObject *kwarg
 	return Py_None;
 }
 
+static PyObject* py_save_network(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	const char *file = "relative_path_to_the_save_file_location_which_must_be_long_enough";
+	int network_id = nb_networks-1, f_bin = 0;
+	static char *kwlist[] = {"file", "network", "bin", NULL};
+
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "s|ii", kwlist, &file, &network_id, &f_bin))
+		return Py_None;
+		
+	save_network(networks[network_id], file, f_bin);
+	
+	return Py_None;
+}
+
 
 // Network global functions
 //############################################################
@@ -924,6 +963,7 @@ static PyMethodDef CIANNAMethods[] = {
 	{ "dense", (PyCFunction)py_dense, METH_VARARGS | METH_KEYWORDS, "Add a dense layer to the network" },
 	{ "conv",(PyCFunction)py_conv, METH_VARARGS | METH_KEYWORDS, "Add a convolutional layer to the network" },
 	{ "pool",(PyCFunction)py_pool, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },
+	{ "norm", (PyCFunction)py_norm, METH_VARARGS | METH_KEYWORDS, "Add a normalization layer to the network"},
 	{ "set_frozen_layers",(PyCFunction)py_set_frozen_layers, METH_VARARGS | METH_KEYWORDS, "Freeze the selected layers' weights for training" },
 	{ "set_IoU_limits",(PyCFunction)py_set_IoU_limits, METH_VARARGS | METH_KEYWORDS, "Create an array from a list of IoU limits" },
 	{ "set_fit_parts",(PyCFunction)py_set_fit_parts, METH_VARARGS | METH_KEYWORDS, "Create an array from a list of parts of the YOLO loss function" },
@@ -933,6 +973,7 @@ static PyMethodDef CIANNAMethods[] = {
 	{ "set_yolo_params",(PyCFunction)py_set_yolo_params, METH_VARARGS | METH_KEYWORDS, "Set parameters for YOLO output layout" },
 	{ "perf_eval", perf_eval, METH_VARARGS, "Display each layer time in ms and in percent of the total networj time" },
 	{ "load", (PyCFunction)py_load_network, METH_VARARGS | METH_KEYWORDS, "Load a previous network structure pre-trained from a file" },
+	{ "save", (PyCFunction)py_save_network, METH_VARARGS | METH_KEYWORDS, "Save a currently loaded network structure to a file" },
 	{ "train", (PyCFunction)py_train_network, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
 	{ "forward", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },
 	#ifdef CUDA

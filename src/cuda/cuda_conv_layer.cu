@@ -28,128 +28,114 @@ static conv_param *c_param;
 
 //public are in prototypes.h
 
-//private
-void cuda_forward_conv_layer(layer *current);
-void cuda_backward_conv_layer(layer *current);
-
 
 //One of the most important function, aims to convert an image into a table that contains all the
 //areas that will be used for convolution. Highly redundant but still allows a significant speed up
 //due to subsequent matrix operations. Currently memory bound despite only one load per element of the original image.
 //VERSION 5.3
-#define im2col_kernel_v5(name, type) 																										\
-__global__ void im2col_kernel_v5_##name																										\
-	(void* i_output, void* i_input, 																										\
-	int image_size, int flat_image_size, 																									\
-	int stride_w, int stride_h ,int stride_d, 																								\
-	int padding_w, int padding_h, int padding_d, 																							\
-	int internal_padding_w, int internal_padding_h, int internal_padding_d, 																\
-	int channel, int channel_padding, int image_padding, int TC_padding, 																	\
-	int batch_size, int f_size_w, int f_size_h, int f_size_d, int flat_f_size, 																\
-	int w_size, int h_size, int d_size, int nb_area_w, int nb_area_h, int bias_in, int bias_out) 											\
-{																																			\
-	int p = blockIdx.x*blockDim.x + threadIdx.x;																							\
-	int c = blockIdx.y*blockDim.y + threadIdx.y;																							\
-	int i = blockIdx.z*blockDim.z + threadIdx.z;																							\
-																																			\
-	type local_pix;																															\
-	type *output = (type*) i_output;																										\
-	type *input  = (type*) i_input;																											\
-																																			\
-	int w, h, d, x, y, z;																													\
-	int pos_w_filter, pos_h_filter, pos_d_filter;																							\
-	int loc;																																\
-																																			\
-	if(i < batch_size)																														\
-	{																																		\
-		input += i*(image_padding + bias_in);																								\
-		output += i*(flat_image_size);																										\
-																																			\
-		if(c < channel)																														\
-		{																																	\
-			input += c * channel_padding;																									\
-			output += c * f_size_w*f_size_h*f_size_d;																						\
-			if(p < image_size)																												\
-			{																																\
-				local_pix = input[p];																										\
-																																			\
-				d = (p / (w_size*h_size)) * (1+internal_padding_d) + padding_d;																\
-				h = (p % (w_size*h_size) / w_size) * (1+internal_padding_h) + padding_h;													\
-				w = (p % (w_size*h_size) % w_size) * (1+internal_padding_w) + padding_w;													\
-																																			\
-				for(z = d/stride_d; (d-z*stride_d < f_size_d); z -=1)																		\
-				{																															\
-					pos_d_filter = d-z*stride_d;																							\
-					if((z < 0) || (pos_d_filter > d_size + (d_size-1)*internal_padding_d + 2*padding_d - f_size_d))							\
-						continue;																											\
-					for(y = h/stride_h; (h-y*stride_h < f_size_h); y -= 1)																	\
-					{																														\
-						pos_h_filter = h-y*stride_h;																						\
-						if((y < 0) || (pos_h_filter > h_size + (h_size-1)*internal_padding_h + 2*padding_h - f_size_h))						\
-							continue;																										\
-						for(x = w/stride_w; (w-x*stride_w < f_size_w); x -= 1)																\
-						{																													\
-							pos_w_filter = w-x*stride_w;																					\
-							if((x < 0) || (pos_w_filter > w_size + (w_size-1)*internal_padding_w + 2*padding_w - f_size_w))					\
-								continue;																									\
-							loc = z*nb_area_w*nb_area_h*(flat_f_size+TC_padding) + y*nb_area_w*(flat_f_size+TC_padding) 					\
-								+ x*(flat_f_size+TC_padding) + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;		\
-							if((bias_out && (loc)%(flat_f_size+TC_padding) >= flat_f_size - 1))												\
-								continue;																									\
-							if(loc >= 0 && loc < flat_image_size)																			\
-								output[loc] = local_pix;																					\
-						}																													\
-					}																														\
-				}																															\
-			}																																\
-		}																																	\
-	}																																		\
+#define im2col_kernel_v5(name, type) 																											\
+__global__ void im2col_kernel_v5_##name																											\
+	(void* i_output, void* i_input, 																											\
+	int image_size, int flat_image_size, 																										\
+	int stride_w, int stride_h ,int stride_d, 																									\
+	int padding_w, int padding_h, int padding_d, 																								\
+	int internal_padding_w, int internal_padding_h, int internal_padding_d, 																	\
+	int channel, int channel_padding, int image_padding, int TC_padding, 																		\
+	int batch_size, int f_size_w, int f_size_h, int f_size_d, int flat_f_size, 																	\
+	int w_size, int h_size, int d_size, int nb_area_w, int nb_area_h, int bias_in, int bias_out) 												\
+{																																				\
+	int p = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int c = blockIdx.y*blockDim.y + threadIdx.y;																								\
+	int i = blockIdx.z*blockDim.z + threadIdx.z;																								\
+																																				\
+	type local_pix;																																\
+	type *output = (type*) i_output;																											\
+	type *input  = (type*) i_input;																												\
+																																				\
+	int w, h, d, x, y, z;																														\
+	int pos_w_filter, pos_h_filter, pos_d_filter;																								\
+	int loc;																																	\
+																																				\
+	if(i < batch_size)																															\
+	{																																			\
+		input += i*(image_padding + bias_in);																									\
+		output += i*(flat_image_size);																											\
+																																				\
+		if(c < channel)																															\
+		{																																		\
+			input += c * channel_padding;																										\
+			output += c * f_size_w*f_size_h*f_size_d;																							\
+			if(p < image_size)																													\
+			{																																	\
+				local_pix = input[p];																											\
+																																				\
+				d = (p / (w_size*h_size)) * (1+internal_padding_d) + padding_d;																	\
+				h = (p % (w_size*h_size) / w_size) * (1+internal_padding_h) + padding_h;														\
+				w = (p % (w_size*h_size) % w_size) * (1+internal_padding_w) + padding_w;														\
+																																				\
+				for(z = d/stride_d; (d-z*stride_d < f_size_d); z -=1)																			\
+				{																																\
+					pos_d_filter = d-z*stride_d;																								\
+					if((z < 0) || (pos_d_filter > d_size + (d_size-1)*internal_padding_d + 2*padding_d - f_size_d))								\
+						continue;																												\
+					for(y = h/stride_h; (h-y*stride_h < f_size_h); y -= 1)																		\
+					{																															\
+						pos_h_filter = h-y*stride_h;																							\
+						if((y < 0) || (pos_h_filter > h_size + (h_size-1)*internal_padding_h + 2*padding_h - f_size_h))							\
+							continue;																											\
+						for(x = w/stride_w; (w-x*stride_w < f_size_w); x -= 1)																	\
+						{																														\
+							pos_w_filter = w-x*stride_w;																						\
+							if((x < 0) || (pos_w_filter > w_size + (w_size-1)*internal_padding_w + 2*padding_w - f_size_w))						\
+								continue;																										\
+							loc = z*nb_area_w*nb_area_h*(flat_f_size+TC_padding) + y*nb_area_w*(flat_f_size+TC_padding) 						\
+								+ x*(flat_f_size+TC_padding) + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;			\
+							if((bias_out && (loc)%(flat_f_size+TC_padding) >= flat_f_size - 1))													\
+								continue;																										\
+							if(loc >= 0 && loc < flat_image_size)																				\
+								output[loc] = local_pix;																						\
+						}																														\
+					}																															\
+				}																																\
+			}																																	\
+		}																																		\
+	}																																			\
 }
 
 
-#define cuda_rotate_filter_matrix(name, type) 																					\
-__global__ void cuda_rotate_filter_matrix_##name																				\
-	(void* i_in, void* i_out, int nb_rows, int TC_padding, int depth_size, int nb_filters_in, int len)							\
-{																																\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																				\
-	int x, y, depth_id;																											\
-																																\
-	type* in  = (type*) i_in;																									\
-	type* out = (type*) i_out;																									\
-																																\
-	if(i < len)																													\
-	{																															\
-		/*Rotate and move the filters*/																							\
-		x = i / nb_rows;																										\
-		y = i % nb_rows;																										\
-		/*remove the weights of the bias nodes*/																				\
-		if(y < nb_rows-1-TC_padding) 																							\
-		{																														\
-			depth_id = y / depth_size;																							\
-			out[depth_id * depth_size*nb_filters_in + x * depth_size + (depth_size - 1 - y%depth_size)] = in[x*nb_rows+y];		\
-		}																														\
-	}																															\
+#define cuda_rotate_filter_matrix(name, type) 																									\
+__global__ void cuda_rotate_filter_matrix_##name																								\
+	(void* i_in, void* i_out, int nb_rows, int TC_padding, int depth_size, int nb_filters_in, int len)											\
+{																																				\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int x, y, depth_id;																															\
+																																				\
+	type* in  = (type*) i_in;																													\
+	type* out = (type*) i_out;																													\
+																																				\
+	if(i < len)																																	\
+	{																																			\
+		/*Rotate and move the filters*/																											\
+		x = i / nb_rows;																														\
+		y = i % nb_rows;																														\
+		/*remove the weights of the bias nodes*/																								\
+		if(y < nb_rows-1-TC_padding) 																											\
+		{																																		\
+			depth_id = y / depth_size;																											\
+			out[depth_id * depth_size*nb_filters_in + x * depth_size + (depth_size - 1 - y%depth_size)] = in[x*nb_rows+y];						\
+		}																																		\
+	}																																			\
 }
 
-__global__ void init_block_state_conv(unsigned int seed,  curandState_t* states)
+__global__ void cuda_dropout_select_conv(int* mask, int size, float drop_rate, void* states)
 {
-	curand_init((seed << 20) + blockIdx.x, /* the seed can be the same for each core, here we pass the time in from the CPU */
-              0, /* the sequence number should be different for each core (unless you want all
-                             cores to get the same sequence of numbers for some reason - use thread id! 
-			     Currently use an alternative definition with Id adjunct to seed*/
-              0, /* the offset is how much extra we advance in the sequence for each call, can be 0 */
-              &states[blockIdx.x]);
-}
-
-
-__global__ void cuda_dropout_select_conv(int* mask, int size, float drop_rate, curandState_t* states)
-{
-	int i = blockIdx.x;
+	int i = blockIdx.x*blockDim.x + threadIdx.x;
+	curandState_t* c_states = (curandState_t*) states;
 	
 	float rand;
 	if(i < size)
 	{
-		rand = curand_uniform(&states[i]);
+		rand = curand_uniform(&c_states[i]);
 		if(rand < drop_rate)
 			mask[i] = 0;
 		else
@@ -157,23 +143,16 @@ __global__ void cuda_dropout_select_conv(int* mask, int size, float drop_rate, c
 	}
 }
 
-#define cuda_dropout_apply_conv(name, type) 																		\
-__global__ void cuda_dropout_apply_conv_##name(void* i_table, int batch_size, int dim, int* mask, int size) 		\
-{ 																													\
-	int j = blockIdx.x*blockDim.x + threadIdx.x; 																	\
-	int i = blockIdx.y*blockDim.y + threadIdx.y; 																	\
-																													\
-	int c_depth = j / dim; 																							\
-	int current_id = j % dim; 																						\
-	int offset = dim*batch_size; 																					\
-																													\
-	type *table = (type*) i_table;																					\
-																													\
-	if(i < batch_size && j < size) 																					\
-		table[i*dim + c_depth*offset + current_id] *= mask[j]; 														\
+#define cuda_dropout_apply_conv(name, type) 																									\
+__global__ void cuda_dropout_apply_conv_##name(void* i_table, int* mask, int size) 																\
+{ 																																				\
+	int i = blockIdx.x*blockDim.x + threadIdx.x; 																								\
+																																				\
+	type *table = (type*) i_table;																												\
+																																				\
+	if(i <size) 																																\
+		table[i] *= mask[i]; 																													\
 }
-
-
 
 im2col_kernel_v5(FP32, float);
 cuda_rotate_filter_matrix(FP32, float); 
@@ -228,12 +207,6 @@ void cuda_conv_init(network* net)
 			#endif
 			break;
 	}
-}
-
-void cuda_conv_define(layer *current)
-{
-	current->forward = cuda_forward_conv_layer;
-	current->backprop = cuda_backward_conv_layer;
 }
 
 
@@ -293,37 +266,47 @@ size_t cuda_convert_conv_layer(layer *current)
 			break;
 			
 	}
-
-	vram_approx += cuda_convert_table(net, &(c_param->update), c_param->nb_filters 
-		* (c_param->flat_f_size + c_param->TC_padding),0);
-	
-	vram_approx += cuda_convert_table(net, &(c_param->rotated_filters), c_param->nb_filters 
-		* (c_param->flat_f_size-1),0);
 	
 	vram_approx += cuda_convert_table(net, &(current->output), c_param->nb_filters 
 		* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size,0);
-	vram_approx += cuda_convert_table(net, &(current->delta_o), c_param->nb_filters 
-		* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size,0);
-		
-	if(current->previous != NULL && current->previous->type == DENSE)
-		vram_approx += cuda_convert_table(net, &(c_param->temp_delta_o), c_param->prev_depth * c_param->prev_size[0] 
-			* c_param->prev_size[1] * c_param->prev_size[2] * current->c_network->batch_size,0);
 	
 	vram_approx += cuda_convert_table(net, &(c_param->im2col_input), 
 		((c_param->flat_f_size + c_param->TC_padding) * c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) 
 		* net->batch_size,0);
-	vram_approx += cuda_convert_table(net, &(c_param->im2col_delta_o), 
-		net->batch_size * ((size_t)c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]) 
-		* (c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters),0);
 	
-	if(current->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f || current->activation_type == YOLO)
 	{
-		vram_approx += cuda_convert_table_int(&(c_param->dropout_mask), c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]),0);
-		vram_approx += (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t);
+		vram_approx += cuda_convert_table_int(&(c_param->dropout_mask), c_param->nb_filters 
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size,0);
+		cudaMalloc((void**) &c_param->block_state, (c_param->nb_filters 
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * net->batch_size * sizeof(curandState_t));
+		vram_approx += c_param->nb_filters 
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size * sizeof(curandState_t);
+		cu_blocks = (c_param->nb_filters 
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size + cu_threads - 1) / cu_threads;
+		init_block_state<<< cu_blocks, cu_threads>>>(time(NULL),(curandState_t*)c_param->block_state, 
+			c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
 	}
-	cudaMalloc((void**) &c_param->block_state, (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])) * sizeof(curandState_t));
-	cu_blocks = (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
-	init_block_state_conv<<< cu_blocks, 1>>>(time(NULL),(curandState_t*)c_param->block_state);
+	
+	if(!net->inference_only)
+	{
+		vram_approx += cuda_convert_table(net, &(c_param->update), c_param->nb_filters 
+			* (c_param->flat_f_size + c_param->TC_padding),0);
+	
+		vram_approx += cuda_convert_table(net, &(c_param->rotated_filters), c_param->nb_filters 
+			* (c_param->flat_f_size-1),0);
+	
+		vram_approx += cuda_convert_table(net, &(current->delta_o), c_param->nb_filters 
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size,0);
+	
+		if(current->previous != NULL && current->previous->type == DENSE)
+			vram_approx += cuda_convert_table(net, &(c_param->temp_delta_o), c_param->prev_depth * c_param->prev_size[0] 
+				* c_param->prev_size[1] * c_param->prev_size[2] * current->c_network->batch_size,0);
+	
+		vram_approx += cuda_convert_table(net, &(c_param->im2col_delta_o), 
+			net->batch_size * ((size_t)c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]) 
+			* (c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters),0);
+	}
 	
 	return vram_approx;
 }
@@ -368,7 +351,7 @@ void cuda_forward_conv_layer(layer *current)
 	}
 	else
 	{
-		//if previous layer is a CONV (or pool) then the format is all image in R, then all image in B, ...
+		//if previous layer is a CONV (or pool) then the format is all images in R, then alls image in B, ...
 		//it also not contain a bias directly in the image
 		depth_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * net->batch_size;
 		image_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2];
@@ -381,8 +364,6 @@ void cuda_forward_conv_layer(layer *current)
 	
 	if(net->batch_size <= 2)
 		dim_c = 1;
-	//else if(net->batch_size <= 6)
-	//	dim_c = 2;
 	else
 		dim_c = 2;
 
@@ -459,19 +440,14 @@ void cuda_forward_conv_layer(layer *current)
 	
 	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
-		cu_blocks = (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
-		cuda_dropout_select_conv<<<cu_blocks, 1>>>(c_param->dropout_mask, c_param->nb_filters 
-			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), 
+		cu_blocks = (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) 
+			* net->batch_size + cu_threads - 1) / cu_threads;
+		cuda_dropout_select_conv<<<cu_blocks, cu_threads>>>(c_param->dropout_mask, c_param->nb_filters 
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, 
 			current->dropout_rate, (curandState_t*) c_param->block_state);	
 		
-		dim3 threadsPerBlock(32, 8);
-		dim3 numBlocks((c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])
-			+ threadsPerBlock.x - 1) / threadsPerBlock.x,
-			(net->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
-		
-		net->cu_inst.cu_conv_fcts.drop_apply_fct<<<numBlocks, threadsPerBlock>>>(current->output, 
-			net->batch_size, (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]),
-			c_param->dropout_mask, c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
+		net->cu_inst.cu_conv_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output,
+			c_param->dropout_mask, c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
 	}
 }
 
@@ -492,13 +468,11 @@ void cuda_backward_conv_layer(layer *current)
 	
 	if(current->dropout_rate > 0.01f)
 	{
-		dim3 threadsPerBlock(32, 8);
-		dim3 numBlocks((c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
-			(net->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
+		cu_blocks = (c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) 
+			* net->batch_size + cu_threads - 1) / cu_threads;
 		
-		net->cu_inst.cu_conv_fcts.drop_apply_fct<<<numBlocks, threadsPerBlock>>>(current->delta_o, 
-			net->batch_size, (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), 
-			c_param->dropout_mask, c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
+		net->cu_inst.cu_conv_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->delta_o,
+			c_param->dropout_mask, c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
 	}
 	
 	//######################## ERROR PROPAGATION ########################
@@ -527,8 +501,7 @@ void cuda_backward_conv_layer(layer *current)
 		
 		for(k = 0; k < 3; k++)
 		{
-			//back_padding[k] =  c_param->f_size[k] -  c_param->padding[k] - 1;
-			back_padding[k] =  c_param->f_size[k] -  c_param->padding[k] /*- c_param->int_padding[k]*/ - 1;
+			back_padding[k] = c_param->f_size[k] - c_param->padding[k] - 1;
 			if(back_padding[k] < 0)
 				back_padding[k] = 0;
 		}
@@ -593,16 +566,8 @@ void cuda_backward_conv_layer(layer *current)
 				* net->batch_size);
 		}
 
-		//update gradient regarding the previous layer activation function
-		//WARNING : ONLY WORK IF PREVIOUS LAYER IS A CONV AS OUTPUT AND DELTA_O SHARE THE SAME DATA ORDER
 		current->previous->deriv_activation(current->previous);
 		
-		/*if(current->previous->type == DENSE)
-		{
-			cuda_print_table(net, current->previous->delta_o, (c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] * c_param->prev_depth + 1) 
-				* net->batch_size, (c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] * c_param->prev_depth + 1) );
-			exit(1);
-		}*/
 	}
 	
 	//########################  WEIGHTS UPDATE   ########################
@@ -618,9 +583,17 @@ void cuda_backward_conv_layer(layer *current)
 			c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * net->batch_size,
 			cu_momentum, c_param->update, cuda_data_type, 
 			(c_param->flat_f_size + c_param->TC_padding), cuda_compute_type, CUBLAS_GEMM_DEFAULT);
+			
 		cuda_update_weights(net, c_param->FP32_filters, c_param->update, net->learning_rate*net->weight_decay,
 			(c_param->flat_f_size + c_param->TC_padding) * c_param->nb_filters);
 	}
+}
+
+
+void cuda_conv_define(layer *current)
+{
+	current->forward = cuda_forward_conv_layer;
+	current->backprop = cuda_backward_conv_layer;
 }
 
 

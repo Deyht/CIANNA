@@ -35,7 +35,8 @@ static int cu_blocks;
 
 //Is in fact a leaky ReLU, to obtain true ReLU set leaking_factor to 0
 #define ReLU_activation_kernel(name, type)																										\
-__global__ void ReLU_activation_kernel_##name(void *i_tab, int len, int dim, float saturation, float leaking_factor, int size)					\
+__global__ void ReLU_activation_kernel_##name(void *i_tab, int len, int dim, int biased_dim, 													\
+	float saturation, float leaking_factor, int size)																							\
 {																																				\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
@@ -44,19 +45,38 @@ __global__ void ReLU_activation_kernel_##name(void *i_tab, int len, int dim, flo
 	if(i >= size)																																\
 		return;																																	\
 																																				\
-	if(i < len && (i+1)%(dim+1) != 0)																											\
+	if(biased_dim > dim)																														\
 	{																																			\
-		if(tab[i] <= (type) 0.0f)																												\
-			tab[i] *= (type) leaking_factor;																									\
-		else if(tab[i] > (type) saturation)																										\
-			tab[i] = (type) saturation + (tab[i] - (type) saturation)*((type)leaking_factor);													\
+		if(i < len && (i+1)%(dim+1) != 0)																										\
+		{																																		\
+			if(tab[i] <= (type) 0.0f)																											\
+				tab[i] *= (type) leaking_factor;																								\
+			else if(tab[i] > (type) saturation)																									\
+				tab[i] = (type) saturation + (tab[i] - (type) saturation)*((type)leaking_factor);												\
+		}																																		\
+		else																																	\
+			tab[i] = (type) 0.0f;																												\
 	}																																			\
 	else																																		\
-		tab[i] = (type) 0.0f;																													\
+	{																																			\
+		int length_size = len/biased_dim;																										\
+		int batch_size = size/biased_dim;																										\
+		if(i % batch_size < length_size)																										\
+		{																																		\
+			if(tab[i] <= (type) 0.0f)																											\
+				tab[i] *= (type) leaking_factor;																								\
+			else if(tab[i] > (type) saturation)																									\
+				tab[i] = (type) saturation + (tab[i] - (type) saturation)*((type)leaking_factor);												\
+		}																																		\
+		else																																	\
+			tab[i] = (type) 0.0f;																												\
+	}																																			\
 }
 
+
 #define ReLU_deriv_kernel(name, type)																											\
-__global__ void ReLU_deriv_kernel_##name(void *i_deriv, void *i_value, int len, int dim, float saturation, float leaking_factor, int size)		\
+__global__ void ReLU_deriv_kernel_##name(void *i_deriv, void *i_value, int len, int dim, int biased_dim,										\
+	 float saturation, float leaking_factor, int size)																							\
 {																																				\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
@@ -66,21 +86,38 @@ __global__ void ReLU_deriv_kernel_##name(void *i_deriv, void *i_value, int len, 
 	if(i >= size)																																\
 		return;																																	\
 																																				\
-	if(i < len && (i+1)%(dim+1) != 0)																											\
+	if(biased_dim > dim)																														\
 	{																																			\
-		if(value[i] <= (type) 0.0f)																												\
-			deriv[i] *= leaking_factor;																											\
-		else if(value[i] > (type) saturation)																									\
-			deriv[i] *= leaking_factor;																											\
+		if(i < len && (i+1)%(dim+1) != 0)																										\
+		{																																		\
+			if(value[i] <= (type) 0.0f)																											\
+				deriv[i] *= leaking_factor;																										\
+			else if(value[i] > (type) saturation)																								\
+				deriv[i] *= leaking_factor;																										\
+		}																																		\
+		else																																	\
+			deriv[i] = (type) 0.0f;																												\
 	}																																			\
 	else																																		\
-		deriv[i] = (type) 0.0f;																													\
+	{																																			\
+		int length_size = len/biased_dim;																										\
+		int batch_size = size/biased_dim;																										\
+		if(i % batch_size < length_size)																										\
+		{																																		\
+			if(value[i] <= (type) 0.0f)																											\
+				deriv[i] *= leaking_factor;																										\
+			else if(value[i] > (type) saturation)																								\
+				deriv[i] *= leaking_factor;																										\
+		}																																		\
+		else																																	\
+			deriv[i] = (type) 0.0f;																												\
+	}																																			\
 }
 
 
 #define quadratic_deriv_output_error_kernel(name, type)																							\
 __global__ void quadratic_deriv_output_error_kernel_##name																						\
-	(void *i_delta_o, void *i_output, void *i_target, int len, int dim, int size, float TC_scale_factor)										\
+	(void *i_delta_o, void *i_output, void *i_target, int len, int dim, int biased_dim, int offset, int size, float TC_scale_factor)			\
 {																																				\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	int pos;																																	\
@@ -92,19 +129,34 @@ __global__ void quadratic_deriv_output_error_kernel_##name																						
 	if(i >= size)																																\
 		return;																																	\
 																																				\
-	if(i < len && (i+1)%(dim+1) != 0)																											\
+	if(biased_dim > dim)																														\
 	{																																			\
-		pos = i - i/(dim+1);																													\
-		delta_o[i] = (type)(((float)output[i] - (float)target[pos]) * TC_scale_factor);															\
+		if(i < len && (i+1)%(dim+1) != 0)																										\
+		{																																		\
+			pos = i - i/(dim+1);																												\
+			delta_o[i] = (type)(((float)output[i] - (float)target[pos]) * TC_scale_factor);														\
+		}																																		\
+		else																																	\
+			delta_o[i] = (type) 0.0f;																											\
 	}																																			\
 	else																																		\
-		delta_o[i] = (type) 0.0f;																												\
+	{																																			\
+		int length_size = len/biased_dim;																										\
+		int batch_size = size/biased_dim;																										\
+		if(i % batch_size < length_size)																										\
+		{																																		\
+			pos = (i/offset) + (i % offset)*dim;																								\
+			delta_o[i] = (type)(((float)output[i] - (float)target[pos]) * TC_scale_factor);														\
+		}																																		\
+		else																																	\
+			delta_o[i] = (type) 0.0f;																											\
+	}																																			\
 }
 
 
 #define quadratic_output_error_kernel(name, type)																								\
 __global__ void quadratic_output_error_kernel_##name																							\
-	(float *output_error, void *i_output, void *i_target, int len, int dim, int size)															\
+	(float *output_error, void *i_output, void *i_target, int len, int dim, int biased_dim, int offset, int size)								\
 {																																				\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	int pos;																																	\
@@ -115,13 +167,28 @@ __global__ void quadratic_output_error_kernel_##name																							\
 	if(i >= size)																																\
 		return;																																	\
 																																				\
-	if(i < len && (i+1)%(dim+1) != 0)																											\
+	if(biased_dim > dim)																														\
 	{																																			\
-		pos = i - i/(dim+1);																													\
-		output_error[i] = (0.5f*((float)output[i] - (float)target[pos])*((float)output[i] - (float)target[pos]));								\
+		if(i < len && (i+1)%(dim+1) != 0)																										\
+		{																																		\
+			pos = i - i/(dim+1);																												\
+			output_error[i] = (0.5f*((float)output[i] - (float)target[pos])*((float)output[i] - (float)target[pos]));							\
+		}																																		\
+		else																																	\
+			output_error[i]	= 0.0f;																												\
 	}																																			\
 	else																																		\
-		output_error[i]	= 0.0f;																													\
+	{																																			\
+		int length_size = len/biased_dim;																										\
+		int batch_size = size/biased_dim;																										\
+		if(i % batch_size < length_size)																										\
+		{																																		\
+			pos = (i/offset) + (i % offset)*dim;																								\
+			output_error[i] = (0.5f*((float)output[i] - (float)target[pos])*((float)output[i] - (float)target[pos]));							\
+		}																																		\
+		else																																	\
+			output_error[i]	= 0.0f;																												\
+	}																																			\
 }
 
 //#####################################################
@@ -132,7 +199,7 @@ __global__ void quadratic_output_error_kernel_##name																							\
 //#####################################################
 
 #define logistic_activation_kernel(name, type, exp_fct)																							\
-__global__ void logistic_activation_kernel_##name(void *i_tab, float beta, float saturation, int len, int dim, int size)						\
+__global__ void logistic_activation_kernel_##name(void *i_tab, float beta, float saturation, int len, int dim, int biased_dim, int size)		\
 {																																				\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
@@ -144,20 +211,37 @@ __global__ void logistic_activation_kernel_##name(void *i_tab, float beta, float
 	if(i >= size)																																\
 		return;																																	\
 																																				\
-	if(i < len && (i+1)%(dim+1) != 0)																											\
+	if(biased_dim > dim)																														\
 	{																																			\
-		tab[i] = -t_beta*tab[i];																												\
-		if(tab[i] > t_saturation)																												\
-			tab[i] = t_saturation;																												\
-		tab[i] = t_one/(t_one + exp_fct((float)tab[i]));																						\
+		if(i < len && (i+1)%(dim+1) != 0)																										\
+		{																																		\
+			tab[i] = -t_beta*tab[i];																											\
+			if(tab[i] > t_saturation)																											\
+				tab[i] = t_saturation;																											\
+			tab[i] = t_one/(t_one + exp_fct((float)tab[i]));																					\
+		}																																		\
+		else																																	\
+			tab[i] = (type)0.0f;																												\
 	}																																			\
 	else																																		\
-		tab[i] = (type)0.0f;																													\
+	{																																			\
+		int length_size = len/biased_dim;																										\
+		int batch_size = size/biased_dim;																										\
+		if(i % batch_size < length_size)																										\
+		{																																		\
+			tab[i] = -t_beta*tab[i];																											\
+			if(tab[i] > t_saturation)																											\
+				tab[i] = t_saturation;																											\
+			tab[i] = t_one/(t_one + exp_fct((float)tab[i]));																					\
+		}																																		\
+		else																																	\
+			tab[i] = (type)0.0f;																												\
+	}																																			\
 }
 
 
 #define logistic_deriv_kernel(name, type)																										\
-__global__ void logistic_deriv_kernel_##name(void *i_deriv, void *i_value, float beta, int len, int dim, int size)								\
+__global__ void logistic_deriv_kernel_##name(void *i_deriv, void *i_value, float beta, int len, int dim, int biased_dim, int size)				\
 {																																				\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
@@ -167,10 +251,24 @@ __global__ void logistic_deriv_kernel_##name(void *i_deriv, void *i_value, float
 	if(i >= size)																																\
 		return;																																	\
 																																				\
-	if(i < len && (i+1)%(dim+1) != 0)																											\
-		deriv[i] *= (type)beta*value[i]*((type)1.0f-value[i]);																					\
+	if(biased_dim > dim)																														\
+	{																																			\
+		if(i < len && (i+1)%(dim+1) != 0)																										\
+			deriv[i] *= (type)beta*value[i]*((type)1.0f-value[i]);																				\
+		else																																	\
+			deriv[i] = (type) 0.0f;																												\
+	}																																			\
 	else																																		\
-		deriv[i] = (type) 0.0f;																													\
+	{																																			\
+		int length_size = len/biased_dim;																										\
+		int batch_size = size/biased_dim;																										\
+		if(i % batch_size < length_size)																										\
+		{																																		\
+			deriv[i] *= (type)beta*value[i]*((type)1.0f-value[i]);																				\
+		}																																		\
+		else																																	\
+			deriv[i] = (type) 0.0f;																												\
+	}																																			\
 }
 
 //#####################################################
@@ -181,12 +279,12 @@ __global__ void logistic_deriv_kernel_##name(void *i_deriv, void *i_value, float
 //#####################################################
 
 #define softmax_activation_kernel(name, type, exp_fct)																							\
-__global__ void softmax_activation_kernel_##name(void *i_tab, int len, int dim, int size)														\
+__global__ void softmax_activation_kernel_##name(void *i_tab, int len, int dim, int biased_dim, int offset, int size)							\
 {																																				\
 	/*difficult to further optimize but can be invastigated*/																					\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	int j;																																		\
-	type* pos;																																	\
+	type *pos, *off_pos;																														\
 	type vmax;																																	\
 	float normal = 0.0f;																														\
 	type* tab = (type*) i_tab;																													\
@@ -196,38 +294,56 @@ __global__ void softmax_activation_kernel_##name(void *i_tab, int len, int dim, 
 																																				\
 	if(i < len)																																	\
 	{																																			\
-		pos = tab + i*(dim+1);																													\
+		if(biased_dim > dim)																													\
+			pos = tab + i*(biased_dim);																											\
+		else																																	\
+			pos = tab + i;																														\
 																																				\
-		vmax = pos[0];																															\
+		vmax = *pos;																															\
 		for(j = 0; j < dim; j++)																												\
-			if(pos[j] > vmax)																													\
-				vmax = pos[j];																													\
+		{																																		\
+			off_pos = pos + j*offset;																											\
+			if(*off_pos > vmax)																													\
+				vmax = *off_pos;																												\
+		}																																		\
 																																				\
 		for(j = 0; j < dim; j++)																												\
 		{																																		\
-			pos[j] = exp_fct((float)(pos[j]-vmax));																								\
-			/*if((float)pos[j] < 0.001f)			*/																							\
-			/*	pos[j] = 0.0f;						*/																							\
-			normal += (float)pos[j];																											\
+			off_pos = pos + j*offset;																											\
+			*off_pos = exp_fct((float)(*off_pos-vmax));																							\
+			normal += (float)*off_pos;																											\
 		}																																		\
-		pos[dim] = 0.0f;																														\
+		if(biased_dim > dim)																													\
+			pos[dim] = 0.0f;																													\
 																																				\
 		for(j = 0; j < dim; j++)																												\
-			pos[j] = (type)((float)pos[j]/normal);																								\
-		pos[dim] = 0.0f;																														\
+		{																																		\
+			off_pos = pos + j*offset;																											\
+			*off_pos = (type)((float)*off_pos/normal);																							\
+		}																																		\
+		if(biased_dim > dim)																													\
+			pos[dim] = 0.0f;																													\
 	}																																			\
 	else																																		\
 	{																																			\
-		pos = tab + i*(dim+1);																													\
+		if(biased_dim > dim)																													\
+			pos = tab + i*(biased_dim);																											\
+		else																																	\
+			pos = tab + i;																														\
+																																				\
 		for(j = 0; j < dim; j++)																												\
-			pos[j] = 0.0f;																														\
-		pos[dim] = 0.0f;																														\
+		{																																		\
+			off_pos = pos + j*offset;																											\
+			*off_pos = 0.0f;																													\
+		}																																		\
+		if(biased_dim > dim)																													\
+			pos[dim] = 0.0f;																													\
 	}																																			\
 }
 
 #define cross_entropy_deriv_output_error_kernel(name, type)																						\
 __global__ void cross_entropy_deriv_output_error_kernel_##name																					\
-	(void *i_delta_o, void *i_output, void *i_target, int len, int dim, int size, float TC_scale_factor)										\
+	(void *i_delta_o, void *i_output, void *i_target, int len, int dim, int biased_dim, int offset, int size, float TC_scale_factor)			\
 {																																				\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	int pos;																																	\
@@ -239,19 +355,34 @@ __global__ void cross_entropy_deriv_output_error_kernel_##name																		
 	if(i >= size)																																\
 		return;																																	\
 																																				\
-	if(i < len && (i+1)%(dim+1) != 0)																											\
+	if(biased_dim > dim)																														\
 	{																																			\
-		pos = i - i/(dim+1);																													\
-		delta_o[i] = (type)(((float)output[i] - (float)target[pos])* TC_scale_factor);															\
+		if(i < len && (i+1)%(biased_dim) != 0)																									\
+		{																																		\
+			pos = i - i/(biased_dim);																											\
+			delta_o[i] = (type)(((float)output[i] - (float)target[pos])* TC_scale_factor);														\
+		}																																		\
+		else																																	\
+			delta_o[i] = (type) 0.0f;																											\
 	}																																			\
 	else																																		\
-		delta_o[i] = (type) 0.0f;																												\
+	{																																			\
+		int length_size = len/biased_dim;																										\
+		int batch_size = size/biased_dim;																										\
+		if(i % batch_size < length_size)																										\
+		{																																		\
+			pos = (i/offset) + (i % offset)*dim;																								\
+			delta_o[i] = (type)(((float)output[i] - (float)target[pos])* TC_scale_factor);														\
+		}																																		\
+		else																																	\
+			delta_o[i] = (type) 0.0f;																											\
+	}																																			\
 }
 
 
 #define cross_entropy_output_error_kernel(name, type)																							\
 __global__ void cross_entropy_output_error_kernel_##name																						\
-	(float *output_error, void *i_output, void *i_target, int len, int dim, int size)															\
+	(float *output_error, void *i_output, void *i_target, int len, int dim, int biased_dim, int offset, int size)								\
 {																																				\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	int pos;																																	\
@@ -262,23 +393,76 @@ __global__ void cross_entropy_output_error_kernel_##name																						\
 	if(i >= size)																																\
 		return;																																	\
 																																				\
-	if(i < len && (i+1)%(dim+1) != 0)																											\
+	if(biased_dim > dim)																														\
 	{																																			\
-		pos = i - i/(dim+1);																													\
-		if((float)output[i] > 0.000001f)																										\
-			output_error[i] = -(float)target[pos] * logf((float)output[i]);																		\
+		if(i < len && (i+1)%(biased_dim) != 0)																									\
+		{																																		\
+			pos = i - i/(dim+1);																												\
+			if((float)output[i] > 0.000001f)																									\
+				output_error[i] = -(float)target[pos] * logf((float)output[i]);																	\
+			else																																\
+				output_error[i] = -(float)target[pos] * logf((float)0.000001f);																	\
+		}																																		\
 		else																																	\
-			output_error[i] = -(float)target[pos] * logf((float)0.000001f);																		\
+			output_error[i] = 0.0f;																												\
 	}																																			\
 	else																																		\
-		output_error[i] = 0.0f;																													\
+	{																																			\
+		int length_size = len/biased_dim;																										\
+		int batch_size = size/biased_dim;																										\
+		if(i % batch_size < length_size)																										\
+		{																																		\
+			pos = (i/offset) + (i % offset)*dim;																								\
+			if((float)output[i] > 0.000001f)																									\
+				output_error[i] = -(float)target[pos] * logf((float)output[i]);																	\
+			else																																\
+				output_error[i] = -(float)target[pos] * logf((float)0.000001f);																	\
+		}																																		\
+		else																																	\
+			output_error[i] = 0.0f;																												\
+	}																																			\
 }
 
-//#####################################################
+
+#define group_normalization_dense_kernel(name, type) 																							\
+__global__ void group_normalization_dense_kernel_##name(void *i_tab, int b_length, int b_size, 													\
+	int dim, int biased_dim, int group_size, int nb_group)																						\
+{																																				\
+	/* Could be optimized with advanced multi-thread reduction */																				\
+	int j = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int i = blockIdx.y*blockDim.y + threadIdx.y;																								\
+	int k;																																		\
+	type* tab = (type*) i_tab;																													\
+	float l_val, eps = 0.00001f;																												\
+	double mean = 0.0, var = 0.0;																												\
+																																				\
+	if(i < b_length && j < nb_group)																											\
+	{																																			\
+											/* Here dim = dim - set_off */																		\
+		for(k = j*group_size; k < (j+1)*group_size && k < dim; k++)																				\
+			mean += (float)tab[i*biased_dim + k];																								\
+		mean /= group_size;																														\
+																																				\
+		for(k = j*group_size; k < (j+1)*group_size && k < dim; k++)																				\
+		{																																		\
+			l_val = (float)tab[i*biased_dim + k];																								\
+			var += (l_val - mean)*(l_val - mean);																								\
+		}																																		\
+		var /= group_size;																														\
+																																				\
+		for(k = j*group_size; k < (j+1)*group_size && k < dim; k++)																				\
+		{																																		\
+			l_val = (float)tab[i*biased_dim + k];																								\
+			tab[i*biased_dim + k] = (type) ((l_val - mean)/sqrt(var + eps));																	\
+		}																																		\
+	}																																			\
+	/* Don't do anything for objects after length*/																								\
+}
 
 
+
 //#####################################################
-//		  Exp activation (SGAN discriminator) related templates
+//Exp activation (SGAN discriminator) related templates
 //#####################################################
 
 #define exp_disc_activation_kernel(name, type, exp_fct)																							\
@@ -2023,7 +2207,8 @@ void cuda_linear_deriv_output_error(layer *current)
 	
 	current->c_network->cu_inst.cu_linear_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
 		(current->delta_o, current->output, current->c_network->target,
-		(param->biased_dim)*current->c_network->length, param->dim, param->size, TC_scale_factor);
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->offset, 
+		param->size, current->c_network->TC_scale_factor);
 }
 
 void cuda_linear_output_error(layer *current)
@@ -2034,7 +2219,7 @@ void cuda_linear_output_error(layer *current)
 	current->c_network->cu_inst.cu_linear_activ_fcts.output_error_fct<<< cu_blocks, cu_threads >>>
 		((float*)current->c_network->output_error, current->output,
 		current->c_network->target, (param->biased_dim)*current->c_network->length, 
-		param->dim, param->size);
+		param->dim, param->biased_dim, param->offset, param->size);
 }
 
 
@@ -2048,7 +2233,7 @@ void cuda_ReLU_activation(layer *current)
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_ReLU_activ_fcts.activ_fct<<< cu_blocks, cu_threads >>>
-		(current->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
+		(current->output, param->size, param->dim, param->biased_dim, param->saturation, param->leaking_factor, param->size);
 }
 
 
@@ -2058,7 +2243,7 @@ void cuda_ReLU_deriv(layer *previous)
 	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
 	
 	previous->c_network->cu_inst.cu_ReLU_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
-		(previous->delta_o, previous->output, param->size, param->dim, param->saturation, param->leaking_factor, param->size);
+		(previous->delta_o, previous->output, param->size, param->dim, param->biased_dim, param->saturation, param->leaking_factor, param->size);
 }
 
 
@@ -2070,10 +2255,11 @@ void cuda_ReLU_deriv_output_error(layer* current)
 	
 	current->c_network->cu_inst.cu_ReLU_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
 		(current->delta_o, current->output, current->c_network->target,
-		(param->biased_dim) * current->c_network->length, param->dim, param->size, TC_scale_factor);
+		(param->biased_dim) * current->c_network->length, param->dim, param->biased_dim, param->offset, 
+		param->size, current->c_network->TC_scale_factor);
 	
 	current->c_network->cu_inst.cu_ReLU_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
-		(current->delta_o, current->output, param->size, param->dim,
+		(current->delta_o, current->output, param->size, param->dim, param->biased_dim,
 		param->saturation, param->leaking_factor, param->size);
 }
 
@@ -2084,7 +2270,7 @@ void cuda_ReLU_output_error(layer* current)
 	
 	current->c_network->cu_inst.cu_ReLU_activ_fcts.output_error_fct<<< cu_blocks, cu_threads >>>
 		((float*)current->c_network->output_error, current->output, current->c_network->target, 
-		(param->biased_dim)*current->c_network->length, param->dim, param->size);
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->offset, param->size);
 }
 
 
@@ -2098,7 +2284,8 @@ void cuda_logistic_activation(layer *current)
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
 
 	current->c_network->cu_inst.cu_logistic_activ_fcts.activ_fct<<< cu_blocks, cu_threads >>>
-		(current->output, param->beta, param->saturation, (param->biased_dim)*current->c_network->length, param->dim, param->size);
+		(current->output, param->beta, param->saturation, (param->biased_dim)*current->c_network->length, 
+		param->dim, param->biased_dim, param->size);
 }
 
 
@@ -2108,7 +2295,8 @@ void cuda_logistic_deriv(layer *previous)
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
 	
 	previous->c_network->cu_inst.cu_logistic_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
-		(previous->delta_o, previous->output, param->beta, (param->biased_dim)*previous->c_network->length, param->dim, param->size);
+		(previous->delta_o, previous->output, param->beta, (param->biased_dim)*previous->c_network->length, 
+		param->dim, param->biased_dim, param->size);
 }
 
 
@@ -2118,12 +2306,12 @@ void cuda_logistic_deriv_output_error(layer* current)
 	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_logistic_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
-		(current->delta_o, current->output, current->c_network->target,
-		(param->biased_dim)*current->c_network->length, param->dim, param->size, TC_scale_factor);
+		(current->delta_o, current->output, current->c_network->target, (param->biased_dim)*current->c_network->length,
+		 param->dim, param->biased_dim, param->offset, param->size, current->c_network->TC_scale_factor);
 	
 	current->c_network->cu_inst.cu_logistic_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
-		(current->delta_o, current->output, param->beta,
-		(param->biased_dim)*current->c_network->length, param->dim, param->size);
+		(current->delta_o, current->output, param->beta, (param->biased_dim)*current->c_network->length, 
+		param->dim, param->biased_dim, param->size);
 }
 
 void cuda_logistic_output_error(layer* current)
@@ -2133,7 +2321,7 @@ void cuda_logistic_output_error(layer* current)
 	
 	current->c_network->cu_inst.cu_logistic_activ_fcts.output_error_fct<<< cu_blocks, cu_threads >>>
 		((float*)current->c_network->output_error, current->output, current->c_network->target,
-		(param->biased_dim)*current->c_network->length, param->dim, param->size);
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->offset, param->size);
 }
 
 //#####################################################
@@ -2146,7 +2334,7 @@ void cuda_softmax_activation(layer *current)
 	cu_blocks = (current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_softmax_activ_fcts.activ_fct<<< cu_blocks, cu_threads >>>
-		(current->output, current->c_network->length, param->dim, current->c_network->batch_size);
+		(current->output, current->c_network->length, param->dim, param->biased_dim, param->offset, current->c_network->batch_size);
 }
 
 
@@ -2164,8 +2352,8 @@ void cuda_softmax_deriv_output_error(layer *current)
 	
 	current->c_network->cu_inst.cu_softmax_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
 		(current->delta_o, current->output, current->c_network->target,
-		(param->biased_dim)*current->c_network->length, param->dim, 
-		(param->biased_dim) * current->c_network->batch_size, TC_scale_factor);
+		(param->biased_dim)*current->c_network->length, param->dim, param->biased_dim, param->offset,
+		(param->biased_dim)*current->c_network->batch_size, current->c_network->TC_scale_factor);
 }
 
 void cuda_softmax_output_error(layer *current)
@@ -2176,8 +2364,8 @@ void cuda_softmax_output_error(layer *current)
 	
 	current->c_network->cu_inst.cu_softmax_activ_fcts.output_error_fct<<< cu_blocks, cu_threads >>>
 		((float*)current->c_network->output_error, current->output, 
-		current->c_network->target, (param->dim+1)*current->c_network->length,
-		param->dim, (param->biased_dim)*current->c_network->batch_size);
+		current->c_network->target, (param->biased_dim)*current->c_network->length,
+		param->dim, param->biased_dim, param->offset, (param->biased_dim)*current->c_network->batch_size);
 }
 
 void cuda_semi_supervised_gan_deriv_output_error(layer *current, int halved, int reversed)
@@ -2235,8 +2423,8 @@ void cuda_YOLO_deriv_output_error(layer *current)
 	current->c_network->cu_inst.cu_YOLO_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
 		(current->delta_o, current->output, current->c_network->target, current->c_network->output_dim, 
 		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
-		*a_param, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, TC_scale_factor, 
-		current->c_network->epoch * current->c_network->train.size, c_param->block_state);
+		*a_param, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, 
+		current->c_network->TC_scale_factor, current->c_network->epoch * current->c_network->train.size, c_param->block_state);
 }
 
 

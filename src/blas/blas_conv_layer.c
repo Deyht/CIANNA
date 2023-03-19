@@ -28,19 +28,8 @@ static conv_param *c_param;
 
 //public are in prototypes.h
 
-//private
-static void forward_conv_layer(layer *current);
-static void backward_conv_layer(layer *current);
 
-
-void blas_conv_define(layer *current)
-{
-	current->forward = forward_conv_layer;
-	current->backprop = backward_conv_layer;
-}
-
-
-void forward_conv_layer(layer *current)
+void blas_forward_conv_layer(layer *current)
 {
 	double c_dr, w_alpha;
 	int depth_padding;
@@ -112,16 +101,15 @@ void forward_conv_layer(layer *current)
 	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		dropout_select_conv(c_param->dropout_mask, c_param->nb_filters 
-			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), current->dropout_rate);	
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);	
 		
-		dropout_apply_conv(current->output, net->batch_size, 
-			(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), c_param->dropout_mask, 
-			c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
+		dropout_apply_conv(current->output, c_param->dropout_mask, c_param->nb_filters 
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
 	}
 }
 
 
-void backward_conv_layer(layer *current)
+void blas_backward_conv_layer(layer *current)
 {
 	int k;
 	int depth_padding;
@@ -135,9 +123,8 @@ void backward_conv_layer(layer *current)
 	
 	if(current->dropout_rate > 0.01f)
 	{
-		dropout_apply_conv(current->delta_o, net->batch_size, 
-			(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), c_param->dropout_mask, 
-			c_param->nb_filters * (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
+		dropout_apply_conv(current->delta_o, c_param->dropout_mask, c_param->nb_filters 
+			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
 	}
 	
 	//######################## ERROR PROPAGATION ########################
@@ -203,7 +190,11 @@ void backward_conv_layer(layer *current)
 }
 
 
-
+void blas_conv_define(layer *current)
+{
+	current->forward = blas_forward_conv_layer;
+	current->backprop = blas_backward_conv_layer;
+}
 
 
 

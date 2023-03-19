@@ -28,10 +28,6 @@ static dense_param *d_param;
 
 //public are in prototypes.h
 
-//private
-void naiv_forward_dense_layer(layer *current);
-void naiv_backward_dense_layer(layer* current);
-
 
 //used to reshape output of Conv layer that as the result of filter 1 continuous for the all batch
 //convert into all filters continuous for image 1, then image 2, ...
@@ -78,7 +74,7 @@ void reroll_batch(void* in, void* out, int map_size, int flatten_size, int nb_ma
 }
 
 
-void dropout_select_dense(int* mask, int size, float drop_rate)
+void dropout_select_dense(int* mask, int biased_dim, int size, float drop_rate)
 {
 	int i;
 	float rand;
@@ -89,7 +85,7 @@ void dropout_select_dense(int* mask, int size, float drop_rate)
 	for(i = 0; i < size; i++)
 	{
 		rand = random_uniform();
-		if(rand < drop_rate)
+		if(rand < drop_rate && (i+1)/biased_dim != 0)
 			mask[i] = 0;
 		else
 			mask[i] = 1;
@@ -97,28 +93,52 @@ void dropout_select_dense(int* mask, int size, float drop_rate)
 }
 
 
-void dropout_apply_dense(void* table, int batch_size, int dim, int* mask)
+void dropout_apply_dense(void* table, int size, int* mask)
 {
 	int i;
-	int j;
 	
 	float* f_table = (float*) table;
 	
-	for(i = 0; i < batch_size; i++)
-	{
-		for(j = 0; j < dim; j++)
-		{
-			f_table[i*(dim+1) + j] *= mask[j];
-		}
-	}
+	for(i = 0; i <size; i++)
+		f_table[i] *= mask[i];
 }
 
 
-
-void naiv_dense_define(layer *current)
+void group_normalization_dense(void *i_tab, int b_length, int b_size,
+	int dim, int biased_dim, int group_size, int nb_group)
 {
-	current->forward = naiv_forward_dense_layer;
-	current->backprop = naiv_backward_dense_layer;
+	int i, j, k;
+	float* tab = (float*) i_tab;
+	float l_val, eps = 0.00001f;
+	double mean = 0.0, var = 0.0;
+
+	#pragma omp parallel for private(j,k,l_val,mean,var) collapse(2) schedule(guided,1)
+	for(i = 0; i < b_length; i++)
+	{
+		for(j = 0; j < nb_group; j++)
+		{
+			mean = 0.0;
+			var = 0.0;
+												/* Here dim = dim - set_off */
+			for(k = j*group_size; k < (j+1)*group_size && k < dim; k++)
+				mean += (float)tab[i*biased_dim + k];
+			mean /= group_size;
+
+			for(k = j*group_size; k < (j+1)*group_size && k < dim; k++)
+			{
+				l_val = (float)tab[i*biased_dim + k];
+				var += (l_val - mean)*(l_val - mean);
+			}
+			var /= group_size;
+
+			for(k = j*group_size; k < (j+1)*group_size && k < dim; k++)
+			{
+				l_val = (float)tab[i*biased_dim + k];
+				tab[i*biased_dim + k] = (l_val - mean)/sqrt(var + eps);
+			}
+		}
+	}
+	/* Don't do anything for objects after length*/
 }
 
 
@@ -128,7 +148,6 @@ void naiv_forward_dense_layer(layer *current)
 	double h, w_alpha;
 	int nb_area_w, nb_area_h, nb_area_d, depth;
 	void* ref_input;
-	
 	float prev_drop_rate = 0.0f;
 	
 	network* net = current->c_network;
@@ -197,7 +216,7 @@ void naiv_forward_dense_layer(layer *current)
 			for(j = 0; j < d_param->in_size; j++)
 			{
 				h += f_weights[j*(d_param->nb_neurons+1) + i]
-						* f_input[b*d_param->in_size + j];
+					* f_input[b*d_param->in_size + j];
 			}
 			
 			f_output[b*(d_param->nb_neurons+1)+i] = w_alpha * h;
@@ -208,8 +227,8 @@ void naiv_forward_dense_layer(layer *current)
 	
 	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
-		dropout_select_dense(d_param->dropout_mask, d_param->nb_neurons, current->dropout_rate);
-		dropout_apply_dense(current->output, net->batch_size, d_param->nb_neurons, d_param->dropout_mask);
+		dropout_select_dense(d_param->dropout_mask, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
+		dropout_apply_dense(current->output, (d_param->nb_neurons+1)*net->batch_size, d_param->dropout_mask);
 	}
 }
 
@@ -231,8 +250,8 @@ void naiv_backward_dense_layer(layer* current)
 	float *f_update = (float*) d_param->update;
 	
 	if(current->dropout_rate > 0.01f)
-		dropout_apply_dense(current->delta_o, net->batch_size, d_param->nb_neurons,
-					d_param->dropout_mask);
+		dropout_apply_dense(current->delta_o,
+			(d_param->nb_neurons+1)*net->batch_size, d_param->dropout_mask);
 	
 	//######################## ERROR PROPAGATION ########################
 	ref_input = current->input;
@@ -314,7 +333,11 @@ void naiv_backward_dense_layer(layer* current)
 }
 
 
-
+void naiv_dense_define(layer *current)
+{
+	current->forward = naiv_forward_dense_layer;
+	current->backprop = naiv_backward_dense_layer;
+}
 
 
 
