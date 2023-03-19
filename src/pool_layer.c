@@ -259,6 +259,8 @@ void pool_create(network *net, layer *previous, int *pool_size, const char *char
 		mem_approx += p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps 
 			* net->batch_size * sizeof(float);
 	}
+	else
+		p_param->pool_map = NULL;
 	
 	current->param = p_param;
 	
