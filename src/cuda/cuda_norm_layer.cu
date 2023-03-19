@@ -67,7 +67,7 @@ __device__ void warpReduce(volatile float *sdata, int blockSize, unsigned int ti
 __global__ void reduce_group_mean_conv_kernel_##name(void *idata, float *group_mean, 															\
 	int group_size, int nb_group, int flat_a_size, int batch_size, int sum_div, int sum_size) 													\
 {																																				\
-	extern __shared__ float sdata[];																											\
+	__shared__ float sdata[256];																												\
 	type* input = (type*) idata;																												\
 	int tid = threadIdx.x;																														\
 	int block_id = blockIdx.x;																													\
@@ -103,7 +103,7 @@ __global__ void reduce_group_mean_conv_kernel_##name(void *idata, float *group_m
 __global__ void reduce_group_var_conv_kernel_##name(void *idata, float *group_var, float *group_mean, 											\
 	int group_size, int nb_group, int flat_a_size, int batch_size, int sum_div, int sum_size) 													\
 {																																				\
-	extern __shared__ float sdata[];																											\
+	__shared__ float sdata[256];																												\
 	type* input = (type*) idata;																												\
 	int tid = threadIdx.x;																														\
 	int block_id = blockIdx.x;																													\
@@ -143,7 +143,7 @@ __global__ void reduce_group_var_conv_kernel_##name(void *idata, float *group_va
 __global__ void reduce_group_dgamma_conv_kernel_##name(void *idata, void *d_output, float *d_gamma,												\
 	float *group_var, float *group_mean, int group_size, int nb_group, int flat_a_size, int batch_size, int sum_size) 							\
 {																																				\
-	extern __shared__ float sdata[];																											\
+	__shared__ float sdata[256];																												\
 	type* input = (type*) idata;																												\
 	type* delta_output = (type*) d_output;																										\
 	int tid = threadIdx.x;																														\
