@@ -1,0 +1,6 @@
+python_module.c
+python_module_setup.py
+CIANNA.egg-info/PKG-INFO
+CIANNA.egg-info/SOURCES.txt
+CIANNA.egg-info/dependency_links.txt
+CIANNA.egg-info/top_level.txt

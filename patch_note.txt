@@ -1,10 +1,18 @@
-===== V-0.9.3.2 =====
- (interface V-0.6.4)
 
-/!\ Break compatibility with previous save formats, interface keywords, and MC-drop prediction format /!\
+===== V-0.9.3.4 =====
+ (interface V-0.6.6)
+ (continuous update from 9.3.1 to 9.3.4)
+
+/!\ Break compatibility with previous save formats, interface keywords, MC-drop prediction format, and learning rate related values scaling /!\
+
+/!\ Add new Interface API documentation to the Wiki page !!
 
 ====    Interface related    ====
 
+- /!\ Move from distutils to setuptools to follow the removal of distutils from python 3.12
+- /!\ Change all weights update computations to align with the more classical view of averaged contribution over mini_batch instead of sum.
+  This should ease the reproduction of classical architectures and will facilitate the sharing and comparison of the related training hyper-parameters.
+  The affected parameters are mainly the learning rate and the weight decay.
 - Add a silent option to forward and modify the option on dataset handling to allow true no-output prediction
   (useful for real-time predictions, e.g, camera feed)
 - Add two new compact "confmat" display: confmat = 2, with only Precision / Recall and global accuracy displayed
@@ -13,11 +21,12 @@
   (useful to reduce output width footprint for small display or to allow smaller terminal width)
 - Add a "nb_layers" keyword in cnn load to get only the first N layers of a saved network (e.g if used on a pre-training task).
   New layers can be added after the ones that have been loaded to fit the new task.
-- Add a "class_softmax" keyword in the "set_yolo_params" function (more information in low level)
+- Add a "class_softmax" keyword in the "set_yolo_params" function (more information in low-level)
 - Modify the monitoring output of YOLO => now display the mean IoU for all targets, the mean Probability for all targets, 
   and the proportion of targets that have a prediction above "goog_IoU_lim".
 - Relax the input size check when loading a saved network. This helps change input resolution for translational equivariant networks.
 - Add a "global" keyword for pool_create following low-level modification (ignore set filter size, but the parameter is still mandatory).
+- Add stride and padding keywords for pool_create following pooling rework (see low-level for details).
 - Add a weight_decay keyword in the train network function. Change the previous "decay" keyword to "lr_decay" to prevent confusion.
 - Add a set_frozen_layers function in both interfaces. It takes as an argument an integer array to specify which layers should be frozen.
   Frozen layers will not update their weights during training. The frozen status where already included in the low-level layer code
@@ -34,12 +43,23 @@
 - Change the performance display to state the layer type.
 - Add the "inference_only" keyword in the init function (see low-level for details).
 - Add interface functions for the new "norm" layer type (see low-level for details). The keyword for this layer creation function are "group_size" and "set_off".
+- Change all reference to a number of "epoch" and the corresponding keywords to iteration (or iter). This change was done to prevent confusion between a real number of epochs
+  and the number of paths through a smaller training sub-sample, especially for dynamic augmentation.
+- Change conv loading display for elements that are not "volumes" namely stride, padding, and internal padding, for which the "x" splitting is replaced by a ":".
+- Add a function to export the network architecture in a .tex formatted table. Also compile it as a .pdf. The table column can be selected individually.
+- Add a new YOLO keyword that specifies the type of prior distance association (see low-level).
+- Add different categories of "difficult" objects, caracterised by the int value in the difficult flag (see low-level).
+- Add a return value to all layer creation functions, return the layer_id integer number. Anticipate more complexe architectures construction.
+- Add a "rand_prob" keywork in set_yolo_param (see low-level).
 
 ==== Low-level modifications ====
 
 - /!\ Fix an error in YOLO error and deriv that could contaminate association tables between subsequent batches.
   Prediction output was not directly affected, but the association process was corrupted during training, impacting the compute of the error gradient.
   This bug might have impacted the predictive performance of YOLO networks trained on older versions.
+- /!\ Change all weights update computations to align with the more classical view of averaged contribution over mini_batch instead of sum.
+  This should ease the reproduction of classical architectures and will facilitate the sharing and comparison of the related training hyper-parameters.
+  The affected parameters are mainly the learning rate and the weight decay.
 - Validated with the latest CUDA 12.0 (no significant performance difference observed atm with the current version)
 - Fix a global keyword error that was preventing the proper compilation of non-CUDA compute methods when not compiling the CUDA compute method.
 - Small adjustment to default activation limits (better support for FP16).
@@ -52,7 +72,8 @@
   to good_IoU_lim, also update the class and parameters but not positions and sizes.
 - Add a "GLOBAL" variant for pooling layers. The filter size is automatically set to the whole spatial dimension of the previous layer.
   Also relax some constraints for pooling layers construction (e.g. now allowed as the first layer). Also moved the type "char" interpretation to the C code.
-- Fix an error in average pooling behavior through a rework of both type of pooling backprop functions.
+- Global rework of the pooling layer "class". It is now possible to define independently the pooling size, the stride and to add some padding.
+  This allow the use of overlapping pooling operations. (Also fix an error in average pooling behavior).
 - Add weight decay in all the versions of weight updates (analog to an L2-norm). The amount of weight decay is specified as a parameter in the train_network function (default 0).
   In practice, the weight decay is scaled by the learning_rate and applied inside of the momentum update.
 - /!\ Change the MC-dropout prediction scheme. Previously all batches in the dataset were fully forwarded, and this process was repeated for the 
@@ -87,13 +108,46 @@
   This should allow a significant memory saving when trained networks are deployed (especially on systems on light GPUs).
 - /!\ Add a new normalization layer. This layer is added with its own set of files for all compute methods and other layers have been adjusted to interact properly with this new layer.
   For now only a "Group" Normalization type is allowed and the group size in user defined. It means that it is also possible to perform "Layer" normalization and "Instance"
-  normalization with the present implementation. The normalization layer does not allow an activation function to its output for now so it is recommended to use it between conv layers 
-  or between a conv and a pooling layer. A second user define parameter "set_off" allow to specify a number of "group" that should be forced to produce an identity transformation
-  between the input and the output of the layer. Note that dropout at any point in the network before a normalization layer is forbidden to prevent variance shifting, but they 
-  can be used in combination if dropout is placed after the last normalization layer.
-- Dropout has been changed in various ways. The init state of the random generator has been changed to ensure that each cuda thread is independent, and the drop mask is now computed
+  normalization with the present implementation. The normalization layer support a subset of activation function but default is linear. For now normalization layers can be placed   
+  either after a conv or a pool layer. A second user define parameter "set_off" allow to specify a number of "group" that should be forced to produce an identity transformation
+  between the input and the output of the layer. Note that dropout at any point in the network before a normalization layer is not recommended to prevent variance shifting, but they 
+  can be used in combination with dropout if placed after the last normalization layer.
+- Dropout has been changed in various ways. The masks are now computed using a global curand generator and an array allocation function. The drop mask is now also computed
   for each element in the batch (instead of one drop mask shared for all). Some ways of declaring dropout (between specific types of layers, etc) are now detected and forbidden
   with a returned error message. Some of these interdiction might be removed in future version if they are found useful in specific contexts.
+- The only remaining part of the framework that uses curand_kernel is the YOLO layer. For this one the blockstate is now initialized per thread and not just per block.
+- Change all variable name, structure element, and functions referring to "epoch" in favor of iteration (or iter). This change was done to prevent confusion between a real number
+  of epochs and the number of paths through a smaller training sub-sample, especially for dynamic augmentation.
+- /!\ Add a second normalization layer type with Local Response Normalization as an experimental feature. This layer is added with its own set of files only for CUDA compute method at the moment.
+  An LRN layer parameters are the range in number of neurons (only on the neurons/activation-maps direction for now, no spatial inhibition), the k, alpha and beta parameters as expressed in the LRN
+  formula to adapt the response type. By default an LRN layer is not activated (linear) but an activation function can be specified. Default values are in "python_module.c" for now.
+- Change in prior size format has been reverted
+- New save format for YOLO layer. Now save all the parameters required to perform inference from saved model: nb_box, nb_class, nb_param, fit_dim, class_softmax, and all the size priors.
+  A network can now be forwarded without the ancillary script setup. Still, to allow new setup on a saved model, a new "no_override" parameter is present in the YOLO setup function
+  so the parameters from the save file are ignored.
+- Change the default output of YOLO forward saving to better represent this new resolution agnostic behavior. Instead of the raw grid element relative position and log of 
+  prior adjust, the new output is automatically converted to the predicted bounding box corner coordinates. A new raw_output flag has been added to the YOLO setup function 
+  to restore the previous output behavior.
+- Refinement of the YOLO association process: i) The "distance" between predictions and priors are now replaced by a 0 centered IoU comparison, expect for the smallest prior 
+  search and forced association. ii) The forced smallest association is now made before the "best prior" forcing and the second is skipped if the first condition is verified.
+  Note: With this formalism it is now possible to fully emulate the YOLOv2 association process by setting strict size association to 1, or GoodIoUlim to maximum.
+- Add different way of selecting the closest prior to a current box_prediction. "IoU" uses a 0 centered IoU comparison, "Size" uses an euclidian distance in the size space,
+  "Offset" uses an euclidian distance in the size-offset space (following box size prediction formalism).
+- Rework all activation functions to fix incorrect behavior that occured with a conv layer as output layer.
+- Port existing support of dense to conv expansion capability from CUDA only to all compute methods.
+- Port existing support of explicit transposed convolution settings for spatial size increase from CUDA only to all compute methods.
+- Rework YOLO kernels (CPU and GPU) to improve readibility and reduce some memory and compute overhead.
+- Add different categories of "difficult" objects, caracterised by the int value in the difficult flag. 
+  0: not difficult, 1: update all if found, 2: update all except class and parameters if found, 3: only update probability and objectness if found.  
+  When using the "Natural" error type, all difficult objects are ignored regardless of their type.
+- Change in compute performance measurement to increase accuracy when using C_CUDA compute method.
+- Add a return value to all layer creation functions, return the layer_id integer number. Anticipate more complexe architectures construction.
+- Fix an error for in cuda-kernel random number generation. This was mainly impacting random startup.
+- Fix an error in random and Low-IoU best prior association for all compute methods.
+- Fix an error in strict box size association that came from latest kernel rework, any strict_box_size_association higer than 1 was in fact considered as 1.
+- Add a random prior association probability parameter to YOLO loss. This allow to force random prior association at a given rate in a similar way to random startup. 
+This can be used either as a regularizer or a way to smooth representation transition between prior since each one will see a larger contextual range at a small rate. 
+
 
 ********************************************
 ===== V-0.9.3.1 =====

@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2020 David Cornu
+	Copyright (C) 2023 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -20,7 +20,6 @@
 */
 
 
-
 #include "../prototypes.h"
 
 
@@ -31,7 +30,7 @@ static dense_param *d_param;
 
 //used to reshape output of Conv layer that as the result of filter 1 continuous for the all batch
 //convert into all filters continuous for image 1, then image 2, ...
-void flat_dense(void* in, void* out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, int size)
+void flat_dense(void *in, void *out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, int size)
 {
 	int i;
 	int map_id, image_id, pos;
@@ -54,7 +53,7 @@ void flat_dense(void* in, void* out, float bias, int map_size, int flatten_size,
 }
 
 
-void reroll_batch(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size)
+void reroll_batch(void *in, void *out, int map_size, int flatten_size, int nb_map, int batch_size, int size)
 {
 	int i;
 	int map_id, image_id, pos;
@@ -74,7 +73,7 @@ void reroll_batch(void* in, void* out, int map_size, int flatten_size, int nb_ma
 }
 
 
-void dropout_select_dense(int* mask, int biased_dim, int size, float drop_rate)
+void dropout_select_dense(float *mask, int biased_dim, size_t size, float drop_rate)
 {
 	int i;
 	float rand;
@@ -93,11 +92,11 @@ void dropout_select_dense(int* mask, int biased_dim, int size, float drop_rate)
 }
 
 
-void dropout_apply_dense(void* table, int size, int* mask)
+void dropout_apply_dense(void *table, float *mask, size_t size)
 {
 	int i;
 	
-	float* f_table = (float*) table;
+	float *f_table = (float*) table;
 	
 	for(i = 0; i <size; i++)
 		f_table[i] *= mask[i];
@@ -108,7 +107,7 @@ void group_normalization_dense(void *i_tab, int b_length, int b_size,
 	int dim, int biased_dim, int group_size, int nb_group)
 {
 	int i, j, k;
-	float* tab = (float*) i_tab;
+	float *tab = (float*) i_tab;
 	float l_val, eps = 0.00001f;
 	double mean = 0.0, var = 0.0;
 
@@ -147,7 +146,7 @@ void naiv_forward_dense_layer(layer *current)
 	int i, j, b;
 	double h, w_alpha;
 	int nb_area_w, nb_area_h, nb_area_d, depth;
-	void* ref_input;
+	void *ref_input;
 	float prev_drop_rate = 0.0f;
 	
 	network* net = current->c_network;
@@ -175,6 +174,26 @@ void naiv_forward_dense_layer(layer *current)
 				nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
 				nb_area_d = ((conv_param*)current->previous->param)->nb_area[2];
 				depth = ((conv_param*)current->previous->param)->nb_filters;
+				break;
+				
+			case NORM:
+			case LRN:
+				switch(current->previous->previous->type)
+				{
+					default:
+					case CONV:
+						nb_area_w = ((conv_param*)current->previous->previous->param)->nb_area[0];
+						nb_area_h = ((conv_param*)current->previous->previous->param)->nb_area[1];
+						nb_area_d = ((conv_param*)current->previous->previous->param)->nb_area[2];
+						depth = ((conv_param*)current->previous->previous->param)->nb_filters;
+						break;
+					case POOL:
+						nb_area_w = ((pool_param*)current->previous->previous->param)->nb_area[0];
+						nb_area_h = ((pool_param*)current->previous->previous->param)->nb_area[1];
+						nb_area_d = ((pool_param*)current->previous->previous->param)->nb_area[2];
+						depth = ((pool_param*)current->previous->previous->param)->nb_maps;
+						break;
+				}
 				break;
 			
 			case POOL:
@@ -228,7 +247,7 @@ void naiv_forward_dense_layer(layer *current)
 	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		dropout_select_dense(d_param->dropout_mask, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
-		dropout_apply_dense(current->output, (d_param->nb_neurons+1)*net->batch_size, d_param->dropout_mask);
+		dropout_apply_dense(current->output, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
 	}
 }
 
@@ -250,8 +269,7 @@ void naiv_backward_dense_layer(layer* current)
 	float *f_update = (float*) d_param->update;
 	
 	if(current->dropout_rate > 0.01f)
-		dropout_apply_dense(current->delta_o,
-			(d_param->nb_neurons+1)*net->batch_size, d_param->dropout_mask);
+		dropout_apply_dense(current->delta_o, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
 	
 	//######################## ERROR PROPAGATION ########################
 	ref_input = current->input;
@@ -285,7 +303,27 @@ void naiv_backward_dense_layer(layer* current)
 					nb_area_d = ((pool_param*)current->previous->param)->nb_area[2];
 					depth = ((pool_param*)current->previous->param)->nb_maps;
 					break;
-			
+				
+				case NORM:
+				case LRN:
+					switch(current->previous->previous->type)
+					{
+						default:
+						case CONV:
+							nb_area_w = ((conv_param*)current->previous->previous->param)->nb_area[0];
+							nb_area_h = ((conv_param*)current->previous->previous->param)->nb_area[1];
+							nb_area_d = ((conv_param*)current->previous->previous->param)->nb_area[2];
+							depth = ((conv_param*)current->previous->previous->param)->nb_filters;
+							break;
+						case POOL:
+							nb_area_w = ((pool_param*)current->previous->previous->param)->nb_area[0];
+							nb_area_h = ((pool_param*)current->previous->previous->param)->nb_area[1];
+							nb_area_d = ((pool_param*)current->previous->previous->param)->nb_area[2];
+							depth = ((pool_param*)current->previous->previous->param)->nb_maps;
+							break;
+					}
+					break;
+					
 				case CONV:
 				default:
 					nb_area_w = ((conv_param*)current->previous->param)->nb_area[0];
@@ -323,12 +361,13 @@ void naiv_backward_dense_layer(layer* current)
 					h += f_delta_o[b*(d_param->nb_neurons+1) + j]
 							* f_input[b*d_param->in_size + i];
 				}
-				f_update[i*(d_param->nb_neurons+1)+j] = net->learning_rate*h 
+				f_update[i*(d_param->nb_neurons+1)+j] = net->learning_rate/net->batch_size*h 
 						+ net->momentum * f_update[i*(d_param->nb_neurons+1)+j];
 			}
 		}
 		
-		update_weights(d_param->weights, d_param->update, net->learning_rate*net->weight_decay, d_param->in_size*(d_param->nb_neurons+1));
+		update_weights(d_param->weights, d_param->update, net->learning_rate*net->weight_decay, 
+			(d_param->nb_neurons+1), d_param->in_size*(d_param->nb_neurons+1));
 	}
 }
 

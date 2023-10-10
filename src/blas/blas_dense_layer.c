@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2020 David Cornu
+	Copyright (C) 2023 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -20,9 +20,7 @@
 */
 
 
-
 #include "../prototypes.h"
-
 
 static dense_param *d_param;
 
@@ -58,6 +56,26 @@ void blas_forward_dense_layer(layer *current)
 				nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
 				nb_area_d = ((conv_param*)current->previous->param)->nb_area[2];
 				depth = ((conv_param*)current->previous->param)->nb_filters;
+				break;
+				
+			case NORM:
+			case LRN:
+				switch(current->previous->previous->type)
+				{
+					default:
+					case CONV:
+						nb_area_w = ((conv_param*)current->previous->previous->param)->nb_area[0];
+						nb_area_h = ((conv_param*)current->previous->previous->param)->nb_area[1];
+						nb_area_d = ((conv_param*)current->previous->previous->param)->nb_area[2];
+						depth = ((conv_param*)current->previous->previous->param)->nb_filters;
+						break;
+					case POOL:
+						nb_area_w = ((pool_param*)current->previous->previous->param)->nb_area[0];
+						nb_area_h = ((pool_param*)current->previous->previous->param)->nb_area[1];
+						nb_area_d = ((pool_param*)current->previous->previous->param)->nb_area[2];
+						depth = ((pool_param*)current->previous->previous->param)->nb_maps;
+						break;
+				}
 				break;
 			
 			case POOL:
@@ -97,7 +115,7 @@ void blas_forward_dense_layer(layer *current)
 	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
 	{
 		dropout_select_dense(d_param->dropout_mask, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
-		dropout_apply_dense(current->output, (d_param->nb_neurons+1)*net->batch_size, d_param->dropout_mask);
+		dropout_apply_dense(current->output, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
 	}
 }
 
@@ -112,8 +130,7 @@ void blas_backward_dense_layer(layer* current)
 	d_param = (dense_param*) current->param;
 	
 	if(current->dropout_rate > 0.01f)
-		dropout_apply_dense(current->delta_o,
-			(d_param->nb_neurons+1)*net->batch_size, d_param->dropout_mask);
+		dropout_apply_dense(current->delta_o, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
 	
 	//######################## ERROR PROPAGATION ########################
 	ref_input = current->input;
@@ -126,7 +143,8 @@ void blas_backward_dense_layer(layer* current)
 			d_param->nb_neurons+1, 0.0f, d_param->flat_delta_o, d_param->in_size);
 		//if previous layer is dense then flat_delta_o = previous->delta_o
 		
-		if(current->previous->type == POOL || current->previous->type == CONV)
+		if(current->previous->type == POOL || current->previous->type == CONV 
+			|| current->previous->type == NORM || current->previous->type == LRN)
 		{
 			switch(current->previous->type)
 			{
@@ -135,6 +153,26 @@ void blas_backward_dense_layer(layer* current)
 					nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
 					nb_area_d = ((pool_param*)current->previous->param)->nb_area[2];
 					depth = ((pool_param*)current->previous->param)->nb_maps;
+					break;
+					
+				case NORM:
+				case LRN:
+					switch(current->previous->previous->type)
+					{
+						default:
+						case CONV:
+							nb_area_w = ((conv_param*)current->previous->previous->param)->nb_area[0];
+							nb_area_h = ((conv_param*)current->previous->previous->param)->nb_area[1];
+							nb_area_d = ((conv_param*)current->previous->previous->param)->nb_area[2];
+							depth = ((conv_param*)current->previous->previous->param)->nb_filters;
+							break;
+						case POOL:
+							nb_area_w = ((pool_param*)current->previous->previous->param)->nb_area[0];
+							nb_area_h = ((pool_param*)current->previous->previous->param)->nb_area[1];
+							nb_area_d = ((pool_param*)current->previous->previous->param)->nb_area[2];
+							depth = ((pool_param*)current->previous->previous->param)->nb_maps;
+							break;
+					}
 					break;
 			
 				case CONV:
@@ -147,9 +185,9 @@ void blas_backward_dense_layer(layer* current)
 			}
 			
 			//Need to unroll delta_o to already be in the proper format for deriv calculation
-			reroll_batch(d_param->flat_delta_o, current->previous->delta_o,
-				nb_area_w * nb_area_h * nb_area_d, nb_area_w * nb_area_h * nb_area_d * depth + 1, depth, 
-				net->batch_size, nb_area_w * nb_area_h * nb_area_d * depth * net->batch_size);
+			reroll_batch(d_param->flat_delta_o, current->previous->delta_o, nb_area_w * nb_area_h * nb_area_d, 
+				nb_area_w * nb_area_h * nb_area_d * depth + 1, depth, net->batch_size,
+				nb_area_w * nb_area_h * nb_area_d * depth * net->batch_size);
 		}
 		current->previous->deriv_activation(current->previous);
 	}
@@ -161,11 +199,12 @@ void blas_backward_dense_layer(layer* current)
 	if(!current->frozen)
 	{
 		cblas_sgemm(CblasColMajor, CblasNoTrans, CblasTrans, d_param->nb_neurons+1, d_param->in_size,
-			current->c_network->batch_size, current->c_network->learning_rate,	current->delta_o, 
-			d_param->nb_neurons+1, ref_input, d_param->in_size, current->c_network->momentum,
-			d_param->update, d_param->nb_neurons+1);
+			current->c_network->batch_size, current->c_network->learning_rate/current->c_network->batch_size, 
+			current->delta_o, d_param->nb_neurons+1, ref_input, d_param->in_size, 
+			current->c_network->momentum, d_param->update, d_param->nb_neurons+1);
 		
-		update_weights(d_param->weights, d_param->update, net->learning_rate*net->weight_decay, d_param->in_size*(d_param->nb_neurons+1));
+		update_weights(d_param->weights, d_param->update, net->learning_rate*net->weight_decay, 
+			(d_param->nb_neurons+1), d_param->in_size*(d_param->nb_neurons+1));
 	}
 }
 

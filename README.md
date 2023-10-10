@@ -19,7 +19,7 @@ See Copyright &copy; and [License](#License) terms at the end.
 
 ## /!\ /!\ /!\ WARNING /!\ /!\ /!\
 
-CIANNA is a fast-evolving framework that adds new capabilities, methods, architectures, and optimizations over time and accounts for new AI-dedicated technologies. The framework itself and the associated interface are subject to significant changes between versions (no guaranteed forward or backward compatibility). One must pay attention to what has been changed before performing updates (the [patch note file](https://github.com/Deyht/CIANNA/blob/CIANNA_dev/patch_note.txt) keeps track of the significants modifications).
+CIANNA is a fast-evolving framework that adds new capabilities, methods, architectures, and optimizations over time and accounts for new AI-dedicated technologies. The framework itself and the associated interface are subject to significant changes between versions (no guaranteed forward or backward compatibility). One must pay attention to what has been changed before performing updates (the [patch note file](https://github.com/Deyht/CIANNA/blob/CIANNA_dev/patch_note.txt) keeps track of the significant modifications).
 
 **SKA Science Data Challenge 2 information** ([SDC2](https://sdc2.astronomers.skatelescope.org/)): *The current dev branch of CIANNA includes the work that was done by the [MINERVA](https://vm-weblerma.obspm.fr/minerva/ska-data-challenges/) team of implementing a 3D-YOLO network in the context of the SKA-SDC2. However, this is **not** a participation to the SDC2 reproducibility award and does not contain the actual training procedure we used for the challenge. This last point will come in the near-future along with papers dedicated to our approach. Still, the present CIANNA_dev contains all the necessary functions to construct a 3D-YOLO network, see the Google Colab example below.*
 
@@ -108,8 +108,9 @@ Then, the interface can be built automatically by adding the PY_INTERF argument 
    sudo python3 python_module_setup.py install
    ```
 
-   The Python interface module has no dependency on *main.c*. Any Python code invoking CIANNA can be written without the need of a new compilation.
+   The Python interface module has no dependency on *main.c*. Any Python code invoking CIANNA can be written without the need of a new compilation.  
 
+   To remove a system wide install of CIANNA (e.g to update to a new version), go to */usr/local/lib/pythonX.X/dist-packages/* (or the corresponding setuptools/distutils path for your distro), and delete any CIANNA related files/directories.
 
 &nbsp;
 

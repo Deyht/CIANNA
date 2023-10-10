@@ -11,16 +11,23 @@ fwd
 train
 main
 
-# results data
+# Latex
+.tex
+.aux
+.log
+
+# results / data / minotoring
 step_*.dat
 fwd_step_*.dat
 *.log
 *.dat
 *.nvvp
+*.tar.gz
+*.zip
 error.txt
 prof.txt
-input.dat
-mnist_dat
+arch
+./arch
 ./net_save
 ./fwd_res
 ./src/build

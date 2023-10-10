@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2020 David Cornu
+	Copyright (C) 2023 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -253,8 +253,12 @@ void naiv_backward_norm_layer(layer *current)
 					sum_dbeta  += n_param->d_beta[i*n_param->nb_group + j];
 				}
 				//could add momentum
-				n_param->gamma_update[j] = net->momentum*n_param->gamma_update[j] + net->learning_rate*sum_dgamma;
-				n_param->beta_update[j]  = net->momentum*n_param->beta_update[j]  + net->learning_rate*sum_dbeta;
+				n_param->gamma_update[j] = net->momentum*n_param->gamma_update[j] 
+					+ net->learning_rate*(sum_dgamma/net->batch_size);
+					/*+ 0.0f*net->weight_decay*(1.0f-n_param->gamma[j]));*/
+				n_param->beta_update[j] = net->momentum*n_param->beta_update[j]  
+					+ net->learning_rate*(sum_dbeta/net->batch_size);
+					/*+ 0.0f*net->weight_decay*n_param->beta[j]);*/
 				
 				n_param->gamma[j] -= n_param->gamma_update[j];
 				n_param->beta[j] -= n_param->beta_update[j]; 

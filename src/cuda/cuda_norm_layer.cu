@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2020 David Cornu
+	Copyright (C) 2023 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -393,6 +393,8 @@ void cuda_forward_norm_layer(layer *current)
 			current->output, current->input, n_param->gamma_gpu, n_param->beta_gpu, n_param->mean, n_param->var, net->length, 
 			net->batch_size, n_param->group_size, n_param->nb_group, n_param->n_dim, n_param->dim_offset, n_param->set_off);
 	}
+	
+	current->activation(current);
 }
 
 void cuda_backward_norm_layer(layer *current)
@@ -445,8 +447,12 @@ void cuda_backward_norm_layer(layer *current)
 					sum_dbeta  += n_param->d_beta[i*n_param->nb_group + j];
 				}
 
-				n_param->gamma_update[j] = net->momentum*n_param->gamma_update[j] + net->learning_rate*sum_dgamma;
-				n_param->beta_update[j]  = net->momentum*n_param->beta_update[j]  + net->learning_rate*sum_dbeta;
+				n_param->gamma_update[j] = net->momentum*n_param->gamma_update[j] 
+					+ net->learning_rate*(sum_dgamma/net->batch_size);
+					/*+ 0.0f*net->weight_decay*(n_param->gamma[j]-1.0f)*net->TC_scale_factor);*/
+				n_param->beta_update[j] = net->momentum*n_param->beta_update[j]  
+					+ net->learning_rate*(sum_dbeta/net->batch_size);
+					/*+ 0.0f*net->weight_decay*n_param->beta[j]*net->TC_scale_factor);*/
 				
 				n_param->gamma[j] -= n_param->gamma_update[j] / net->TC_scale_factor;
 				n_param->beta[j] -= n_param->beta_update[j] / net->TC_scale_factor; 

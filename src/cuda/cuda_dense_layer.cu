@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2020 David Cornu
+	Copyright (C) 2023 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -75,7 +75,7 @@ __global__ void cuda_reroll_batch_##name																										\
 }
 
 
-__global__ void cuda_dropout_select_dense(int* mask, int size, int biased_dim, float drop_rate, void* states)
+__global__ void cuda_dropout_select_dense(float* mask, size_t size, int biased_dim, float drop_rate, void* states)
 {
 	int i = blockIdx.x*blockDim.x + threadIdx.x;
 	curandState_t* c_states = (curandState_t*) states;
@@ -92,14 +92,21 @@ __global__ void cuda_dropout_select_dense(int* mask, int size, int biased_dim, f
 }
 
 #define cuda_dropout_apply_dense(name, type) 																									\
-__global__ void cuda_dropout_apply_dense_##name(void* i_table, int* mask, int size)																\
+__global__ void cuda_dropout_apply_dense_##name(void* i_table, float* mask, size_t size, int biased_dim, float drop_rate)						\
 {																																				\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
 	type* table = (type*) i_table;																												\
 																																				\
-	if(i < size)																																\
-		table[i] *= mask[i];																													\
+	if(i >= size)																																\
+		return;																																	\
+																																				\
+	if(mask[i] >= drop_rate || (i+1) % (biased_dim) == 0)																						\
+		mask[i] = 1.0f;																															\
+	else																																		\
+		mask[i] = 0.0f;																															\
+	 																																			\
+	table[i] *= mask[i]; 																														\
 }
 
 
@@ -184,6 +191,34 @@ size_t cuda_convert_dense_layer(layer *current)
 							* net->batch_size,0);
 				break;
 				
+			case NORM:
+			case LRN:
+				vram_approx += cuda_convert_table(net, &(d_param->flat_input), d_param->in_size*net->batch_size,0);
+				if(!net->inference_only)
+				{
+					switch(current->previous->previous->type)
+					{
+						default:
+						case CONV:
+							vram_approx += cuda_convert_table(net, &(d_param->flat_delta_o),
+								(((conv_param*)current->previous->previous->param)->nb_area[0] 
+									* ((conv_param*)current->previous->previous->param)->nb_area[1] 
+									* ((conv_param*)current->previous->previous->param)->nb_area[2] 
+									* ((conv_param*)current->previous->previous->param)->nb_filters + 1) 
+									* net->batch_size,0);
+							break;
+						case POOL:
+							vram_approx += cuda_convert_table(net, &(d_param->flat_delta_o),
+								(((pool_param*)current->previous->previous->param)->nb_area[0] 
+									* ((pool_param*)current->previous->previous->param)->nb_area[1] 
+									* ((pool_param*)current->previous->previous->param)->nb_area[2] 
+									* ((pool_param*)current->previous->previous->param)->nb_maps + 1) 
+									* net->batch_size,0);
+							break;
+					}
+				}
+				break;
+				
 			case POOL:
 				vram_approx += cuda_convert_table(net, &(d_param->flat_input), d_param->in_size * net->batch_size,0);
 				if(!net->inference_only)
@@ -244,11 +279,11 @@ size_t cuda_convert_dense_layer(layer *current)
 		
 	if(current->dropout_rate > 0.01f)
 	{
-		vram_approx += cuda_convert_table_int(&(d_param->dropout_mask), (d_param->nb_neurons+1) * net->batch_size, 0);
-		cudaMalloc((void**) &d_param->block_state, ((d_param->nb_neurons+1) * net->batch_size) * sizeof(curandState_t));
+		vram_approx += cuda_convert_table_FP32((void**)&(d_param->dropout_mask), (d_param->nb_neurons+1) * net->batch_size, 0);
+		/*cudaMalloc((void**) &d_param->block_state, ((d_param->nb_neurons+1) * net->batch_size) * sizeof(curandState_t));
 		vram_approx += ((d_param->nb_neurons+1) * net->batch_size) * sizeof(curandState_t);
 		cu_blocks = ((d_param->nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
-		init_block_state<<< cu_blocks, cu_threads>>>(time(NULL),(curandState_t*)d_param->block_state, (d_param->nb_neurons+1)*net->batch_size);
+		init_block_state<<< cu_blocks, cu_threads>>>(time(NULL),(curandState_t*)d_param->block_state, (d_param->nb_neurons+1)*net->batch_size);*/
 	}
 	
 	if(!net->inference_only)
@@ -303,6 +338,26 @@ void cuda_forward_dense_layer(layer *current)
 				nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
 				nb_area_d = ((pool_param*)current->previous->param)->nb_area[2];
 				depth = ((pool_param*)current->previous->param)->nb_maps;
+				break;
+				
+			case NORM:
+			case LRN:
+				switch(current->previous->previous->type)
+				{
+					default:
+					case CONV:
+						nb_area_w = ((conv_param*)current->previous->previous->param)->nb_area[0];
+						nb_area_h = ((conv_param*)current->previous->previous->param)->nb_area[1];
+						nb_area_d = ((conv_param*)current->previous->previous->param)->nb_area[2];
+						depth = ((conv_param*)current->previous->previous->param)->nb_filters;
+						break;
+					case POOL:
+						nb_area_w = ((pool_param*)current->previous->previous->param)->nb_area[0];
+						nb_area_h = ((pool_param*)current->previous->previous->param)->nb_area[1];
+						nb_area_d = ((pool_param*)current->previous->previous->param)->nb_area[2];
+						depth = ((pool_param*)current->previous->previous->param)->nb_maps;
+						break;
+				}
 				break;
 				
 			case CONV:
@@ -364,11 +419,13 @@ void cuda_forward_dense_layer(layer *current)
 	{
 		// Must check performance impact -> the present approach is due to the curand behavior
 		cu_blocks = ((d_param->nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
-		cuda_dropout_select_dense<<<cu_blocks, cu_threads>>>(d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, 
-			d_param->nb_neurons+1, current->dropout_rate, (curandState_t*) d_param->block_state);	
+		/*cuda_dropout_select_dense<<<cu_blocks, cu_threads>>>(d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, 
+			d_param->nb_neurons+1, current->dropout_rate, (curandState_t*) d_param->block_state);*/	
+		
+		cuda_random_vector(d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size);
 		
 		net->cu_inst.cu_dense_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, 
-			d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size);
+			d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, (d_param->nb_neurons+1), current->dropout_rate);
 	}
 }
 
@@ -387,7 +444,7 @@ void cuda_backward_dense_layer(layer* current)
 		cu_blocks = ((d_param->nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
 		
 		net->cu_inst.cu_dense_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->delta_o, 
-			d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size);
+			d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, (d_param->nb_neurons+1), current->dropout_rate);
 	}
 	
 	//######################## ERROR PROPAGATION ########################
@@ -404,7 +461,8 @@ void cuda_backward_dense_layer(layer* current)
 			CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 		//if previous layer is dense then flat_delta_o = previous->delta_o
 		
-		if(current->previous->type == POOL || current->previous->type == CONV)
+		if(current->previous->type == POOL || current->previous->type == CONV 
+			|| current->previous->type == NORM || current->previous->type == LRN)
 		{
 			switch(current->previous->type)
 			{
@@ -415,6 +473,26 @@ void cuda_backward_dense_layer(layer* current)
 					depth = ((pool_param*)current->previous->param)->nb_maps;
 					break;
 			
+				case NORM:
+				case LRN:
+					switch(current->previous->previous->type)
+					{
+						default:
+						case CONV:
+							nb_area_w = ((conv_param*)current->previous->previous->param)->nb_area[0];
+							nb_area_h = ((conv_param*)current->previous->previous->param)->nb_area[1];
+							nb_area_d = ((conv_param*)current->previous->previous->param)->nb_area[2];
+							depth = ((conv_param*)current->previous->previous->param)->nb_filters;
+							break;
+						case POOL:
+							nb_area_w = ((pool_param*)current->previous->previous->param)->nb_area[0];
+							nb_area_h = ((pool_param*)current->previous->previous->param)->nb_area[1];
+							nb_area_d = ((pool_param*)current->previous->previous->param)->nb_area[2];
+							depth = ((pool_param*)current->previous->previous->param)->nb_maps;
+							break;
+					}
+					break;
+					
 				case CONV:
 				default:
 					nb_area_w = ((conv_param*)current->previous->param)->nb_area[0];
@@ -451,7 +529,7 @@ void cuda_backward_dense_layer(layer* current)
 			d_param->update, cuda_data_type, d_param->nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 		
 		cuda_update_weights(net, d_param->FP32_weights, d_param->update, net->learning_rate*net->weight_decay, 
-			d_param->in_size * (d_param->nb_neurons+1));
+			(d_param->nb_neurons+1), d_param->in_size * (d_param->nb_neurons+1));
 	}
 }
 

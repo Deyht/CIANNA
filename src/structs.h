@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2020 David Cornu
+	Copyright (C) 2023 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -29,17 +29,18 @@
 //            Various Enumerations
 //############################################
 
-enum layer_type{CONV, POOL, DENSE, NORM};
-enum activation_functions{RELU, LOGISTIC, SOFTMAX, YOLO, LINEAR};
-enum initializers{N_XAVIER, U_XAVIER, N_LECUN, U_LECUN, U_RAND, N_RAND};
-enum inference_modes{AVG_MODEL, MC_MODEL};
-enum batch_param{OFF, SGD, FULL};
-enum data_types{c_FP32, c_UINT16, c_UINT8};
-enum compute_method{C_NAIV, C_BLAS, C_CUDA};
-enum memory_localization{NO_LOC, HOST, DEVICE};
-enum IoU_types{IOU, GIOU, DIOU, DIOU2};
-enum pool_types{MAX_pool, AVG_pool};
-enum yolo_error_type{ERR_COMPLETE, ERR_NATURAL};
+enum layer_type_enum{CONV, POOL, DENSE, NORM, LRN};
+enum activation_functions_enum{RELU, LOGISTIC, SOFTMAX, YOLO, LINEAR};
+enum initializers_enum{N_XAVIER, U_XAVIER, N_LECUN, U_LECUN, U_RAND, N_RAND};
+enum inference_modes_enum{AVG_MODEL, MC_MODEL};
+enum batch_param_enum{OFF, SGD, FULL};
+enum data_types_enum{c_FP32, c_UINT16, c_UINT8};
+enum compute_method_enum{C_NAIV, C_BLAS, C_CUDA};
+enum memory_localization_enum{NO_LOC, HOST, DEVICE};
+enum IoU_types_enum{IOU, GIOU, DIOU, DIOU2};
+enum pool_types_enum{MAX_pool, AVG_pool};
+enum yolo_error_type_enum{ERR_COMPLETE, ERR_NATURAL};
+enum prior_dist_type_enum{DIST_IOU, DIST_SIZE, DIST_OFFSET};
 
 typedef struct Dataset Dataset;
 typedef struct layer layer;
@@ -49,6 +50,7 @@ typedef struct dense_param dense_param;
 typedef struct conv_param conv_param;
 typedef struct pool_param pool_param;
 typedef struct norm_param norm_param;
+typedef struct lrn_param lrn_param;
 
 typedef struct linear_param linear_param;
 typedef struct ReLU_param ReLU_param;
@@ -74,6 +76,7 @@ typedef struct cuda_dense_fcts cuda_dense_fcts;
 typedef struct cuda_conv_fcts cuda_conv_fcts;
 typedef struct cuda_pool_fcts cuda_pool_fcts;
 typedef struct cuda_norm_fcts cuda_norm_fcts;
+typedef struct cuda_lrn_fcts cuda_lrn_fcts;
 
 typedef struct cuda_linear_activ_fcts cuda_linear_activ_fcts;
 typedef struct cuda_ReLU_activ_fcts cuda_ReLU_activ_fcts;
@@ -84,30 +87,30 @@ typedef struct cuda_YOLO_activ_fcts cuda_YOLO_activ_fcts;
 
 struct cuda_auxil_fcts
 {
-	void (*cu_create_host_table_fct)(void **tab, int size);
+	void (*cu_create_host_table_fct)(void **tab, size_t size);
 	size_t (*cu_convert_table_fct)(void **tab, size_t size, int keep_host);
-	void (*cu_create_table_fct)(void **tab, int size);
-	void (*cu_get_table_fct)(void *cuda_table, void *table, int size);
-	void (*cu_get_typed_host_table_fct)(void *typed_table, float *out_table, int size);
-	void (*cu_get_table_to_FP32_fct)(void *cuda_table, float *table, int size, void* buffer);
-	void (*cu_put_table_fct)(void *cuda_table, void *table, int size);
-	void (*cu_convert_batched_table_fct)(void **tab, int batch_size, int nb_batch, int size);
+	void (*cu_create_table_fct)(void **tab, size_t size);
+	void (*cu_get_table_fct)(void *cuda_table, void *table, size_t size);
+	void (*cu_get_typed_host_table_fct)(void *typed_table, float *out_table, size_t size);
+	void (*cu_get_table_to_FP32_fct)(void *cuda_table, float *table, size_t size, void* buffer);
+	void (*cu_put_table_fct)(void *cuda_table, void *table, size_t size);
+	void (*cu_convert_batched_table_fct)(void **tab, int batch_size, int nb_batch, size_t size);
 	Dataset (*cu_create_dataset_fct)(network *net, int nb_elem);	
-	void (*cu_get_batched_table_fct)(void **tab, int batch_size, int nb_batch, int size);
-	void (*cu_convert_batched_host_table_FP32_to_fct)(void **tab, int batch_size, int nb_batch, int size);
-	void (*cu_master_weight_copy_kernel)(float *master, void *copy, int size);
-	void (*cu_update_weights_kernel)(float *weights, void* update, float weight_decay, int size, float TC_scale_factor);
-	void (*cu_print_table_fct)(void* tab, int size, int return_every);
+	void (*cu_get_batched_table_fct)(void **tab, int batch_size, int nb_batch, size_t size);
+	void (*cu_convert_batched_host_table_FP32_to_fct)(void **tab, int batch_size, int nb_batch, size_t size);
+	void (*cu_master_weight_copy_kernel)(float *master, void *copy, size_t size);
+	void (*cu_update_weights_kernel)(float *weights, void* update, float weight_decay, int bias_id, size_t size, float TC_scale_factor);
+	void (*cu_print_table_fct)(void* tab, size_t size, int return_every);
 	void (*cu_shfl_kern_fct)(void** i_in, void** i_targ, void** i_train_dupl, void** i_targ_dupl,
-		int* index, int in_size, int b_size, int d_in, int d_out);
+		int* index, size_t in_size, int b_size, int d_in, int d_out);
 	void (*cu_get_back_shuffle_fct)(void** i_in, void** i_targ, void** i_train_dupl, void** i_targ_dupl,
-		int in_size, int b_size, int d_in, int d_out);
+		size_t in_size, int b_size, int d_in, int d_out);
 	void (*cu_host_shuffle_fct)(network *net, Dataset data, Dataset duplicate);
 	void (*cu_host_only_shuffle_fct)(network *net, Dataset data);
 	void (*cu_gan_disc_mix_input_kernel)(void *gen_output, void *disc_input, void* true_input,
-		int half_offset, int im_flat_size, int nb_channels, int batch_size, int len);
+		int half_offset, int im_flat_size, int nb_channels, int batch_size, size_t len);
 	void (*cu_create_gan_target_kernel)(void* i_targ, void* i_true_targ, int out_size, 
-		int batch_size, float frac_ones, int i_half, int len);
+		int batch_size, float frac_ones, int i_half, size_t len);
 	void (*cu_exp_disc_activation_kernel)(void *i_tab, int len, int dim, int size, int halved, int revert);
 	void (*cu_exp_disc_deriv_output_kernel)(void *i_delta_o, void *i_output, void *i_target, 
 		int len, int dim, int size, int halved, int revert);
@@ -118,20 +121,20 @@ struct cuda_dense_fcts
 {
 	void (*flat_dense_fct)(void* i_in, void* i_out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 	void (*reroll_fct)(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
-	void (*drop_apply_fct)(void* i_table, int* mask, int size);
+	void (*drop_apply_fct)(void* i_table, float* mask, size_t size, int biased_dim, float drop_rate);
 };
 
 struct cuda_conv_fcts
 {
 	void (*im2col_fct)(void* i_output, void* i_input,
-		int image_size, int flat_image_size,
+		int image_size, size_t flat_image_size,
 		int stride_w, int stride_h ,int stride_d,
 		int padding_w, int padding_h, int padding_d,
 		int internal_padding_w, int internal_padding_h, int internal_padding_d,
 		int channel, int channel_padding, int image_padding, int TC_padding,
 		int batch_size, int f_size_w, int f_size_h, int f_size_d, int flat_f_size,
-		int w_size, int h_size, int d_size, int nb_area_w, int nb_area_h, int bias_in, int bias_out);
-	void (*drop_apply_fct)(void* i_table, int* mask, int size);
+		int w_size, int h_size, int d_size, int nb_area_w, int nb_area_h, int nb_area_d, int bias_in, int bias_out);
+	void (*drop_apply_fct)(void* i_table, float* mask, size_t size, float drop_rate);
 	void (*rotate_filter_fct)(void* in, void* out, int nb_rows, int TC_padding, int depth_size, int nb_filters_in, int len);
 };
 
@@ -139,22 +142,30 @@ struct cuda_pool_fcts
 {
 	void (*max_pool_fct)(void* i_input, void* i_output, int* pool_map,
 		int pool_size_w, int pool_size_h, int pool_size_d,
+		int stride_w, int stride_h ,int stride_d,
+		int padding_w, int padding_h, int padding_d,
 		int w_size, int h_size, int d_size,
-		int w_size_out, int h_size_out, int d_size_out, int length);
+		int w_size_out, int h_size_out, int d_size_out, int bias_in, int length);
 	void (*avg_pool_fct)(void* i_input, void* i_output, int* pool_map,
 		int pool_size_w, int pool_size_h, int pool_size_d,
+		int stride_w, int stride_h ,int stride_d,
+		int padding_w, int padding_h, int padding_d,
 		int w_size, int h_size, int d_size,
-		int w_size_out, int h_size_out, int d_size_out, int length);
+		int w_size_out, int h_size_out, int d_size_out, int bias_in, int length);
 	void (*max_deltah_pool_fct)(void* i_delta_o, void* i_delta_o_unpool, int* pool_map,
 		int pool_size_w, int pool_size_h, int pool_size_d,
+		int stride_w, int stride_h ,int stride_d,
+		int padding_w, int padding_h, int padding_d,
 		int w_size, int h_size, int d_size,
-		int w_size_out, int h_size_out, int d_size_out, int length);
+		int w_size_out, int h_size_out, int d_size_out, size_t length);
 	void (*avg_deltah_pool_fct)(void* i_delta_o, void* i_delta_o_unpool, int* pool_map,
 		int pool_size_w, int pool_size_h, int pool_size_d,
+		int stride_w, int stride_h ,int stride_d,
+		int padding_w, int padding_h, int padding_d,
 		int w_size, int h_size, int d_size,
-		int w_size_out, int h_size_out, int d_size_out, int length);
-	void (*drop_apply_fct)(void* i_table, int* mask, int size);
-	void (*typed_memset_fct)(void* i_table, int value, int size);
+		int w_size_out, int h_size_out, int d_size_out, size_t length);
+	void (*drop_apply_fct)(void* i_table, float* mask, size_t size, float drop_rate);
+	void (*typed_memset_fct)(void* i_table, int value, size_t size);
 };
 
 struct cuda_norm_fcts
@@ -174,51 +185,63 @@ struct cuda_norm_fcts
 	void (*cu_group_normalization_dense_back_kernel)(void *i_tab, int b_length, int b_size, int dim, int biased_dim, int group_size, int nb_group);
 };
 
+struct cuda_lrn_fcts
+{
+	void (*cu_lrn_conv_kernel)(void *i_output, void *i_input, float *local_scale, int range, 
+		float k, float alpha, float beta, int b_size, int nb_channel, int flat_a_size);
+	void (*cu_lrn_conv_back_kernel)(void *i_output, void *i_input, void *i_delta_output, void *i_delta_input,
+		float *local_scale, int range, float k, float alpha, float beta, int b_size, int nb_channel, int flat_a_size);
+};
+
+
 struct cuda_linear_activ_fcts
 {
-	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target, int len, int dim, 
-		int biased_dim, int offset, int size, float TC_scale_factor);
-	void (*output_error_fct)(float *output_error, void *i_output, void *i_target, int len, int dim, 
-		int biased_dim, int offset, int size);
+	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target, int dim, 
+		int biased_dim, int offset, int length, size_t size, float TC_scale_factor);
+	void (*output_error_fct)(float *output_error, void *i_output, void *i_target, int dim, 
+		int biased_dim, int offset, int length, size_t size);
 };
 
 struct cuda_ReLU_activ_fcts
 {
-	void (*activ_fct)(void *i_tab, int len, int dim, int biased_dim, float saturation, float leaking_factor, int size);
-	void (*deriv_fct)(void *i_deriv, void *i_value, int len, int dim, int biased_dim, float saturation, float leaking_factor, int size);
-	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target, int len, 
-		int dim, int biased_dim, int offset, int size, float TC_scale_factor);
-	void (*output_error_fct)(float *output_error, void *i_output, void *i_target, int len, 
-		int dim, int biased_dim, int offset, int size);
+	void (*activ_fct)(void *i_tab, int dim, int biased_dim, int offset, 
+		float saturation, float leaking_factor, int length, size_t size);
+	void (*deriv_fct)(void *i_deriv, void *i_value, int dim, int biased_dim, 
+		int offset, float saturation, float leaking_factor, int length, size_t size);
+	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target,
+		int dim, int biased_dim, int offset, int length, size_t size, float TC_scale_factor);
+	void (*output_error_fct)(float *output_error, void *i_output, void *i_target,
+		int dim, int biased_dim, int offset, int length, size_t size);
 };
 
 struct cuda_logistic_activ_fcts
 {
-	void (*activ_fct)(void *i_tab, float beta, float saturation, int len, int dim, int biased_dim, int size);
-	void (*deriv_fct)(void *i_deriv, void *i_value, float beta, int len, int dim, int biased_dim, int size);
-	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target, int len, 
-		int dim, int biased_dim, int offset, int size, float TC_scale_factor);
-	void (*output_error_fct)(float *output_error, void *i_output, void *i_target, int len, 
-		int dim, int biased_dim, int offset, int size);
+	void (*activ_fct)(void *i_tab, float beta, float saturation, int dim, int biased_dim, int offset, int length, size_t size);
+	void (*deriv_fct)(void *i_deriv, void *i_value, float beta, int dim, int biased_dim, int offset, int length, size_t size);
+	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target,
+		int dim, int biased_dim, int offset, int length, size_t size, float TC_scale_factor);
+	void (*output_error_fct)(float *output_error, void *i_output, void *i_target, 
+		int dim, int biased_dim, int offset, int length, size_t size);
 };
 
 struct cuda_softmax_activ_fcts
 {
-	void (*activ_fct)(void *i_tab, int len, int dim, int biased_dim, int offset, int size);
-	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target, int len, 
-		int dim, int offset, int biased_dim, int size, float TC_scale_factor);
-	void (*output_error_fct)(float *output_error, void *i_output, void *i_target, int len, int dim, int biased_dim, int offset, int size);
+	void (*activ_fct)(void *i_tab, int dim, int biased_dim, int offset, int length, int batch_size, size_t size);
+	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target,
+		int dim, int offset, int biased_dim, int length, size_t size, float TC_scale_factor);
+	void (*output_error_fct)(float *output_error, void *i_output, void *i_target,
+		int dim, int biased_dim, int length, int offset, size_t size);
 };
 
 struct cuda_YOLO_activ_fcts
 {
-	void (*activ_fct)(void *i_tab, int flat_offset, int len, yolo_param y_param, int size, int class_softmax);
+	void (*activ_fct)(void *i_tab, int flat_offset, size_t len, yolo_param y_param, size_t size, int class_softmax);
 	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target, 
 		int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, int nb_area_d,
-		yolo_param y_param, int size, float TC_scale_factor, int nb_im_epoch, void *block_sate);
+		yolo_param y_param, size_t size, float TC_scale_factor, int nb_im_iter);
 	void (*output_error_fct)(float *output_error, void *i_output, void *i_target, 
 		int flat_target_size, int flat_output_size, int nb_area_w, int nb_area_h, int nb_area_d,
-		yolo_param y_param, int size);
+		yolo_param y_param, size_t size);
 };
 
 struct CUDA_net_instance
@@ -233,6 +256,7 @@ struct CUDA_net_instance
 	cuda_conv_fcts cu_conv_fcts;
 	cuda_pool_fcts cu_pool_fcts;
 	cuda_norm_fcts cu_norm_fcts;
+	cuda_lrn_fcts cu_lrn_fcts;
 	
 	cuda_linear_activ_fcts cu_linear_activ_fcts;
 	cuda_ReLU_activ_fcts cu_ReLU_activ_fcts;
@@ -256,7 +280,7 @@ struct Dataset
 	void **target;
 	void **input_device;
 	void **target_device;
-	void (*cont_copy)(float *elem_in, void *elem_out, int out_offset, int nb_elem);
+	void (*cont_copy)(float *elem_in, void *elem_out, int out_offset, size_t nb_elem);
 	int size;
 	int nb_batch;
 	int localization;
@@ -288,6 +312,7 @@ struct layer
 	void *activ_param;
 	
 	//utility
+	int nb_params;
 	float time_fwd;
 	float time_back;
 };
@@ -311,14 +336,14 @@ struct network
 	Dataset train_buf, test_buf, valid_buf;
 	
 	int in_dims[4];
-	int input_dim; // flat size
+	size_t input_dim; // flat size
 	//Correspond to the "target size"
 	int output_dim;
 	//Correspond to the actual ouput size with various paddings if needed
 	int out_size;
 	int batch_size;
 	int batch_param;
-	int epoch;
+	int iter;
 	
 	int is_inference;
 	int inference_drop_mode;
@@ -338,7 +363,7 @@ struct network
 	//Possible yolo_param
 	yolo_param *y_param;
 
-	//Normalization parameters used for the formated dataset laoding
+	// Parameters used for the YOLO formated dataset laoding/saving
 	int norm_factor_defined; 
 	float *offset_input, *offset_output;
 	float *norm_input, *norm_output;
@@ -370,8 +395,7 @@ struct dense_param
 	void *weights;
 	void *FP32_weights;
 	void *update;
-	int *dropout_mask;
-	void *block_state;
+	float *dropout_mask;
 };
 
 
@@ -397,8 +421,7 @@ struct conv_param
 	void *rotated_filters;
 	void *temp_delta_o;
 	void *update;
-	int  *dropout_mask;
-	void *block_state;
+	float *dropout_mask;
 };
 
 
@@ -406,20 +429,22 @@ struct pool_param
 {
 	int *p_size;
 	int *nb_area;
+	int *stride;
+	int *padding;
 	int nb_maps;
 	int *prev_size;
 	int prev_depth;
 	int pool_type;
 	int global;
 	
-	int *dropout_mask;
-	void *block_state;
+	float *dropout_mask;
 	
 	int next_layer_type;
 	
 	int *pool_map;
 	void *temp_delta_o;
 };
+
 
 struct norm_param
 {
@@ -444,9 +469,24 @@ struct norm_param
 	float *beta_gpu;
 	float *d_gamma_gpu;
 	float *d_beta_gpu;
+};
+
+
+struct lrn_param
+{
+	int data_format;
+	void *prev_param;
 	
-	int *dropout_mask;
-	void *block_state;
+	int n_dim;
+	int dim_offset;
+	int output_dim;
+	
+	int range;
+	float k;
+	float alpha;
+	float beta;
+	
+	float *local_scale;
 };
 
 
@@ -462,6 +502,7 @@ struct linear_param
 	int offset;
 };
 
+
 struct ReLU_param
 {
 	int size;
@@ -471,6 +512,7 @@ struct ReLU_param
 	float saturation;
 	float leaking_factor;
 };
+
 
 struct logistic_param
 {
@@ -482,19 +524,23 @@ struct logistic_param
 	float saturation;
 };
 
+
 struct softmax_param
 {
+	int size;
 	int dim;
 	int biased_dim;
 	int offset;
 };
+
 
 struct yolo_param
 {
 	int size;
 	int dim;
 	int biased_dim;
-	int cell_w, cell_h, cell_d;
+	int *cell_size;
+	int no_override;
 
 	int nb_box;
 	int nb_class;
@@ -502,19 +548,21 @@ struct yolo_param
 	int max_nb_obj_per_image;
 	int fit_dim;
 	int IoU_type;
+	int prior_dist_type;
 	float (*c_IoU_fct)(float*, float*);
-	float *prior_w;
-	float *prior_h;
-	float *prior_d;
+	float *prior_size;
 	float *noobj_prob_prior;
 	int class_softmax;
 	int diff_flag;
 	int error_type;
+	int raw_output;
 
 	//Association related parameters
 	int strict_box_size_association;
+	void *block_state;
 	int rand_startup;
 	float rand_prob_best_box_assoc;
+	float rand_prob;
 	float min_prior_forced_scaling;
 	
 	//Error scaling, 6 elements
@@ -526,7 +574,6 @@ struct yolo_param
 	float *IoU_limits;
 	//use to disable the fit of given loss parts
 	int *fit_parts;
-	
 	
 	//Shared ancillary arrays
 	float *IoU_monitor;

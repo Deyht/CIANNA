@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2020 David Cornu
+	Copyright (C) 2023 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -33,14 +33,14 @@ static conv_param *c_param;
 //due to subsequent matrix operations. Currently memory bound despite only one load per element of the original image.
 //VERSION 5.3
 void im2col_fct_v5
-	(void* i_output, void* i_input, 
-	int image_size, int flat_image_size, 
+	(void* i_output, void* i_input, int image_size, int flat_image_size, 
 	int stride_w, int stride_h ,int stride_d, 
 	int padding_w, int padding_h, int padding_d, 
 	int internal_padding_w, int internal_padding_h, int internal_padding_d, 
-	int channel, int channel_padding, int image_padding, 
-	int batch_size, int f_size_w, int f_size_h, int f_size_d, int flat_f_size, 
-	int w_size, int h_size, int d_size, int nb_area_w, int nb_area_h, int bias_in, int bias_out) 
+	int channel, int channel_padding, int image_padding, int batch_size, 
+	int f_size_w, int f_size_h, int f_size_d, int flat_f_size, 
+	int w_size, int h_size, int d_size, 
+	int nb_area_w, int nb_area_h, int nb_area_d, int bias_in, int bias_out)
 {
 	float local_pix;
 	float *t_output = (float*) i_output;
@@ -117,9 +117,9 @@ void rotate_filter_matrix_fct(void* i_in, void* i_out, int nb_rows, int depth_si
 	}
 }
 
-void dropout_select_conv(int* mask, int size, float drop_rate)
+void dropout_select_conv(float* mask, size_t size, float drop_rate)
 {
-	int i;
+	size_t i;
 	float rand;
 	
 	//#pragma omp parallel for private(rand) schedule(guided,4)
@@ -136,9 +136,9 @@ void dropout_select_conv(int* mask, int size, float drop_rate)
 	}
 }
 
-void dropout_apply_conv(void* i_table, int* mask, int size)
+void dropout_apply_conv(void* i_table, float* mask, size_t size)
 {
-	int i;
+	size_t i;
 	float* table = (float*) i_table;
 	
 	for(i = 0; i < size; i++)
@@ -160,44 +160,43 @@ void forward_conv_layer(layer *current)
 		return;
 	c_param = (conv_param*) current->param;
 	
-	if(current->previous == NULL)
+	if(current->previous == NULL || current->previous->type == DENSE)
 	{
 		//if previous layer is input layer then remove the added bias on the image
 		//and interpret it as continuous RGB images
 		//size in line format
 		depth_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2];
 		image_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * c_param->prev_depth;
-		current->input = net->input;
+		if(current->previous == NULL)
+			current->input = net->input;
+		else
+			current->input = current->previous->output;
 		im2col_prev_bias = 1;
 	}
 	else
 	{
-		//if previous layer is a CONV (or pool) then the format is all image in R, then all image in B, ...
+		//if previous layer is a CONV (or pool) then the format is all images in R, then alls images in B, ...
 		//it also not contain a bias directly in the image
 		depth_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * net->batch_size;
 		image_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2];
-		im2col_prev_bias = 0;
 		current->input = current->previous->output;
+		im2col_prev_bias = 0;
 	}
 	
 	//im2col conversion fct -> one of the most complex function, go see details above
-	im2col_fct_v5(c_param->im2col_input,
-		current->input, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
-		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * 
-		c_param->flat_f_size, c_param->stride[0], c_param->stride[1], c_param->stride[2],
-		c_param->padding[0], c_param->padding[1], c_param->padding[2], 0, 0 ,0, 
+	im2col_fct_v5(c_param->im2col_input, current->input, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
+		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * c_param->flat_f_size, 
+		c_param->stride[0], c_param->stride[1], c_param->stride[2],
+		c_param->padding[0], c_param->padding[1], c_param->padding[2],
+		c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2],
 		c_param->prev_depth, depth_padding, image_padding, net->batch_size, 
-		c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], c_param->flat_f_size, 
+		c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], c_param->flat_f_size,
 		c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
-		c_param->nb_area[0], c_param->nb_area[1], im2col_prev_bias, 1);
+		c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], im2col_prev_bias, 1);
 	
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
-		// Must check if this condition is still required after experimental GAN update 
-		if(current->previous->type == CONV || current->previous->type == POOL)
-			c_dr = current->previous->dropout_rate;
-		else
-			c_dr = 0.0;
+		c_dr = current->previous->dropout_rate;
 		c_dr = ((c_param->flat_f_size-1)*(1.0f-c_dr)+1)/c_param->flat_f_size;
 		//w_alpha = (1.0f - c_dr); //account for the bias node that is never dropped
 		w_alpha = c_dr;
@@ -247,6 +246,7 @@ void backward_conv_layer(layer *current)
 	int back_padding[3];
 	int image_padding;
 	int flat_f_size;
+	float *c_prev_delta_o;
 	
 	network* net = current->c_network;
 	
@@ -288,16 +288,21 @@ void backward_conv_layer(layer *current)
 		im2col_fct_v5(c_param->im2col_delta_o,
 			current->delta_o, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], 
 			(c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * flat_f_size, 
-			1, 1, 1, back_padding[0], back_padding[1], back_padding[2], 
-			c_param->stride[0] - 1 , c_param->stride[1] - 1 , c_param->stride[2] - 1,
+			c_param->int_padding[0] + 1, c_param->int_padding[1] + 1, c_param->int_padding[2] + 1,
+			back_padding[0], back_padding[1], back_padding[2],
+			c_param->stride[0] - 1, c_param->stride[1] - 1, c_param->stride[2] - 1,
 			c_param->nb_filters, depth_padding, image_padding, net->batch_size,
 			c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], flat_f_size, 
 			c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
-			c_param->prev_size[0], c_param->prev_size[1], 0, 0);
-			
+			c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 0, 0);
+		
+		if(current->previous->type == DENSE)
+			c_prev_delta_o = c_param->temp_delta_o;
+		else
+			c_prev_delta_o = current->previous->delta_o;
+		
 		float *f_im2col_delta_o = (float*) c_param->im2col_delta_o;
 		float *f_rotated_filters = (float*) c_param->rotated_filters;
-		float *f_previous_delta_o = (float*) current->previous->delta_o;
 		
 		#pragma omp parallel for private(i, j, h) collapse(2) schedule(guided, 4)
 		for(b = 0; b < c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]*net->batch_size; b++)
@@ -310,12 +315,20 @@ void backward_conv_layer(layer *current)
 					h += f_im2col_delta_o[b*(flat_f_size) + j]
 							* f_rotated_filters[i*(flat_f_size) + j];
 				}
-				f_previous_delta_o[i*(c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]*net->batch_size)+b] = h;
+				c_prev_delta_o[i*(c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]*net->batch_size)+b] = h;
 			}
 		}
 		
-		//update gradiant regarding the previous layer activation function
-		//WARNING : ONLY WORK IF PREVIOUS LAYER IS A CONV AS OUTPUT AND DELTA_O SHARE THE SAME DATA ORDER
+		if(current->previous->type == DENSE)
+		{	
+			flat_dense(c_param->temp_delta_o, current->previous->delta_o, 0, 
+				c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2],
+				c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] 
+				* c_param->prev_depth + 1, c_param->prev_depth, net->batch_size, 
+				(c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] 
+				* c_param->prev_depth + 1) * net->batch_size);
+		}
+		
 		current->previous->deriv_activation(current->previous);
 	}
 	
@@ -339,12 +352,13 @@ void backward_conv_layer(layer *current)
 					h += f_im2col_input[b*(c_param->flat_f_size) + j]
 							* f_delta_o[i*(dim_batch) + b];
 				}
-				f_update[i*(c_param->flat_f_size) + j] = net->learning_rate*h 
+				f_update[i*(c_param->flat_f_size) + j] = net->learning_rate/net->batch_size*h 
 						+ net->momentum * f_update[i*(c_param->flat_f_size) + j];
 			}
 		}
 		
-		update_weights(c_param->filters, c_param->update, net->learning_rate*net->weight_decay, c_param->flat_f_size*c_param->nb_filters);
+		update_weights(c_param->filters, c_param->update, net->learning_rate*net->weight_decay, 
+			c_param->flat_f_size, c_param->flat_f_size*c_param->nb_filters);
 	}
 }
 

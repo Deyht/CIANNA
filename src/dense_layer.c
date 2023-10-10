@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2020 David Cornu
+	Copyright (C) 2023 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -36,49 +36,40 @@ void dense_define_activation_param(layer *current, const char* activ)
 {
 	int size, dim, biased_dim, offset;
 	d_param = (dense_param*) current->param;
+	
+	size = (d_param->nb_neurons + 1) * current->c_network->batch_size;
+	dim = d_param->nb_neurons;
+	biased_dim = d_param->nb_neurons+1;
+	offset = 1;
+	
 	switch(current->activation_type)
 	{
 		case RELU:
-			size = (d_param->nb_neurons + 1) * current->c_network->batch_size;
-			dim = d_param->nb_neurons;
-			biased_dim = d_param->nb_neurons+1;
-			offset = 1;
 			set_relu_activ(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case LOGISTIC:
-			size = (d_param->nb_neurons+1) * current->c_network->batch_size;
-			dim = d_param->nb_neurons;
-			biased_dim = d_param->nb_neurons+1;
-			offset = 1;
 			set_logistic_activ(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case SOFTMAX:
-			dim = d_param->nb_neurons;
-			biased_dim = d_param->nb_neurons+1;
-			offset = 1;
-			set_softmax_activ(current, dim, biased_dim, offset);
+			set_softmax_activ(current, size, dim, biased_dim, offset);
 			break;
 			
 		case YOLO:
-			printf("Error: YOLO activation is not compatible with a dense layer!");
+			printf("\nERROR: YOLO activation is not compatible with a dense layer!\n");
 			exit(EXIT_FAILURE);
 			break;
 			
 		case LINEAR:
 		default:
-			size = (d_param->nb_neurons + 1) * current->c_network->batch_size;
-			dim = d_param->nb_neurons;
-			biased_dim = d_param->nb_neurons+1;
-			offset = 1;
 			set_linear_activ(current, size, dim, biased_dim, 1);
 			break;
 	}
 }
 
 
-void dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias,
+int dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias,
 	float drop_rate, int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int f_bin)
 {
 	int i, j;
@@ -97,7 +88,7 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 	current->c_network = net;
 	net->nb_layers++;
 	
-	printf("L:%d - Creating dense layer ...\n", net->nb_layers);
+	printf("L:%d - CREATING DENSE LAYER ...\n", net->nb_layers);
 	
 	d_param = (dense_param*) malloc(sizeof(dense_param));
 	
@@ -147,6 +138,33 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 				mem_approx += d_param->in_size*net->batch_size * sizeof(float);
 				break;
 			
+			case NORM:
+			case LRN:
+				switch(previous->previous->type)
+				{
+					default:
+					case CONV:
+						d_param->in_size = ((conv_param*)previous->previous->param)->nb_area[0]
+							* ((conv_param*)previous->previous->param)->nb_area[1] 
+							* ((conv_param*)previous->previous->param)->nb_area[2]
+							* ((conv_param*)previous->previous->param)->nb_filters + 1;
+						break;
+					case POOL:
+						d_param->in_size = ((pool_param*)previous->previous->param)->nb_area[0]
+							* ((pool_param*)previous->previous->param)->nb_area[1] 
+							* ((pool_param*)previous->previous->param)->nb_area[2]
+							* ((pool_param*)previous->previous->param)->nb_maps + 1;
+						break;
+				}
+				if(!net->inference_only)
+					{
+						d_param->flat_delta_o = (float*) calloc(d_param-> in_size * net->batch_size, sizeof(float));
+						mem_approx += d_param-> in_size * net->batch_size * sizeof(float);
+					}
+					d_param->flat_input = (float*) calloc(d_param->in_size*net->batch_size,sizeof(float));
+					mem_approx += d_param->in_size*net->batch_size * sizeof(float);
+				break;
+			
 			case DENSE:
 			default:
 				d_param->in_size = ((dense_param*)previous->param)->nb_neurons+1;
@@ -162,8 +180,8 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 	
 	if(drop_rate > 0.01f)
 	{
-		d_param->dropout_mask = (int*) calloc((nb_neurons+1)*net->batch_size, sizeof(int));
-		mem_approx += (nb_neurons+1) * net->batch_size * sizeof(int);
+		d_param->dropout_mask = (float*) calloc((nb_neurons+1)*net->batch_size, sizeof(float));
+		mem_approx += (nb_neurons+1) * net->batch_size * sizeof(float);
 	}
 	
 	current->output = (float*) calloc((nb_neurons+1)*net->batch_size, sizeof(float));
@@ -177,6 +195,8 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 		current->delta_o = (float*) calloc((nb_neurons+1)*net->batch_size, sizeof(float));
 		mem_approx += (nb_neurons+1)*net->batch_size * sizeof(float);
 	}
+	
+	current->nb_params = d_param->in_size*(nb_neurons+1);
 	
 	//must be before the activation association function
 	current->param = d_param;
@@ -289,9 +309,9 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 	
 	char activ[40];
 	print_string_activ_param(current, activ);
-	printf("\t Input: %d, Nb. Neurons: %d\n\
-\t Activation: %s, Bias: %0.2f, dropout rate: %0.2f\n\
-\t Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",
+	printf("      Input: %d, Nb. Neurons: %d\n\
+      Activation: %s, Bias: %0.2f, dropout rate: %0.2f\n\
+      Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",
 		d_param->in_size,  d_param->nb_neurons, 
 		activ, current->bias_value, current->dropout_rate,
 		(d_param->nb_neurons+1)*d_param->in_size, (int)(mem_approx/1000000));
@@ -312,6 +332,8 @@ void dense_create(network *net, layer* previous, int nb_neurons, const char *act
 			printf("Warning : Weights update gemm TC data misalignment due to layer size mismatch\n");
 	}
 	#endif
+	
+	return net->nb_layers - 1;
 }
 
 

@@ -1,8 +1,7 @@
 
 
-
 /*
-	Copyright (C) 2020 David Cornu
+	Copyright (C) 2023 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -42,44 +41,44 @@ void blas_forward_conv_layer(layer *current)
 		return;
 	c_param = (conv_param*) current->param;
 	
-	if(current->previous == NULL)
+	if(current->previous == NULL || current->previous->type == DENSE)
 	{
 		//if previous layer is input layer then remove the added bias on the image
 		//and interpret it as continuous RGB images
 		//size in line format
 		depth_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2];
 		image_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * c_param->prev_depth;
-		current->input = net->input;
+		if(current->previous == NULL)
+			current->input = net->input;
+		else
+			current->input = current->previous->output;
 		im2col_prev_bias = 1;
 	}
 	else
 	{
-		//if previous layer is a CONV (or pool) then the format is all image in R, then all image in B, ...
+		//if previous layer is a CONV (or pool) then the format is all images in R, then alls images in B, ...
 		//it also not contain a bias directly in the image
 		depth_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * net->batch_size;
 		image_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2];
-		im2col_prev_bias = 0;
 		current->input = current->previous->output;
+		im2col_prev_bias = 0;
 	}
 	
 	//im2col conversion fct -> one of the most complex function, go see details above
-	im2col_fct_v5(c_param->im2col_input,
-		current->input, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
-		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * 
-		c_param->flat_f_size, c_param->stride[0], c_param->stride[1], c_param->stride[2],
-		c_param->padding[0], c_param->padding[1], c_param->padding[2], 0, 0 ,0, 
+	im2col_fct_v5(c_param->im2col_input, current->input, 
+		c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
+		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * c_param->flat_f_size, 
+		c_param->stride[0], c_param->stride[1], c_param->stride[2],
+		c_param->padding[0], c_param->padding[1], c_param->padding[2],
+		c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2],
 		c_param->prev_depth, depth_padding, image_padding, net->batch_size, 
 		c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], c_param->flat_f_size, 
 		c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
-		c_param->nb_area[0], c_param->nb_area[1], im2col_prev_bias, 1);
+		c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], im2col_prev_bias, 1);
 	
 	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
 	{
-		// Must check if this condition is still required after experimental GAN update 
-		if(current->previous->type == CONV || current->previous->type == POOL)
-			c_dr = current->previous->dropout_rate;
-		else
-			c_dr = 0.0;
+		c_dr = current->previous->dropout_rate;
 		c_dr = ((c_param->flat_f_size-1)*(1.0f-c_dr)+1)/c_param->flat_f_size;
 		//w_alpha = (1.0f - c_dr); //account for the bias node that is never dropped
 		w_alpha = c_dr;
@@ -91,9 +90,8 @@ void blas_forward_conv_layer(layer *current)
 	
 	cblas_sgemm(CblasColMajor, CblasTrans, CblasNoTrans, net->batch_size 
 		* (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]), c_param->nb_filters, c_param->flat_f_size, w_alpha, 
-		/*A*/ c_param->im2col_input, c_param->flat_f_size, /*B*/ c_param->filters, c_param->flat_f_size,
-		0.0f, /*C*/ current->output, net->batch_size 
-		* (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]));
+		/*A*/ c_param->im2col_input, c_param->flat_f_size, /*B*/ c_param->filters, c_param->flat_f_size, 0.0f, 
+		/*C*/ current->output, net->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]));
 	
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
@@ -116,6 +114,7 @@ void blas_backward_conv_layer(layer *current)
 	int back_padding[3];
 	int image_padding;
 	int flat_f_size;
+	void *c_prev_delta_o;
 	
 	network* net = current->c_network;
 	
@@ -149,7 +148,7 @@ void blas_backward_conv_layer(layer *current)
 		
 		for(k = 0; k < 3; k++)
 		{
-			back_padding[k] =  c_param->f_size[k] -  c_param->padding[k] - 1;
+			back_padding[k] =  c_param->f_size[k] - c_param->padding[k] - 1;
 			if(back_padding[k] < 0)
 				back_padding[k] = 0;
 		}
@@ -157,22 +156,36 @@ void blas_backward_conv_layer(layer *current)
 		im2col_fct_v5(c_param->im2col_delta_o,
 			current->delta_o, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], 
 			(c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * flat_f_size, 
-			1, 1, 1, back_padding[0], back_padding[1], back_padding[2], 
-			c_param->stride[0] - 1 , c_param->stride[1] - 1 , c_param->stride[2] - 1,
+			c_param->int_padding[0] + 1, c_param->int_padding[1] + 1, c_param->int_padding[2] + 1,
+			back_padding[0], back_padding[1], back_padding[2],
+			c_param->stride[0] - 1, c_param->stride[1] - 1, c_param->stride[2] - 1,
 			c_param->nb_filters, depth_padding, image_padding, net->batch_size,
 			c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], flat_f_size, 
 			c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
-			c_param->prev_size[0], c_param->prev_size[1], 0, 0);
-			
+			c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 0, 0);
+		
+		if(current->previous->type == DENSE)
+			c_prev_delta_o = c_param->temp_delta_o;
+		else
+			c_prev_delta_o = current->previous->delta_o;
+		
 		cblas_sgemm(CblasColMajor, CblasTrans, CblasNoTrans,
 			c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]*net->batch_size, c_param->prev_depth, 
 			c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2]*c_param->nb_filters, 1.0f, /*A*/c_param->im2col_delta_o, 
 			c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2]*c_param->nb_filters, /*B*/c_param->rotated_filters, 
-			c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2]*c_param->nb_filters, 0.0f, /*C*/current->previous->delta_o, 
+			c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2]*c_param->nb_filters, 0.0f, /*C*/c_prev_delta_o, 
 			c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]*net->batch_size);
 		
-		//update gradiant regarding the previous layer activation function
-		//WARNING : ONLY WORK IF PREVIOUS LAYER IS A CONV AS OUTPUT AND DELTA_O SHARE THE SAME DATA ORDER
+		if(current->previous->type == DENSE)
+		{	
+			flat_dense(c_param->temp_delta_o, current->previous->delta_o, 0, 
+				c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2],
+				c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] 
+				* c_param->prev_depth + 1, c_param->prev_depth, net->batch_size, 
+				(c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] 
+				* c_param->prev_depth + 1) * net->batch_size);
+		}
+		
 		current->previous->deriv_activation(current->previous);
 	}
 	
@@ -181,11 +194,12 @@ void blas_backward_conv_layer(layer *current)
 	{
 		cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, c_param->flat_f_size, c_param->nb_filters, 
 		c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]*current->c_network->batch_size, 
-		current->c_network->learning_rate, c_param->im2col_input, c_param->flat_f_size, 
+		current->c_network->learning_rate/current->c_network->batch_size, c_param->im2col_input, c_param->flat_f_size, 
 		current->delta_o, c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]*current->c_network->batch_size,
 		current->c_network->momentum, c_param->update, c_param->flat_f_size);
 		
-		update_weights(c_param->filters, c_param->update, net->learning_rate*net->weight_decay, c_param->flat_f_size*c_param->nb_filters);
+		update_weights(c_param->filters, c_param->update, net->learning_rate*net->weight_decay, 
+			c_param->flat_f_size, c_param->flat_f_size*c_param->nb_filters);
 	}
 }
 

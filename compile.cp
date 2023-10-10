@@ -35,6 +35,7 @@ defines_variables="-D MAX_LAYERS_NB=200 -D MAX_NETWORKS_NB=10 -D CUDA_THREADS_PE
 gcc_compile_dir="/usr/bin/gcc"
 openblas_include_dir="/opt/OpenBLAS/include/"
 openblas_lib_dir="/opt/OpenBLAS/lib"
+nvcc_path="/usr/local/cuda-12.0/bin/nvcc"
 cuda_lib_path="/usr/local/cuda-12.0/lib64"
 #compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
 compile_opt="-O3 -fPIC -Wall -Wno-unused-result -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
@@ -47,9 +48,9 @@ do
 	if [ $i  = "CUDA" ]
 	then
 		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart -arch=sm_89 -D GEN_AMPERE"
-		arg="$arg -D CUDA -lcublas -lcudart -L $cuda_lib_path"
-		cuda_src="cuda_main.cu cuda_conv_layer.cu cuda_dense_layer.cu cuda_pool_layer.cu cuda_norm_layer.cu cuda_activ_functions.cu"
-		cuda_obj="cuda/cuda_main.o cuda/cuda_conv_layer.o cuda/cuda_dense_layer.o cuda/cuda_pool_layer.o cuda/cuda_norm_layer.o cuda/cuda_activ_functions.o"
+		arg="$arg -D CUDA -lcublas -lcudart -lcurand -L $cuda_lib_path"
+		cuda_src="cuda_main.cu cuda_conv_layer.cu cuda_dense_layer.cu cuda_pool_layer.cu cuda_norm_layer.cu cuda_lrn_layer.cu cuda_activ_functions.cu"
+		cuda_obj="cuda/cuda_main.o cuda/cuda_conv_layer.o cuda/cuda_dense_layer.o cuda/cuda_pool_layer.o cuda/cuda_lrn_layer.o cuda/cuda_norm_layer.o cuda/cuda_activ_functions.o"
 		USE_CUDA=1
 		export USE_CUDA=1
 		echo USE_CUDA
@@ -92,7 +93,7 @@ then
 
 #compiling the cuda part if needed
 cd ./cuda
-/usr/local/cuda-12.0/bin/nvcc --compiler-bindir $gcc_compile_dir -Xcompiler "$compile_opt" \
+$nvcc_path --compiler-bindir $gcc_compile_dir -Xcompiler "$compile_opt" \
 -O3 -c $cuda_src $cuda_arg $defines_variables -lm
 echo "#####  End of CUDA compilation  #####"
 cd ..
@@ -102,31 +103,27 @@ if [ $USE_BLAS ]
 then
 
 cd ./blas
-gcc $compile_opt -std=c99 -c \
+$gcc_compile_dir $compile_opt -std=c99 -c \
 ../defs.h ../prototypes.h ../structs.h $blas_src -lm $arg $defines_variables
 echo "#####  End of BLAS compilation  #####"
 cd ..
 fi
 
 cd ./naiv
-gcc $compile_opt -std=c99 -c \
+$gcc_compile_dir $compile_opt -std=c99 -c \
 ../defs.h ../prototypes.h ../structs.h naiv_dense_layer.c naiv_conv_layer.c naiv_pool_layer.c naiv_norm_layer.c -lm $arg $defines_variables
 cd ..
 
 #compiling all the program
-gcc $compile_opt -std=c99 -c \
-defs.h prototypes.h structs.h main.c conv_layer.c dense_layer.c pool_layer.c norm_layer.c activ_functions.c initializers.c vars.c auxil.c -lm $arg $defines_variables
+$gcc_compile_dir $compile_opt -std=c99 -c \
+defs.h prototypes.h structs.h main.c conv_layer.c dense_layer.c pool_layer.c norm_layer.c lrn_layer.c activ_functions.c initializers.c vars.c auxil.c -lm $arg $defines_variables
 echo "#####  End of main program compilation  #####"
 
 #linking the main program (with cuda if needed)
-gcc $compile_opt -std=c99 -o \
-../main main.o $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o norm_layer.o activ_functions.o initializers.o vars.o auxil.o naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o naiv/naiv_norm_layer.o -lm $arg $defines_variables
+$gcc_compile_dir $compile_opt -std=c99 -o \
+../main main.o $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o norm_layer.o lrn_layer.o activ_functions.o initializers.o vars.o auxil.o naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o naiv/naiv_norm_layer.o -lm $arg $defines_variables
 echo "#####  End of link edition and executable creation  #####"
 
-#External C library -> work in progress
-#ar rcs cianna.a $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o activ_functions.o initializers.o vars.o auxil.o
-
-#rm *.o *.gch
 
 if [ $PY_INTERF ]
 then

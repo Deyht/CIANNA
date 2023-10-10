@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2020 David Cornu
+	Copyright (C) 2023 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -70,7 +70,7 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 	
 	float* f_tab = (float*) tab;
 
-	printf("\t Xavier Normal weight initialization\n");
+	printf("      Xavier Normal weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
@@ -106,7 +106,7 @@ void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float 
 	
 	float* f_tab = (float*) tab;
 
-	printf("\t Xavier Uniform weight initialization\n");
+	printf("      Xavier Uniform weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
@@ -140,7 +140,7 @@ void lecun_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bi
 	
 	float* f_tab = (float*) tab;
 	
-	printf("\t LeCun Normal weight initialization\n");
+	printf("      LeCun Normal weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
@@ -175,7 +175,7 @@ void lecun_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float b
 	
 	float* f_tab = (float*) tab;
 	
-	printf("\t LeCun Uniform weight initialization\n");
+	printf("      LeCun Uniform weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
@@ -211,7 +211,7 @@ void rand_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bia
 	
 	float* f_tab = (float*) tab;
 	
-	printf("\t Random Normal (user scale) weight initialization\n");
+	printf("      Random Normal (user scale) weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
@@ -247,7 +247,7 @@ void rand_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bi
 	
 	float* f_tab = (float*) tab;
 	
-	printf("\t Random Uniform (user scale) weight initialization\n");
+	printf("      Random Uniform (user scale) weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
