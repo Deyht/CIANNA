@@ -5,6 +5,7 @@
 # Precompiled Headers
 *.gch
 *.pch
+src/dist
 
 # Executables
 fwd
