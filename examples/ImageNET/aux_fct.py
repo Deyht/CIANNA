@@ -8,7 +8,7 @@ import time
 import albumentations as A
 import cv2
 
-processed_data_path = "/Data-Linux/Work/MINERVA/ImageNet-2012/"
+processed_data_path = "./"
 
 class_list = np.loadtxt("ImageNET_aux_data/imagenet_2012_class_list.txt", dtype="str")[:,1]
 

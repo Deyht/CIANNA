@@ -146,7 +146,7 @@
 - Fix an error in random and Low-IoU best prior association for all compute methods.
 - Fix an error in strict box size association that came from latest kernel rework, any strict_box_size_association higer than 1 was in fact considered as 1.
 - Add a random prior association probability parameter to YOLO loss. This allow to force random prior association at a given rate in a similar way to random startup. 
-This can be used either as a regularizer or a way to smooth representation transition between prior since each one will see a larger contextual range at a small rate. 
+  This can be used either as a regularizer or a way to smooth representation transition between prior since each one will see a larger contextual range at a small rate. 
 
 
 ********************************************
