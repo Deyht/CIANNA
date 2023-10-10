@@ -6,6 +6,7 @@
 *.gch
 *.pch
 src/dist
+src/CIANNA.egg-info
 
 # Executables
 fwd

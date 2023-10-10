@@ -7,6 +7,8 @@ rm main
 cd ./src/
 rm *.o
 rm *.gch
+rm dist
+rm CIANNA.egg-info
 
 rm blas/*.o
 rm cuda/*.o

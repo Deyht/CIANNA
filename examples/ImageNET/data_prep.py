@@ -11,8 +11,8 @@ import os, glob
 #Deleting raw data after processing is possible but not advised in case you want to change the raw image resolution
 #Downloading data folowing instructions from https://github.com/DoranLyong/ImageNet2012-download
 
-data_path = "/Data-Linux/Work/MINERVA/ImageNet-2012/download_and_prepare_imagenet_dataset/"
-processed_data_path = "/Data-Linux/Work/MINERVA/ImageNet-2012/"
+data_path = "./"
+processed_data_path = "./"
 
 #Get preprocessed path list and 1000 classes association
 #Lower class count subdivision can be obtained at https://github.com/minyoungg/wmigftl
@@ -22,13 +22,13 @@ if(not os.path.isdir("ImageNET_aux_data")):
 	os.system("tar -xvzf ImageNET_aux_data.tar.gz")
 
 train_list = np.loadtxt("ImageNET_aux_data/imagenet_2012_1000classes_train.txt", dtype="str")
-val_list  = np.loadtxt("ImageNET_aux_data/imagenet_2012_1000classes_val.txt", dtype="str")
+val_list   = np.loadtxt("ImageNET_aux_data/imagenet_2012_1000classes_val.txt", dtype="str")
 
 
 nb_workers = 12
 
 nb_train = 1281167
-nb_val = 10000
+nb_val = 50000
 image_size = 500
 nb_class = 1000
 	
@@ -92,18 +92,18 @@ def val_gen(i_d):
 	patch_aug = transformed['image']
 	
 	np.save(processed_data_path+"bin_blocks/bin_images_%d/val/valid_img_%04d.npy"%(image_size, i_d), patch_aug, allow_pickle=False)
-"""
+
 # Around 45 min with 12 workers on a 5900X CPU and a SATA SSD for storage
 print("Starting training set images processing on %d threads ... This might take a while !"%(nb_workers))
 
 with Pool(nb_workers) as p:
 	p.map(train_gen, np.arange(nb_train))
-"""
+
 print("Starting validation set images processing on %d threads ..."%(nb_workers))
 
 with Pool(nb_workers) as p:
 	p.map(val_gen, np.arange(nb_val))
-"""
+
 print("Renaming training images ...")
 
 #Remap proccesed names for easy random selection in batch augmentation
@@ -114,7 +114,7 @@ for k in range(0, nb_class):
 	for path in pathes:
 		os.rename(path,processed_data_path+"bin_blocks/bin_images_%d/C%04d/train_img_%04d.npy"%(image_size,k+1,i_d))
 		i_d += 1
-"""	
+
 
 
 		

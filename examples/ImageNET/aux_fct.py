@@ -54,15 +54,19 @@ def init_data_gen(test_mode = 0):
 	global flat_image_slice, class_count, nb_workers, block_size, transform_val
 	global input_data, targets, input_val, targets_val, targets_zero, nb_process, nb_class
 	
+	if(not os.path.isdir("ImageNET_aux_data")):
+		os.system("wget https://share.obspm.fr/s/Pqbn4cC2azo84Z2/download/ImageNET_aux_data.tar.gz")
+		os.system("tar -xvzf ImageNET_aux_data.tar.gz")
+	
 	class_count = np.loadtxt(processed_data_path+"bin_blocks/bin_images_%d/class_count.txt"%(image_size_raw))
 	
 	targets_zero = np.zeros((nb_class), dtype="float32")
 	
 	if(test_mode == 0): #used to control the behavior regarging training, validation and test 
-		input_data = np.zeros((nb_images_per_iter,image_size*image_size*3), dtype="float32")
+		input_data = np.zeros((nb_images_per_iter,flat_image_slice*3), dtype="float32")
 		targets = np.zeros((nb_images_per_iter,nb_class), dtype="float32")
 		
-	input_val = np.zeros((nb_keep_val,image_size*image_size*3), dtype="float32")
+	input_val = np.zeros((nb_keep_val,flat_image_slice*3), dtype="float32")
 	targets_val = np.zeros((nb_keep_val,nb_class), dtype="float32")
 
 
