@@ -21,6 +21,16 @@ See Copyright &copy; and [License](#License) terms at the end.
 
 &nbsp;
 
+
+## Installation
+
+#### 
+
+Please take a look at the [system requirements](https://github.com/Deyht/CIANNA/wiki/1\)-System-Requirements) and the [installation instructions](https://github.com/Deyht/CIANNA/wiki/2\)-Installation-instructions) wiki pages.  
+=> A complete **step-by-step installation guide** of CIANNA and its dependencies from a fresh Ubuntu 20.04 is accessible [here](https://github.com/Deyht/CIANNA/wiki/Step-by-step-installation-guide-\(Ubuntu-20.04\)).
+
+&nbsp;
+
 ## How to use
 
 Please read the [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface)) Wiki page for a minimalistic tour of CIANNA capabilities on a simple example script and dataset.  
@@ -31,15 +41,6 @@ Several Python scripts and notebooks are provided as [examples](https://github.c
 **Quick view of CIANNA capabilities**  
 
 Work in progress ...
-
-&nbsp;
-
-## Installation
-
-#### 
-
-Please take a look at the [system requirements](https://github.com/Deyht/CIANNA/wiki/1\)-System-Requirements) and the [installation instructions](https://github.com/Deyht/CIANNA/wiki/2\)-Installation-instructions) wiki pages.  
-=> A complete **step-by-step installation guide** of CIANNA and its dependencies from a fresh Ubuntu 20.04 is accessible [here](https://github.com/Deyht/CIANNA/wiki/Step-by-step-installation-guide-\(Ubuntu-20.04\)).
 
 &nbsp;
 
