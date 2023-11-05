@@ -65,8 +65,8 @@ void set_frozen_layers(network *net, int* tab, int dim);
 void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
 	float u_decay, float u_weight_decay, int show_confmat, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor, int silent);
 void forward_testset(network *net, int saving, int repeat, int drop_mode, int silent);
-void train_gan(network* gen, network* disc, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
-	float u_decay, float gen_disc_learn_rate_ratio, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor, int silent);
+void train_gan(network* gen, network* disc, int nb_iter, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
+	float u_decay, float u_weight_decay, float gen_disc_learn_rate_ratio, int save_every, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor, int silent);
 
 
 //activations.c
@@ -160,17 +160,20 @@ void deltah_avg_pool_cont_fct(void* i_delta_o, void* i_delta_o_unpool, int* pool
 	int w_size, int h_size, int d_size, int w_size_out, int h_size_out, int d_size_out, size_t length);
 void dropout_select_pool(float* mask, size_t size, float drop_rate);
 void dropout_apply_pool(void* i_table, float* mask, size_t size);
+void dropout_scale_pool(void* i_table, size_t size, float drop_rate);
 
 void flat_dense(void* in, void* out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 void reroll_batch(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 void dropout_select_dense(float* mask, int biased_dim, size_t size, float drop_rate);
 void dropout_apply_dense(void* table, float* mask, size_t size);
+void dropout_scale_dense(void *table, int biased_dim, size_t size, float drop_rate);
 //void group_normalization_dense(void *i_tab, int b_length, int b_size,
 //	int dim, int biased_dim, int group_size, int nb_group);
 
 void rotate_filter_matrix_fct(void* i_in, void* i_out, int nb_rows, int depth_size, int nb_filters_in, int len);
 void dropout_select_conv(float* mask, size_t size, float drop_rate);
 void dropout_apply_conv(void* i_table, float* mask, size_t size);
+void dropout_scale_conv(void* i_table, size_t size, float drop_rate);
 //void group_normalization_conv(void *i_tab, int b_length, int b_size,
 //	int group_size, int nb_group, int nb_filters, int flat_f_size);
 void im2col_fct_v5
@@ -258,10 +261,11 @@ float cuda_epoch_eval_out(void);
 void cuda_shuffle(network *net, Dataset data, Dataset duplicate, int *index_shuffle, int *index_shuffle_device);
 void cuda_host_shuffle(network *net, Dataset data, Dataset duplicate);
 void cuda_host_only_shuffle(network *net, Dataset data);
-void cuda_gan_disc_mix_input(layer *gen_output, layer *disc_input, void* true_input, int half_offset);
+void cuda_gan_disc_mix_input(network *net, void *gen_output, void *disc_input, void* targ_input, int nb_fake, int batch_offset);
 void cuda_gan_disc_mix_target(void* mixed_target, void* true_target, int half_offset);
 void cuda_create_gan_target(network* net, void* targ, void* true_targ, float frac_ones, int i_half);
 void cuda_semi_supervised_gan_deriv_output_error(layer *current, int halved, int reversed);
+void cuda_gan_invert_generator_deltao(network *gen, void *gen_deltao);
 void cuda_random_vector(float* tab, size_t size);
 
 void cuda_convert_network(layer** network);

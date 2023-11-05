@@ -75,22 +75,6 @@ __global__ void cuda_reroll_batch_##name																										\
 }
 
 
-__global__ void cuda_dropout_select_dense(float* mask, size_t size, int biased_dim, float drop_rate, void* states)
-{
-	int i = blockIdx.x*blockDim.x + threadIdx.x;
-	curandState_t* c_states = (curandState_t*) states;
-	
-	float rand;
-	if(i < size)
-	{
-		rand = curand_uniform(&c_states[i]);
-		if(rand < drop_rate && (i+1) % (biased_dim) != 0)
-			mask[i] = 0;
-		else
-			mask[i] = 1;
-	}
-}
-
 #define cuda_dropout_apply_dense(name, type) 																									\
 __global__ void cuda_dropout_apply_dense_##name(void* i_table, float* mask, size_t size, int biased_dim, float drop_rate)						\
 {																																				\
@@ -101,12 +85,27 @@ __global__ void cuda_dropout_apply_dense_##name(void* i_table, float* mask, size
 	if(i >= size)																																\
 		return;																																	\
 																																				\
-	if(mask[i] >= drop_rate || (i+1) % (biased_dim) == 0)																						\
+	if(mask[i] >= drop_rate || (i+1) % biased_dim == 0)																							\
 		mask[i] = 1.0f;																															\
 	else																																		\
 		mask[i] = 0.0f;																															\
 	 																																			\
-	table[i] *= mask[i]; 																														\
+	table[i] = (type)((float)table[i]*mask[i]); 																								\
+}
+
+
+#define cuda_dropout_scale_dense(name, type) 																									\
+__global__ void cuda_dropout_scale_dense_##name(void* i_table, float* mask, size_t size, int biased_dim, float drop_rate)						\
+{																																				\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+																																				\
+	type* table = (type*) i_table;																												\
+																																				\
+	if(i >= size)																																\
+		return;																																	\
+																																				\
+	if((i+1) % biased_dim != 0)																													\
+		table[i] = (type)((float)table[i]*(1.0f-drop_rate)); 																					\
 }
 
 
@@ -114,17 +113,20 @@ __global__ void cuda_dropout_apply_dense_##name(void* i_table, float* mask, size
 cuda_flat_dense(FP32, float);
 cuda_reroll_batch(FP32, float);
 cuda_dropout_apply_dense(FP32, float);
+cuda_dropout_scale_dense(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 cuda_flat_dense(FP16, half);
 cuda_reroll_batch(FP16, half);
 cuda_dropout_apply_dense(FP16, half);
+cuda_dropout_scale_dense(FP16, half);
 #endif
 
 #if defined (GEN_AMPERE)
 cuda_flat_dense(BF16, nv_bfloat16);
 cuda_reroll_batch(BF16, nv_bfloat16);
 cuda_dropout_apply_dense(BF16, nv_bfloat16);
+cuda_dropout_scale_dense(BF16, nv_bfloat16);
 #endif
 
 
@@ -139,6 +141,7 @@ void cuda_dense_init(network *net)
 			net->cu_inst.cu_dense_fcts.flat_dense_fct = cuda_flat_dense_FP32;
 			net->cu_inst.cu_dense_fcts.reroll_fct = cuda_reroll_batch_FP32;
 			net->cu_inst.cu_dense_fcts.drop_apply_fct = cuda_dropout_apply_dense_FP32;
+			net->cu_inst.cu_dense_fcts.drop_scale_fct = cuda_dropout_scale_dense_FP32;
 			break;
 		
 		case FP16C_FP32A:
@@ -147,6 +150,7 @@ void cuda_dense_init(network *net)
 			net->cu_inst.cu_dense_fcts.flat_dense_fct = cuda_flat_dense_FP16;
 			net->cu_inst.cu_dense_fcts.reroll_fct = cuda_reroll_batch_FP16;
 			net->cu_inst.cu_dense_fcts.drop_apply_fct = cuda_dropout_apply_dense_FP16;
+			net->cu_inst.cu_dense_fcts.drop_scale_fct = cuda_dropout_scale_dense_FP16;
 			#else
 			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
 			exit(EXIT_FAILURE);
@@ -158,6 +162,7 @@ void cuda_dense_init(network *net)
 			net->cu_inst.cu_dense_fcts.flat_dense_fct = cuda_flat_dense_BF16;
 			net->cu_inst.cu_dense_fcts.reroll_fct = cuda_reroll_batch_BF16;
 			net->cu_inst.cu_dense_fcts.drop_apply_fct = cuda_dropout_apply_dense_BF16;
+			net->cu_inst.cu_dense_fcts.drop_scale_fct = cuda_dropout_scale_dense_BF16;
 			#else
 			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
 			exit(EXIT_FAILURE);
@@ -299,21 +304,9 @@ size_t cuda_convert_dense_layer(layer *current)
 void cuda_forward_dense_layer(layer *current)
 {
 	int nb_area_w, nb_area_h, nb_area_d, depth;
-	
 	void *ref_input;
-	void *w_alpha;
-	float w_f_alpha;
-	float c_dr = 0.0f;
 	
 	network* net = current->c_network;
-	
-	#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
-	half w_h_alpha;
-	if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-		w_alpha = &w_h_alpha;	
-	else
-	#endif
-		w_alpha = &w_f_alpha;
 	
 	if(net->length == 0)
 		return;
@@ -373,59 +366,35 @@ void cuda_forward_dense_layer(layer *current)
 			* net->batch_size + cu_threads - 1) / cu_threads;
 		
 		net->cu_inst.cu_dense_fcts.flat_dense_fct<<< cu_blocks, cu_threads >>>(current->input, 
-			d_param->flat_input, current->bias_value, nb_area_w * nb_area_h * nb_area_d ,
+			d_param->flat_input, current->bias_value, nb_area_w * nb_area_h * nb_area_d,
 			nb_area_w * nb_area_h * nb_area_d * depth + 1, depth, net->batch_size, 
 			(nb_area_w * nb_area_h * nb_area_d * depth + 1) * net->batch_size);
 		
 		ref_input = d_param->flat_input;
 	}
 	
-	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
-	{
-		c_dr = current->previous->dropout_rate;
-		
-		if(c_dr <= 0.01f)
-		{
-			if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-				*((half*)w_alpha) = 1.0f;
-			else
-				*((float*)w_alpha) = 1.0f;
-		}
-		else
-		{
-			c_dr = ((d_param->in_size-1)*(1.0f-c_dr)+1)/d_param->in_size;
-			if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-				*((half*)w_alpha) = c_dr;	
-			else
-				*((float*)w_alpha) = c_dr;
-		}
-	}
-	else
-	{
-		if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-			*((half*)w_alpha) = 1.0f;	
-		else
-			*((float*)w_alpha) = 1.0f;
-	}
-	
 	cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, d_param->nb_neurons+1, 
-		net->batch_size, d_param->in_size, w_alpha, d_param->weights, cuda_data_type, 
+		net->batch_size, d_param->in_size, cu_alpha, d_param->weights, cuda_data_type, 
 		d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, cu_beta, 
 		current->output, cuda_data_type, d_param->nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 	
 	current->activation(current);
 
-	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f)
 	{
-		// Must check performance impact -> the present approach is due to the curand behavior
-		cu_blocks = ((d_param->nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
-		/*cuda_dropout_select_dense<<<cu_blocks, cu_threads>>>(d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, 
-			d_param->nb_neurons+1, current->dropout_rate, (curandState_t*) d_param->block_state);*/	
-		
-		cuda_random_vector(d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size);
-		
-		net->cu_inst.cu_dense_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, 
-			d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, (d_param->nb_neurons+1), current->dropout_rate);
+	
+		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
+		{
+			cu_blocks = ((d_param->nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
+			
+			cuda_random_vector(d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size);
+			
+			net->cu_inst.cu_dense_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, 
+				d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, (d_param->nb_neurons+1), current->dropout_rate);
+		}
+		else
+			net->cu_inst.cu_dense_fcts.drop_scale_fct<<<cu_blocks, cu_threads>>>(current->output, 
+				d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, (d_param->nb_neurons+1), current->dropout_rate);
 	}
 }
 
@@ -439,7 +408,7 @@ void cuda_backward_dense_layer(layer* current)
 
 	d_param = (dense_param*) current->param;	
 	
-	if(current->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 	{
 		cu_blocks = ((d_param->nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
 		

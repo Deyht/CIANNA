@@ -1504,7 +1504,7 @@ void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_par
 	#pragma omp parallel for private(col, in_col) schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
-		float normal = 0.0000001f, vmax;
+		float normal = 0.0f, vmax;
 		int j;
 		col = i / flat_offset;
 		in_col = col%(8+nb_class+nb_param);

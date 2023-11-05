@@ -328,10 +328,10 @@ void dropout_select_pool(float* mask, size_t size, float drop_rate)
 	for(i = 0; i < size; i++)
 	{
 		rand = random_uniform();
-		if(rand < drop_rate)
-			mask[i] = 0.0f;
-		else
+		if(rand >= drop_rate)
 			mask[i] = 1.0f;
+		else
+			mask[i] = 0.0f;
 	}
 }
 
@@ -341,7 +341,17 @@ void dropout_apply_pool(void* i_table, float* mask, size_t size)
 	float* table = (float*) i_table;
 	
 	for(i = 0; i < size; i++)
-		table[i] *= mask[i];
+		table[i] = table[i]*mask[i];
+}
+
+
+void dropout_scale_pool(void* i_table, size_t size, float drop_rate)
+{
+	size_t i;
+	float* table = (float*) i_table;
+	
+	for(i = 0; i < size; i++)
+		table[i] = table[i]*(1.0f-drop_rate);
 }
 
 
@@ -349,16 +359,16 @@ void forward_pool_layer(layer* current)
 {
 	int bias_in = 0;
 	network* net = current->c_network;
-
+	
 	if(net->length == 0)
 		return;
-		
+	
 	if(current->previous == NULL)
 	{
 		current->input = net->input;
 		bias_in = 1;
 	}
-
+	
 	p_param = (pool_param*) current->param;
 	
 	switch(p_param->pool_type)
@@ -386,13 +396,19 @@ void forward_pool_layer(layer* current)
 
 	current->activation(current);
 
-	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f)
 	{
-		dropout_select_pool(p_param->dropout_mask, p_param->nb_maps 
-			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, current->dropout_rate);	
-		
-		dropout_apply_pool(current->output, p_param->dropout_mask, p_param->nb_maps 
-			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);
+		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
+		{
+			dropout_select_pool(p_param->dropout_mask, p_param->nb_maps 
+				* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, current->dropout_rate);	
+			
+			dropout_apply_pool(current->output, p_param->dropout_mask, p_param->nb_maps 
+				* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);
+		}
+		else
+			dropout_scale_pool(current->output, p_param->nb_maps
+				* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, current->dropout_rate);
 	}
 }
 
@@ -405,7 +421,7 @@ void backward_pool_layer(layer* current)
 
 	p_param = (pool_param*) current->param;
 
-	if(current->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 	{
 		dropout_apply_pool(current->delta_o, p_param->dropout_mask, p_param->nb_maps 
 			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);

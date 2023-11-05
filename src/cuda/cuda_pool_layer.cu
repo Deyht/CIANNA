@@ -276,22 +276,6 @@ __global__ void deltah_avg_pool_cont_##name																										\
 	delta_o_unpool[(pos[2]-padding_d)*(size_t)(w_size*h_size) + (pos[1]-padding_h)*w_size + (pos[0]-padding_w)] = (type) l_delta_h;				\
 }
 
-/*depreciated*/
-__global__ void cuda_dropout_select_pool(int* mask, size_t size, float drop_rate, void* states)
-{
-	size_t i = blockIdx.x*blockDim.x + threadIdx.x;
-	curandState_t* c_states = (curandState_t*) states;
-	
-	float rand;
-	if(i < size)
-	{
-		rand = curand_uniform(&c_states[i]);
-		if(rand < drop_rate)
-			mask[i] = 0;
-		else
-			mask[i] = 1;
-	}
-}
 
 #define cuda_dropout_apply_pool(name, type) 																									\
 __global__ void cuda_dropout_apply_pool_##name(void* i_table, float* mask, size_t size, float drop_rate)										\
@@ -308,8 +292,23 @@ __global__ void cuda_dropout_apply_pool_##name(void* i_table, float* mask, size_
 	else																																		\
 		mask[i] = 0.0f;																															\
 	 																																			\
-	table[i] *= mask[i]; 																														\
+	table[i] = (type)((float)table[i]*mask[i]); 																										\
 }
+
+
+#define cuda_dropout_scale_pool(name, type) 																									\
+__global__ void cuda_dropout_scale_pool_##name(void* i_table, float* mask, size_t size, float drop_rate)										\
+{ 																																				\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x; 																							\
+																																				\
+	type *table = (type*) i_table;																												\
+																																				\
+	if(i >= size)																																\
+		return;																																	\
+																																				\
+	table[i] = (type)((float)table[i]*(1.0f-drop_rate)); 																						\
+}
+
 
 #define cuda_typed_memset(name, type)																											\
 void cuda_typed_memset_##name(void* i_table, int value, size_t size)																			\
@@ -326,6 +325,7 @@ avg_pooling_kernel(FP32, float);
 deltah_max_pool_cont(FP32, float);
 deltah_avg_pool_cont(FP32, float);
 cuda_dropout_apply_pool(FP32, float);
+cuda_dropout_scale_pool(FP32, float);
 cuda_typed_memset(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
@@ -334,6 +334,7 @@ avg_pooling_kernel(FP16, half);
 deltah_max_pool_cont(FP16, half);
 deltah_avg_pool_cont(FP16, half);
 cuda_dropout_apply_pool(FP16, half);
+cuda_dropout_scale_pool(FP16, half);
 cuda_typed_memset(FP16, half);
 #endif
 
@@ -343,6 +344,7 @@ avg_pooling_kernel(BF16, nv_bfloat16);
 deltah_max_pool_cont(BF16, nv_bfloat16);
 deltah_avg_pool_cont(BF16, nv_bfloat16);
 cuda_dropout_apply_pool(BF16, nv_bfloat16);
+cuda_dropout_scale_pool(BF16, nv_bfloat16);
 cuda_typed_memset(BF16, nv_bfloat16);
 #endif
 
@@ -359,6 +361,7 @@ void cuda_pool_init(network* net)
 			net->cu_inst.cu_pool_fcts.avg_pool_fct = avg_pooling_kernel_FP32;
 			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_FP32;
 			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_FP32;
+			net->cu_inst.cu_pool_fcts.drop_scale_fct = cuda_dropout_scale_pool_FP32;
 			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_FP32;
 			break;
 		
@@ -370,6 +373,7 @@ void cuda_pool_init(network* net)
 			net->cu_inst.cu_pool_fcts.avg_pool_fct = avg_pooling_kernel_FP16;
 			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_FP16;
 			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_FP16;
+			net->cu_inst.cu_pool_fcts.drop_scale_fct = cuda_dropout_scale_pool_FP16;
 			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_FP16;
 			#else
 			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
@@ -384,6 +388,7 @@ void cuda_pool_init(network* net)
 			net->cu_inst.cu_pool_fcts.avg_pool_fct = avg_pooling_kernel_BF16;
 			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_BF16;
 			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_BF16;
+			net->cu_inst.cu_pool_fcts.drop_scale_fct = cuda_dropout_scale_pool_BF16;
 			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_BF16;
 			#else
 			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
@@ -400,21 +405,21 @@ size_t cuda_convert_pool_layer(layer *current)
 	
 	network* net = current->c_network;
 
-	vram_approx += cuda_convert_table(net, &(current->output), p_param->nb_area[0] 
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size,0);
+	vram_approx += cuda_convert_table(net, &(current->output), p_param->nb_area[0]
+		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size, 0);
 	
 	if(current->dropout_rate > 0.01f)
 	{
-		vram_approx += cuda_convert_table_FP32((void**)&(p_param->dropout_mask), p_param->nb_maps 
-			* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size,0);
+		vram_approx += cuda_convert_table_FP32((void**)&(p_param->dropout_mask), p_param->nb_maps
+			* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, 0);
 	}
 	
 	if(!net->inference_only)
 	{
-		vram_approx += cuda_convert_table_int(&(p_param->pool_map), (size_t)(p_param->nb_area[0] 
-			* p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps * net->batch_size,0);
-		vram_approx += cuda_convert_table(net, &(current->delta_o), (size_t)(p_param->nb_area[0] 
-			* p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps * net->batch_size,0);
+		vram_approx += cuda_convert_table_int(&(p_param->pool_map), (size_t)(p_param->nb_area[0]
+			* p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps * net->batch_size, 0);
+		vram_approx += cuda_convert_table(net, &(current->delta_o), (size_t)(p_param->nb_area[0]
+			* p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps * net->batch_size, 0);
 	}
 	
 	return vram_approx;
@@ -467,16 +472,22 @@ void cuda_forward_pool_layer(layer* current)
 	//Linear == No activation
 	current->activation(current);
 
-	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f)
 	{
-		cu_blocks = ((size_t)(p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) 
-			* net->batch_size) + cu_threads - 1) / cu_threads;
-		
-		cuda_random_vector(p_param->dropout_mask, p_param->nb_maps * net->batch_size
-			* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-		
-		net->cu_inst.cu_pool_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, p_param->dropout_mask, p_param->nb_maps 
-			* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])* net->batch_size, current->dropout_rate);
+		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
+		{
+			cu_blocks = ((size_t)(p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) 
+				* net->batch_size) + cu_threads - 1) / cu_threads;
+			
+			cuda_random_vector(p_param->dropout_mask, p_param->nb_maps * net->batch_size
+				* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
+			
+			net->cu_inst.cu_pool_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, p_param->dropout_mask, p_param->nb_maps 
+				* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])* net->batch_size, current->dropout_rate);
+		}
+		else
+			net->cu_inst.cu_pool_fcts.drop_scale_fct<<<cu_blocks, cu_threads>>>(current->output, p_param->dropout_mask, p_param->nb_maps 
+				* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])* net->batch_size, current->dropout_rate);
 	}
 }
 
@@ -487,7 +498,7 @@ void cuda_backward_pool_layer(layer* current)
 	
 	p_param = (pool_param*) current->param;
 	
-	if(current->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 	{
 		cu_blocks = ((size_t)(p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) 
 			* net->batch_size) + cu_threads - 1) / cu_threads;

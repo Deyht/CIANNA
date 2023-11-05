@@ -29,10 +29,8 @@ static dense_param *d_param;
 
 void blas_forward_dense_layer(layer *current)
 {
-	double w_alpha;
 	int nb_area_w, nb_area_h, nb_area_d, depth;
 	void* ref_input;
-	float prev_drop_rate = 0.0f;
 	
 	network* net = current->c_network;
 	
@@ -94,28 +92,22 @@ void blas_forward_dense_layer(layer *current)
 		ref_input = d_param->flat_input;
 	}
 	
-	//bias weight is included in drop, should change this behavior ?
-	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
-	{
-		prev_drop_rate = current->previous->dropout_rate;
-		w_alpha = ((d_param->in_size-1)*(1.0f-prev_drop_rate)+1)/d_param->in_size;
-	}
-	else
-	{
-		w_alpha = 1.0f;
-	}
-	
 	cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, d_param->nb_neurons+1, 
-		net->batch_size, d_param->in_size, w_alpha, d_param->weights, 
+		net->batch_size, d_param->in_size, 1.0f, d_param->weights, 
 		d_param->nb_neurons+1, ref_input, d_param->in_size, 0.0f, 
 		current->output, d_param->nb_neurons+1);
 	
 	current->activation(current);
 	
-	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f)
 	{
-		dropout_select_dense(d_param->dropout_mask, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
-		dropout_apply_dense(current->output, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
+		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
+		{
+			dropout_select_dense(d_param->dropout_mask, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
+			dropout_apply_dense(current->output, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
+		}
+		else
+			dropout_scale_dense(current->output, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
 	}
 }
 
@@ -129,7 +121,7 @@ void blas_backward_dense_layer(layer* current)
 	
 	d_param = (dense_param*) current->param;
 	
-	if(current->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 		dropout_apply_dense(current->delta_o, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
 	
 	//######################## ERROR PROPAGATION ########################

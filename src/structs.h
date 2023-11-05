@@ -107,13 +107,15 @@ struct cuda_auxil_fcts
 		size_t in_size, int b_size, int d_in, int d_out);
 	void (*cu_host_shuffle_fct)(network *net, Dataset data, Dataset duplicate);
 	void (*cu_host_only_shuffle_fct)(network *net, Dataset data);
-	void (*cu_gan_disc_mix_input_kernel)(void *gen_output, void *disc_input, void* true_input,
-		int half_offset, int im_flat_size, int nb_channels, int batch_size, size_t len);
+	void (*cu_gan_disc_mix_input_kernel)(void *gen_output, void *disc_input, void* targ_input, int nb_fake, int batch_offset,
+		int nb_filters, int flat_f_size, int batch_size, size_t size);
 	void (*cu_create_gan_target_kernel)(void* i_targ, void* i_true_targ, int out_size, 
 		int batch_size, float frac_ones, int i_half, size_t len);
-	void (*cu_exp_disc_activation_kernel)(void *i_tab, int len, int dim, int size, int halved, int revert);
-	void (*cu_exp_disc_deriv_output_kernel)(void *i_delta_o, void *i_output, void *i_target, 
-		int len, int dim, int size, int halved, int revert);
+	void (*cu_exp_disc_activation_kernel)(void *i_tab, int dim, int biased_dim,
+		int offset, int length, int batch_size, size_t size, int halved, int revert);
+	void (*cu_exp_disc_deriv_output_kernel)(void *i_delta_o, void *i_output, void *i_target, int dim, int biased_dim,
+		int offset, int length, int batch_size, size_t size, float TC_scale_factor, int halved, int revert);
+	void (*cu_gan_invert_generator_deltao_kernel)(void *gen_delta_o, size_t size);
 };
 
 
@@ -122,6 +124,7 @@ struct cuda_dense_fcts
 	void (*flat_dense_fct)(void* i_in, void* i_out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 	void (*reroll_fct)(void* in, void* out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 	void (*drop_apply_fct)(void* i_table, float* mask, size_t size, int biased_dim, float drop_rate);
+	void (*drop_scale_fct)(void* i_table, float* mask, size_t size, int biased_dim, float drop_rate);
 };
 
 struct cuda_conv_fcts
@@ -135,6 +138,7 @@ struct cuda_conv_fcts
 		int batch_size, int f_size_w, int f_size_h, int f_size_d, int flat_f_size,
 		int w_size, int h_size, int d_size, int nb_area_w, int nb_area_h, int nb_area_d, int bias_in, int bias_out);
 	void (*drop_apply_fct)(void* i_table, float* mask, size_t size, float drop_rate);
+	void (*drop_scale_fct)(void* i_table, float* mask, size_t size, float drop_rate);
 	void (*rotate_filter_fct)(void* in, void* out, int nb_rows, int TC_padding, int depth_size, int nb_filters_in, int len);
 };
 
@@ -165,6 +169,7 @@ struct cuda_pool_fcts
 		int w_size, int h_size, int d_size,
 		int w_size_out, int h_size_out, int d_size_out, size_t length);
 	void (*drop_apply_fct)(void* i_table, float* mask, size_t size, float drop_rate);
+	void (*drop_scale_fct)(void* i_table, float* mask, size_t size, float drop_rate);
 	void (*typed_memset_fct)(void* i_table, int value, size_t size);
 };
 
@@ -337,10 +342,8 @@ struct network
 	
 	int in_dims[4];
 	size_t input_dim; // flat size
-	//Correspond to the "target size"
-	int output_dim;
-	//Correspond to the actual ouput size with various paddings if needed
-	int out_size;
+	int output_dim; //Correspond to the "target size"
+	int out_size; //Correspond to the actual ouput size with paddings if needed
 	int batch_size;
 	int batch_param;
 	int iter;

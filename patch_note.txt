@@ -1,4 +1,25 @@
 
+********************************************
+===== V-0.9.3.5 =====
+ (interface V-0.6.6)
+
+Minor updates toward V-1.0 release
+
+- Update examples, add PASCAL and COCO object detection examples in scripts and notebooks
+
+====    Interface related    ====
+- Various minor visual/log adjustments
+
+==== Low-level modifications ====
+- Various minor visual/log adjusments
+- Experimental GAN support:
+    + Update old GAN functions to work on the latest version
+    + Only CUDA support and hard coded parameters for now
+- Change the dropout output scaling to be done by the layer that is actually dropping. This improve compatibility with other layers and results
+  in more resilient source code. Also make the is_inference and drop_mode parameter checked in backprop for dropping layers, so the gradient 
+  can be propagated with or without dropout (usefull for some applications like GANs).
+
+********************************************
 ===== V-0.9.3.4 =====
  (interface V-0.6.6)
  (continuous update from 9.3.1 to 9.3.4)

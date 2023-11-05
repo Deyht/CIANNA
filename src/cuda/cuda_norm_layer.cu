@@ -150,7 +150,7 @@ __global__ void reduce_group_dgamma_conv_kernel_##name(void *idata, void *d_outp
 	int block_id = blockIdx.x;																													\
 	int blockSize = blockDim.x;																													\
 	int i = tid;																																\
-	float eps = 0.00001f;																														\
+	float eps = 0.001f;																															\
 	sdata[tid] = 0;																																\
 																																				\
 	while (i < sum_size)																														\
@@ -186,7 +186,7 @@ __global__ void group_normalization_conv_kernel_##name(void *i_output, void *i_i
 	int j = blockIdx.y*blockDim.y + threadIdx.y;																								\
 	type* input = (type*) i_input;																												\
 	type* output = (type*) i_output;																											\
-	float l_val, eps = 0.00001f;																												\
+	float l_val, eps = 0.001f;																													\
 	float mean = 0.0f, var = 0.0f;																												\
 	int filter_offset = flat_a_size*b_size;																										\
 	int group_id, batch_id;																														\
@@ -229,7 +229,7 @@ __global__ void group_normalization_conv_back_kernel_##name(																				
 	type* input = (type*) i_input;																												\
 	type* delta_input = (type*) i_delta_input;																									\
 	type* delta_output = (type*) i_delta_output;																								\
-	float eps = 0.00001f;																														\
+	float eps = 0.001f;																															\
 	float mean = 0.0f, var = 0.0f;																												\
 	float l_d_gamma, l_d_beta;																													\
 	int filter_offset = flat_a_size*b_size;																										\

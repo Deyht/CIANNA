@@ -127,21 +127,6 @@ __global__ void cuda_rotate_filter_matrix_##name																								\
 	}																																			\
 }
 
-__global__ void cuda_dropout_select_conv(float* mask, size_t size, float drop_rate, void* states)
-{
-	size_t i = blockIdx.x*blockDim.x + threadIdx.x;
-	curandState_t* c_states = (curandState_t*) states;
-	
-	float rand;
-	if(i < size)
-	{
-		rand = curand_uniform(&c_states[i]);
-		if(rand < drop_rate)
-			mask[i] = 0;
-		else
-			mask[i] = 1;
-	}
-}
 
 #define cuda_dropout_apply_conv(name, type) 																									\
 __global__ void cuda_dropout_apply_conv_##name(void* i_table, float* mask, size_t size, float drop_rate)										\
@@ -158,24 +143,42 @@ __global__ void cuda_dropout_apply_conv_##name(void* i_table, float* mask, size_
 	else																																		\
 		mask[i] = 0.0f;																															\
 	 																																			\
-	table[i] *= mask[i]; 																														\
+	table[i] = (type)((float)table[i]*mask[i]);																									\
 }
+
+
+#define cuda_dropout_scale_conv(name, type) 																									\
+__global__ void cuda_dropout_scale_conv_##name(void* i_table, float* mask, size_t size, float drop_rate)										\
+{ 																																				\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x; 																							\
+																																				\
+	type *table = (type*) i_table;																												\
+																																				\
+	if(i >= size)																																\
+		return;																																	\
+	 																																			\
+	table[i] = (type)((float)table[i]*(1.0f-drop_rate)); 																						\
+}
+
 
 
 im2col_kernel_v5(FP32, float);
 cuda_rotate_filter_matrix(FP32, float); 
 cuda_dropout_apply_conv(FP32, float);
+cuda_dropout_scale_conv(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 im2col_kernel_v5(FP16, half);
-cuda_rotate_filter_matrix(FP16, half); 
+cuda_rotate_filter_matrix(FP16, half);
 cuda_dropout_apply_conv(FP16, half);
+cuda_dropout_scale_conv(FP16, half);
 #endif
 
 #if defined (GEN_AMPERE)
 im2col_kernel_v5(BF16, nv_bfloat16);
 cuda_rotate_filter_matrix(BF16, nv_bfloat16); 
 cuda_dropout_apply_conv(BF16, nv_bfloat16);
+cuda_dropout_scale_conv(BF16, nv_bfloat16);
 #endif
 
 
@@ -187,16 +190,18 @@ void cuda_conv_init(network* net)
 		case FP32C_FP32A:
 		case TF32C_FP32A:
 			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v5_FP32;
-			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_FP32;
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_FP32;
+			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_FP32;
+			net->cu_inst.cu_conv_fcts.drop_scale_fct = cuda_dropout_scale_conv_FP32;
 			break;
 		
 		case FP16C_FP32A:
 		case FP16C_FP16A:
 			#if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v5_FP16;
-			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_FP16;
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_FP16;
+			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_FP16;
+			net->cu_inst.cu_conv_fcts.drop_scale_fct = cuda_dropout_scale_conv_FP16;
 			#else
 			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
 			exit(EXIT_FAILURE);
@@ -206,8 +211,9 @@ void cuda_conv_init(network* net)
 		case BF16C_FP32A:
 			#if defined (GEN_AMPERE)
 			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v5_BF16;
-			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_BF16;
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_BF16;
+			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_BF16;
+			net->cu_inst.cu_conv_fcts.drop_scale_fct = cuda_dropout_scale_conv_BF16;
 			#else
 			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
 			exit(EXIT_FAILURE);
@@ -317,18 +323,7 @@ void cuda_forward_conv_layer(layer *current)
 	int im2col_prev_bias;
 	int dim_a, dim_b, dim_c;
 	
-	void *w_alpha;
-	float w_f_alpha;
-	half w_h_alpha;
-	float c_dr;
-	
 	network* net = current->c_network;
-	
-	if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-		w_alpha = &w_h_alpha;
-	else
-		w_alpha = &w_f_alpha;
-
 	if(net->length == 0)
 		return;
 	c_param = (conv_param*) current->param;
@@ -392,38 +387,10 @@ void cuda_forward_conv_layer(layer *current)
 		c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
 		c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], im2col_prev_bias, 1);
 
-	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
-	{
-		c_dr = current->previous->dropout_rate;
-			
-		if(c_dr <= 0.01f)
-		{
-			if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-				*((half*)w_alpha) = 1.0f;	
-			else
-				*((float*)w_alpha) = 1.0f;
-		}
-		else
-		{
-			c_dr = ((c_param->flat_f_size-1)*(1.0f-c_dr)+1)/c_param->flat_f_size;
-			if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-				*((half*)w_alpha) = c_dr;	
-			else
-				*((float*)w_alpha) = c_dr;
-		}
-	}
-	else
-	{
-		if(net->cu_inst.use_cuda_TC == FP16C_FP16A)
-			*((half*)w_alpha) = 1.0f;	
-		else
-			*((float*)w_alpha) = 1.0f;
-	}
-
 	//Input X filters matrix multiplication for the all batch
 	cublasGemmEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, net->batch_size 
 		* (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]), c_param->nb_filters,
-		(c_param->flat_f_size + c_param->TC_padding), w_alpha, c_param->im2col_input, cuda_data_type,
+		(c_param->flat_f_size + c_param->TC_padding), cu_alpha, c_param->im2col_input, cuda_data_type,
 		(c_param->flat_f_size + c_param->TC_padding), c_param->filters, cuda_data_type,  
 		(c_param->flat_f_size + c_param->TC_padding), cu_beta, current->output, cuda_data_type,
 		net->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]),
@@ -432,17 +399,30 @@ void cuda_forward_conv_layer(layer *current)
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
 	
-	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f)
 	{
-		cu_blocks = (c_param->nb_filters * net->batch_size
-			* (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])  + cu_threads - 1) / cu_threads;
-		
-		cuda_random_vector(c_param->dropout_mask, c_param->nb_filters * net->batch_size
-			* (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
-		
-		net->cu_inst.cu_conv_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, c_param->dropout_mask,
-			c_param->nb_filters * net->batch_size * (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), current->dropout_rate);
+		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
+		{
+			cu_blocks = (c_param->nb_filters * net->batch_size
+				* (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])  + cu_threads - 1) / cu_threads;
+			
+			cuda_random_vector(c_param->dropout_mask, c_param->nb_filters * net->batch_size
+				* (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]));
+			
+			net->cu_inst.cu_conv_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, c_param->dropout_mask,
+				c_param->nb_filters * net->batch_size * (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), current->dropout_rate);
+		}
+		else
+		{
+			cu_blocks = (c_param->nb_filters * net->batch_size
+				* (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2])  + cu_threads - 1) / cu_threads;
+				
+			net->cu_inst.cu_conv_fcts.drop_scale_fct<<<cu_blocks, cu_threads>>>(current->output, c_param->dropout_mask,
+				c_param->nb_filters * net->batch_size * (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), current->dropout_rate);
+		}
 	}
+	
+		
 }
 
 
@@ -460,7 +440,7 @@ void cuda_backward_conv_layer(layer *current)
 
 	c_param = (conv_param*) current->param;
 	
-	if(current->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 	{
 		cu_blocks = (c_param->nb_filters * net->batch_size
 			* (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) + cu_threads - 1) / cu_threads;

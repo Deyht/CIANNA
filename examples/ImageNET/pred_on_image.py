@@ -17,6 +17,10 @@ def i_ar(int_list):
 def f_ar(float_list):
 	return np.array(float_list, dtype="float32")
 
+if(not os.path.isdir("ImageNET_aux_data")):
+	os.system("wget https://share.obspm.fr/s/Pqbn4cC2azo84Z2/download/ImageNET_aux_data.tar.gz")
+	os.system("tar -xvzf ImageNET_aux_data.tar.gz")
+
 #Minimum deployement setup for prediction on a single image
 
 image_size_val = 480

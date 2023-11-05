@@ -62,7 +62,7 @@ cnn.create_dataset("TEST", size=10000, input=data_test, target=target_test)
 #Used to load a saved network at a given iteration
 load_step = 0
 if(load_step > 0):
-	cnn.load("net_save/net0_s%04d.dat"%(load_step), load_step, bin=1)
+	cnn.load("net_save/net0_s%04d.dat"%(load_step), load_step)
 else:
 	cnn.conv(f_size=i_ar([5,5]), nb_filters=8 , padding=i_ar([2,2]), activation="RELU")
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")

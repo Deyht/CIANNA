@@ -323,7 +323,7 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	{
 		if(d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
 				|| (d_param->nb_neurons+1) % 8 != 0)
-			printf("Warning : Forward gemm TC data misalignement due to layer size mismatch\n");
+			printf("Warning : Forward gemm TC data misalignment due to layer size mismatch\n");
 		if(current->previous != NULL && (d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
 				|| (d_param->nb_neurons+1) % 8 != 0))
 			printf("Warning : Backprop gemm TC data misalignment due to layer size mismatch\n");

@@ -81,7 +81,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-0.9.3.4 BETA BUILD (09/2023), by D.Cornu\n\
+CIANNA V-0.9.3.5 BETA BUILD (10/2023), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -161,14 +161,13 @@ CIANNA V-0.9.3.4 BETA BUILD (09/2023), by D.Cornu\n\
 		networks[network_number]->cu_inst.use_cuda_TC = FP32C_FP32A;
 	#endif
 	
-	nb_networks++;
-	
-	
 	srand(time(NULL));
 	#ifdef CUDA
 	if(comp_int == C_CUDA)
 		init_cuda(networks[network_number]);
 	#endif
+	
+	nb_networks++;
 	
 	#ifndef CUDA
 	if(comp_int == C_CUDA)
@@ -2052,50 +2051,66 @@ void forward_testset(network *net, int saving, int repeat, int drop_mode, int si
 
 
 
-
-#ifdef CUDA
-// Experimental function for now, for development purposes only
-void train_gan(network* gen, network* disc, int nb_iter, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
-	float u_decay, float gen_disc_learn_rate_ratio, int save_every, int save_bin, int shuffle_gpu, int shuffle_every, int disc_only, float c_TC_scale_factor, int silent)
+void train_gan(network *gen, network *disc, int nb_iter, int control_interv, float u_begin_learning_rate, 
+	float u_end_learning_rate, float u_momentum, float u_decay, float u_weight_decay, float gen_disc_learn_rate_ratio, 
+	int save_every, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor, int silent)
 {
-	//1)Generate data or use data provided in the form of a dataset
-	//Forward the generative model
-	//straightforward
-	
-	//2) Train the discriminator model
-	//Cut the generator model in half and train the discriminator on 0.5 true/ 0.5 false
-	//two passes possible
-	
-	//3) Train the generative model through the frozen discriminative model
-	//Connect the train and generative nets (use a fake first layer in discriminator)
-	//Freeze the discriminator part
-	//Train on new generated data with invert labels
-	
-	
-	int i, j, k, l, i_half;
-	//int i,j,k, i_half;
+	int i, j, k, dbl_disc, gen_mult;
 	float begin_learn_rate;
 	float end_learn_rate;
-	float decay;
 	double batch_error = 0.0, total_error = 0.0;
 	char net_save_file_name[200];
 	float items_per_s = 0.0;
-	int batch_loc = 0;
-	int pos;
+	void *disc_input_alt, *disc_target_alt;
+	void *disc_input_back;
+	int fake_frac = 0, sep_offset = 0; 
 	
-	float *gan_half_target;
-	float *gan_reverse_target;
-	void* disc_fake_layer_output;
-	void* target_point_back;
+	if(gen->inference_only || disc->inference_only)
+	{
+		printf("\n ERROR: Network was loaded in inference only mode. \n Re-init network with inference only set to false to re-eanble training capability.\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(gen->batch_size%2 != 0 || disc->batch_size%2 != 0)
+	{
+		printf("\n ERROR: Batch size must be a factor of two for easy real / fake mixing in discriminator.\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(gen->batch_size != disc->batch_size)
+	{
+		printf("\n ERROR: Batch size must be identical for generator and discriminator.\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(gen->train.nb_batch != 3*disc->train.nb_batch)
+	{
+		printf("\n ERROR: Generator dataset size must be twice the discriminator dataset size.\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(gen->train.size%gen->batch_size != 0 || disc->train.size%disc->batch_size)
+	{
+		printf("\n ERROR: Dataset size must be an exact multiple of batch size for both networks.\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(gen->cu_inst.use_cuda_TC != disc->cu_inst.use_cuda_TC)
+	{
+		printf("\n ERROR: Mixed precision setting must be identical for generator and discriminator.\n");
+		exit(EXIT_FAILURE);
+	}
 	
 	eval_init(gen);
+	eval_init(disc);
 	
 	#ifdef CUDA
-	Dataset shuffle_duplicate;
-	void* temp_error = NULL;
-	int *index_shuffle = NULL, *index_shuffle_device = NULL;
+	Dataset gen_shuffle_duplicate, disc_shuffle_duplicate;
+	int *gen_index_shuffle = NULL, *disc_index_shuffle = NULL;
+	int *gen_index_shuffle_device = NULL, *disc_index_shuffle_device = NULL;;
 	
 	cuda_set_TC_scale_factor(gen, c_TC_scale_factor);
+	cuda_set_TC_scale_factor(disc, c_TC_scale_factor);
 	
 	if(gen->compute_method == C_CUDA)
 	{
@@ -2104,59 +2119,86 @@ void train_gan(network* gen, network* disc, int nb_iter, int control_interv, flo
 			cuda_create_table(gen, &(gen->input), gen->batch_size*(gen->input_dim+1));
 			cuda_create_table(gen, &(gen->target), gen->batch_size*(gen->output_dim));
 		}
+		else
+		{
+			gen_shuffle_duplicate = create_dataset(gen, gen->train.size);
+			if(shuffle_gpu)
+			{
+				gen_index_shuffle = (void*) calloc(gen->train.size,sizeof(int));
+				for(i = 0; i < gen->train.size; i++)
+					gen_index_shuffle[i] = i;
+				gen_index_shuffle_device = (void*) calloc(gen->train.size,sizeof(int));
+				cuda_get_batched_dataset(gen, &gen_shuffle_duplicate);
+				cuda_convert_table_int(&gen_index_shuffle_device, gen->train.size,0);
+			}
+		}
 	}
 	
 	if(disc->compute_method == C_CUDA)
 	{
-		cuda_create_table(disc, &(disc->input), disc->batch_size*(disc->input_dim+1));
-		cuda_create_table(disc, &(disc->target), disc->batch_size*(disc->output_dim));
-		
-		if(!disc->cu_inst.dynamic_load)
+		if(disc->cu_inst.dynamic_load)
 		{
-			shuffle_duplicate = create_dataset(disc, disc->train.size);
+			cuda_create_table(gen, &(disc->input), disc->batch_size*(disc->input_dim+1));
+			cuda_create_table(gen, &(disc->target), disc->batch_size*(disc->output_dim));
+		}
+		else
+		{
+			disc_shuffle_duplicate = create_dataset(disc, disc->train.size);
 			if(shuffle_gpu)
 			{
-				
-				index_shuffle = (void*) calloc(disc->train.size,sizeof(int));
+				disc_index_shuffle = (void*) calloc(disc->train.size,sizeof(int));
 				for(i = 0; i < disc->train.size; i++)
-					index_shuffle[i] = i;
-				index_shuffle_device = (void*)  calloc(disc->train.size,sizeof(int));
-				cuda_get_batched_dataset(disc, &shuffle_duplicate);
-				cuda_convert_table_int(&index_shuffle_device, disc->train.size,0);
+					disc_index_shuffle[i] = i;
+				disc_index_shuffle_device = (void*) calloc(disc->train.size,sizeof(int));
+				cuda_get_batched_dataset(disc, &disc_shuffle_duplicate);
+				cuda_convert_table_int(&disc_index_shuffle_device, disc->train.size,0);
 			}
 		}
-		
-		cuda_create_table(disc, (void**)&gan_half_target, disc->output_dim*disc->batch_size);
-		cuda_create_table(disc, (void**)&gan_reverse_target, disc->output_dim*disc->batch_size);
-		
-		//cuda_create_gan_target(disc, gan_half_target, disc->batch_size, 0.5);
-		
-		cuda_create_gan_target(disc, gan_reverse_target, disc->target, 0.0, 0);
-	
 	}
-	
 	#endif
 	
 	begin_learn_rate = u_begin_learning_rate;
 	end_learn_rate = u_end_learning_rate;
-	gen->momentum = u_momentum;
-	disc->momentum = u_momentum;
-	decay = u_decay;
+	gen->momentum = u_momentum; disc->momentum = u_momentum;
+	gen->decay = u_decay; disc->decay = u_decay;
+	gen->weight_decay = u_weight_decay; disc->weight_decay = u_weight_decay;
+	
+	switch(gen->net_layers[gen->nb_layers-1]->type)
+	{
+		case CONV:
+			gen->out_size = ((conv_param*)gen->net_layers[gen->nb_layers-1]->param)->nb_filters 
+				* ((conv_param*)gen->net_layers[gen->nb_layers-1]->param)->nb_area[0] 
+				* ((conv_param*)gen->net_layers[gen->nb_layers-1]->param)->nb_area[1]
+				* ((conv_param*)gen->net_layers[gen->nb_layers-1]->param)->nb_area[2];
+			break;
+			
+		case POOL:
+			gen->out_size = ((pool_param*)gen->net_layers[gen->nb_layers-1]->param)->prev_depth 
+				* ((pool_param*)gen->net_layers[gen->nb_layers-1]->param)->nb_area[0] 
+				* ((pool_param*)gen->net_layers[gen->nb_layers-1]->param)->nb_area[1]
+				* ((pool_param*)gen->net_layers[gen->nb_layers-1]->param)->nb_area[2];
+			break;
+	
+		case DENSE:
+		default:
+			gen->out_size = ((dense_param*)gen->net_layers[gen->nb_layers-1]->param)->nb_neurons+1;
+			break;
+	}
 	
 	switch(disc->net_layers[disc->nb_layers-1]->type)
 	{
 		case CONV:
-			disc->out_size = ((conv_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_filters *
-				((conv_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[0] * 
-				((conv_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[1] *
-				((conv_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[2];
+			disc->out_size = ((conv_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_filters 
+				* ((conv_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[0] 
+				* ((conv_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[1]
+				* ((conv_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[2];
 			break;
 			
 		case POOL:
-			disc->out_size = ((pool_param*)disc->net_layers[disc->nb_layers-1]->param)->prev_depth *
-				((pool_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[0] * 
-				((pool_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[1] * 
-				((pool_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[2];
+			disc->out_size = ((pool_param*)disc->net_layers[disc->nb_layers-1]->param)->prev_depth 
+				* ((pool_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[0] 
+				* ((pool_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[1]
+				* ((pool_param*)disc->net_layers[disc->nb_layers-1]->param)->nb_area[2];
 			break;
 	
 		case DENSE:
@@ -2165,7 +2207,22 @@ void train_gan(network* gen, network* disc, int nb_iter, int control_interv, flo
 			break;
 	}
 	
+	if((gen->out_size != gen->output_dim+1 && gen->net_layers[gen->nb_layers-1]->type == DENSE)
+		|| (disc->out_size != disc->output_dim+1 && disc->net_layers[disc->nb_layers-1]->type == DENSE))
+	{
+		printf("\nERROR: last layer size does not match the expected output dimensions in one of the network.\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	gen->output_error = (float*) calloc(gen->batch_size * gen->out_size, sizeof(float));
 	disc->output_error = (float*) calloc(disc->batch_size * disc->out_size, sizeof(float));
+	
+	if(gen->compute_method == C_CUDA)
+	{
+		#ifdef CUDA
+		cuda_create_table_FP32(&gen->cu_inst.output_error_cuda, gen->batch_size * gen->out_size);
+		#endif
+	}
 	
 	if(disc->compute_method == C_CUDA)
 	{
@@ -2174,376 +2231,294 @@ void train_gan(network* gen, network* disc, int nb_iter, int control_interv, flo
 		#endif
 	}
 	
-	disc_fake_layer_output = disc->net_layers[0]->output;
-	target_point_back = disc->target;
+	if(gen->iter == 0 || disc->iter == 0)
+		remove("error.txt");
+	
+	disc_input_alt = (float*) calloc(disc->batch_size*(disc->input_dim+1), sizeof(float));
+	disc_target_alt = (float*) calloc(disc->batch_size*(disc->output_dim), sizeof(float));
+	
+	if(disc->compute_method == C_CUDA)
+	{
+		#ifdef CUDA
+		cuda_convert_table(disc, &disc_input_alt, disc->batch_size*(disc->input_dim+1), 0);
+		cuda_convert_table(disc, &disc_target_alt, disc->batch_size*(disc->output_dim), 0);
+		#endif	
+	}
+
+	epoch_eval_in(gen);
 	
 	for(i = 0; i < nb_iter; i++)
 	{
-		printf("\n");
-		gen->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*gen->iter);
-		//gen->learning_rate = 0.0f;
-		gen->iter++;
-		disc->learning_rate = gen_disc_learn_rate_ratio * (end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-decay*gen->iter));
-		disc->iter++;
+		disc->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-disc->decay*disc->iter);
+		gen->learning_rate = gen_disc_learn_rate_ratio * disc->learning_rate;
+		gen->iter++; disc->iter++;
 		
-		printf("%g %g\n", gen->learning_rate, disc->learning_rate);
+		printf("Disc lr %f // Gen lr %f\n", disc->learning_rate, gen->learning_rate);
 	
-		if((disc->iter+1) % shuffle_every == 0 && disc->batch_param != SGD)
+		if(shuffle_every > 0 && (gen->iter+1) % shuffle_every == 0)
 		{
-			if(disc->compute_method == C_CUDA)
-			{
-				#ifdef CUDA
-				if(disc->cu_inst.dynamic_load)
-					cuda_host_only_shuffle(disc, disc->train);
-				else
-				{
-					if(shuffle_gpu)
-						cuda_shuffle(disc, disc->train, shuffle_duplicate, index_shuffle, index_shuffle_device);
-					else
-						cuda_host_shuffle(disc, disc->train, shuffle_duplicate);
-				}
-				#endif
-			}
-			else
-				host_only_shuffle(disc, disc->train);
-			
-		}
-		
-		epoch_eval_in(gen);
-		total_error = 0.0;
-		//Loop on all batch for one iter
-		//printf("\nIteration: %d\n", gen->iter);
-		for(j = 0; j < gen->train.nb_batch/2; j++)
-		{
-			batch_eval_in(gen);
-			if(j*2 == gen->train.nb_batch-1 && gen->train.size%gen->batch_size > 0)
-				continue;
-			else
-				gen->length = gen->batch_size;
-				
-			//no SGD
-			batch_loc = j*2;
-			
 			if(gen->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
 				if(gen->cu_inst.dynamic_load)
 				{
-					cuda_put_table(gen, gen->input, gen->train.input[batch_loc], gen->batch_size*(gen->input_dim+1));
+					cuda_host_only_shuffle(gen, gen->train);
 				}
 				else
 				{
-					gen->input = gen->train.input[batch_loc];
+					if(shuffle_gpu)
+						cuda_shuffle(gen, gen->train, gen_shuffle_duplicate, gen_index_shuffle, gen_index_shuffle_device);
+					else
+						cuda_host_shuffle(gen, gen->train, gen_shuffle_duplicate);
 				}
 				#endif
 			}
 			else
+				host_only_shuffle(gen, gen->train);
+		}
+		
+		if(shuffle_every > 0 && (disc->iter+1) % shuffle_every == 0)
+		{
+			if(disc->compute_method == C_CUDA)
 			{
-				gen->input = gen->train.input[batch_loc];
+				#ifdef CUDA
+				if(disc->cu_inst.dynamic_load)
+				{
+					cuda_host_only_shuffle(disc, disc->train);
+				}
+				else
+				{
+					if(shuffle_gpu)
+						cuda_shuffle(disc, disc->train, disc_shuffle_duplicate, disc_index_shuffle, disc_index_shuffle_device);
+					else
+						cuda_host_shuffle(disc, disc->train, disc_shuffle_duplicate);
+				}
+				#endif
 			}
-			
-			gen->is_inference = 0;
-	        gen->inference_drop_mode = MC_MODEL;
-			
-			disc->is_inference = 0;
-	        disc->inference_drop_mode = MC_MODEL;
+			else
+				host_only_shuffle(disc, disc->train);
+		}
+		
+		//Loop on all batches for one iteration
+		total_error = 0.0; //on disc
+		gen->is_inference = 0;
+        gen->inference_drop_mode = MC_MODEL;
+        
+		for(j = 0; j < disc->train.nb_batch; j++)
+		{
+			batch_eval_in(disc);
+			gen->length = gen->batch_size; disc->length = disc->batch_size;
+		
+			if(gen->compute_method == C_CUDA && gen->cu_inst.dynamic_load)
+			{
+				#ifdef CUDA
+				cuda_put_table(gen, gen->input, gen->train.input[j*3], gen->batch_size*(gen->input_dim+1));
+				cuda_put_table(gen, gen->target, gen->train.target[j*3], gen->batch_size*(gen->output_dim));
+				#endif
+			}
+			else
+			{
+				gen->input = gen->train.input[j*3];
+				gen->target = gen->train.target[j*3];
+			}
 			
 			for(k = 0; k < gen->nb_layers; k++)
 			{
+				perf_eval_in(gen);
 				gen->net_layers[k]->forward(gen->net_layers[k]);
+				perf_eval_out(gen, k, gen->fwd_perf, gen->fwd_perf_n);
 			}
 			
-			/*if(j == 1)
+			if(disc->compute_method == C_CUDA && disc->cu_inst.dynamic_load)
 			{
-				cuda_print_table(gen, gen->net_layers[0]->input, 129*gen->batch_size, 129);
-				cuda_print_table(gen, gen->net_layers[0]->output, 7*7*129*gen->batch_size, 7*7*129);
-				exit(EXIT_SUCCESS);
-			}*/
-		
-			if(j == disc->train.nb_batch-1 && disc->train.size%disc->batch_size > 0)
-				continue;
+				#ifdef CUDA
+				cuda_put_table(disc, disc->input, disc->train.input[j], disc->batch_size*(disc->input_dim+1));
+				cuda_put_table(disc, disc->target, disc->train.target[j], disc->batch_size*(disc->output_dim));
+				#endif
+			}
 			else
-				disc->length = disc->batch_size;
-				
-			//no SGD
-			batch_loc = j;
-			
-			for(i_half = 0; i_half < 2; i_half++)
 			{
-				disc->target = target_point_back;
+				disc->input = gen->train.input[j];
+				disc->target = gen->train.target[j];
+			}
 			
-				if(disc->compute_method == C_CUDA)
-				{
-					#ifdef CUDA
-					if(disc->cu_inst.dynamic_load)
-					{
-						cuda_put_table(disc, disc->input, disc->train.input[batch_loc], disc->batch_size*(disc->input_dim+1));
-						cuda_put_table(disc, disc->target, disc->train.target[batch_loc], disc->batch_size*(disc->output_dim));
-					}
-					else
-					{
-						disc->input = disc->train.input[batch_loc];
-						disc->target = disc->train.target[batch_loc];
-					}
-					#endif
-				}
-				else
-				{
-					disc->input = disc->train.input[batch_loc];
-					disc->target = disc->train.target[batch_loc];
-				}
-	
-				
+			/*if(random_uniform() < 0.1)
+			{
+				fake_frac = (int) random_uniform()*disc->batch_size;
+				sep_offset = 0;
+			}
+			else
+			{*/
+				fake_frac = disc->batch_size/2;
+				sep_offset = disc->batch_size/2;
+			//}
 			
-				//have a "fake" first layer in disc, and create a "mix_up" function to put on this second layer
-				//this second layer can then be connected to the gen net output so it can do a fwd+backprop pass easily
-				//cuda_print_table(gen, gen->net_layers[gen->nb_layers-1]->output, 28*28*gen->batch_size, gen->batch_size);
-				//cuda_print_table_FP32(disc->input, (28*28+1)*gen->batch_size, gen->batch_size);
-				//cuda_print_table(disc, disc->net_layers[1]->input, 28*28*disc->batch_size, disc->batch_size);
+			disc->is_inference = 0;
+			disc->inference_drop_mode = MC_MODEL;
 			
-				//disc->net_layers[0]->output = disc_fake_layer_output;
-				//Seems OK !
+			for(dbl_disc = 0; dbl_disc < 2; dbl_disc++)
+			{
+				cuda_gan_disc_mix_input(disc, gen->net_layers[gen->nb_layers-1]->output, disc_input_alt, 
+					disc->input, fake_frac, dbl_disc*sep_offset);
 				
-				disc->net_layers[1]->previous = disc->net_layers[0];
+				disc_input_back = disc->input;
 				
-				cuda_gan_disc_mix_input(gen->net_layers[gen->nb_layers-1], disc->net_layers[0], disc->input, i_half);
-				cuda_create_gan_target(disc, gan_half_target, disc->target, 0.5f, i_half);
-				disc->target = gan_half_target;
+				disc->net_layers[0]->previous = NULL;
+				disc->input = disc_input_alt;
 				
-				//cuda_print_table(disc, disc->net_layers[0]->output, 28*28*disc->batch_size, 28);
-				//cuda_print_table(disc, disc->target, 10*disc->batch_size, 10);
-				//if(i_half == 1)
-				//	exit(1);
-				
-				/*if(j == 1500)
+				for(k = 0; k < disc->nb_layers; k++)
 				{
-					cuda_print_table(disc, disc->net_layers[0]->output, 28*28*disc->batch_size, 28);
-					exit(EXIT_SUCCESS);
-				}*/
-				
-				//skip first fake layer
-				for(k = 1; k < disc->nb_layers; k++)
-				{
+					perf_eval_in(disc);
 					disc->net_layers[k]->forward(disc->net_layers[k]);
+					perf_eval_out(disc, k, disc->fwd_perf, disc->fwd_perf_n);
 				}
 				
-				if(0 && gen->iter%5 == 0 && j==0)
+				perf_eval_in(disc);
+				cuda_semi_supervised_gan_deriv_output_error(disc->net_layers[disc->nb_layers-1], 1, 0);
+				
+				if(i == nb_iter-1 && j == disc->train.nb_batch - 1)
 				{
-					cuda_print_table(disc, disc->net_layers[disc->nb_layers-1]->output, (disc->output_dim+1)*disc->batch_size, (disc->output_dim+1));
+					printf("Mixed\n");
+					cuda_print_table(disc, disc->net_layers[disc->nb_layers-1]->delta_o, 3*disc->batch_size, 3);
 				}
 				
-				output_deriv_error(disc->net_layers[disc->nb_layers-1]);
-				//cuda_semi_supervised_gan_deriv_output_error(disc->net_layers[disc->nb_layers-1], 1, 0);
-				
-				if(0 && gen->iter%5 == 0 && j==0)
+				for(k = 0; k < disc->nb_layers; k++)
 				{
-					cuda_print_table(disc, disc->target, (disc->output_dim)*disc->batch_size, (disc->output_dim));
-					cuda_print_table(disc, disc->net_layers[disc->nb_layers-1]->output, (disc->output_dim+1)*disc->batch_size, (disc->output_dim+1));
-					cuda_print_table(disc, disc->net_layers[disc->nb_layers-1]->delta_o, (disc->output_dim+1)*disc->batch_size, (disc->output_dim+1));
-					//exit(1);
-				}
-				
-				for(k = 0; k < disc->nb_layers-1; k++)
-				{
+					if(k != 0)
+						perf_eval_in(disc);
 					disc->net_layers[disc->nb_layers-1-k]->frozen = 0;
 					disc->net_layers[disc->nb_layers-1-k]->backprop(disc->net_layers[disc->nb_layers-1-k]);
+					perf_eval_out(disc, disc->nb_layers-1-k, disc->back_perf, disc->back_perf_n);
 				}
+				disc->input = disc_input_back;
 			}
 			
-			if(!disc_only)
-			{
-				//no SGD
-				batch_loc = j*2+1;
+			disc->is_inference = 1;
+			disc->inference_drop_mode = AVG_MODEL;
+			
+			for(gen_mult = 0; gen_mult < 1; gen_mult++)
+			{ 
 				
-				if(gen->compute_method == C_CUDA)
+				if(gen->compute_method == C_CUDA && gen->cu_inst.dynamic_load)
 				{
 					#ifdef CUDA
-					if(gen->cu_inst.dynamic_load)
-					{
-						cuda_put_table(gen, gen->input, gen->train.input[batch_loc], gen->batch_size*(gen->input_dim+1));
-					}
-					else
-					{
-						gen->input = gen->train.input[batch_loc];
-					}
+					cuda_put_table(gen, gen->input, gen->train.input[j*3+1+gen_mult], gen->batch_size*(gen->input_dim+1));
+					cuda_put_table(gen, gen->target, gen->train.target[j*3+1+gen_mult], gen->batch_size*(gen->output_dim));
 					#endif
 				}
 				else
 				{
-					gen->input = gen->train.input[batch_loc];
+					gen->input = gen->train.input[j*3+1+gen_mult];
+					gen->target = gen->train.target[j*3+1+gen_mult];
 				}
-				
-				//gen->net_layers[gen->nb_layers-1]->output = disc->net_layers[0]->output;
 				
 				for(k = 0; k < gen->nb_layers; k++)
 				{
+					perf_eval_in(gen);
 					gen->net_layers[k]->forward(gen->net_layers[k]);
+					perf_eval_out(gen, k, gen->fwd_perf, gen->fwd_perf_n);
 				}
 				
-				//cuda_print_table(gen, gen->net_layers[gen->nb_layers-1]->output, 28*28*16, 16);
+				//cuda_print_table(gen, gen->net_layers[gen->nb_layers-1]->output, 64*64*3*gen->batch_size, 64*64*3);
 				
-				disc->target = gan_reverse_target;
+				disc->net_layers[0]->previous = gen->net_layers[gen->nb_layers-1];
 				
-				disc->net_layers[0]->output = gen->net_layers[gen->nb_layers-1]->output;
-				
-				//disc->net_layers[1]->input = gen->net_layers[gen->nb_layers-1]->output;
-				//gen->net_layers[gen->nb_layers-1]->delta_o = disc->net_layers[0]->delta_o;
-				
-				//disc->net_layers[0]->output = disc_fake_layer_output;
-				//disc->net_layers[1]->previous = disc->net_layers[0];
-				//Seems OK !
-				//cuda_gan_disc_mix_input(gen->net_layers[gen->nb_layers-1], disc->net_layers[0], disc->input, -1);
-				
-				/*if(gen->iter == 1)
+				for(k = 0; k < disc->nb_layers; k++)
 				{
-					cuda_print_table(gen, gen->net_layers[gen->nb_layers-1]->output, 28*28*16, 28);
-					//cuda_print_table(disc, disc->net_layers[1]->input, 28*28*16, 16);
-					//exit(1);
-				}*/
-				
-				for(k = 1; k < disc->nb_layers; k++)
-				{
+					perf_eval_in(disc);
 					disc->net_layers[k]->forward(disc->net_layers[k]);
+					perf_eval_out(disc, k, disc->fwd_perf, disc->fwd_perf_n);
 				}
 				
-				/*if(1 && gen->iter%10 == 0 && j==0)
-				{
-					printf("prev_delta_o\n");
-					cuda_print_table(disc, disc->net_layers[disc->nb_layers-1]->delta_o, (disc->output_dim+1)*disc->batch_size, (disc->output_dim+1));
-				}*/
+				cuda_semi_supervised_gan_deriv_output_error(disc->net_layers[disc->nb_layers-1], 0, 1);
 				
-				output_deriv_error(disc->net_layers[disc->nb_layers-1]);
-				//cuda_semi_supervised_gan_deriv_output_error(disc->net_layers[disc->nb_layers-1], 0, 1);
-				if(0 && gen->iter%5 == 0 && j==0)
+				if(i == nb_iter-1 && j == disc->train.nb_batch - 1)
 				{
-					printf("Revert\n");
-					//cuda_print_table_FP32(disc->target, 10*16, 10);
-					cuda_print_table(disc, disc->target, (disc->output_dim)*disc->batch_size, (disc->output_dim));
-					cuda_print_table(disc, disc->net_layers[disc->nb_layers-1]->output, (disc->output_dim+1)*disc->batch_size, (disc->output_dim+1));
-					cuda_print_table(disc, disc->net_layers[disc->nb_layers-1]->delta_o, (disc->output_dim+1)*disc->batch_size, (disc->output_dim+1));
-					//exit(1);
+					printf("Fake reversed\n");
+					cuda_print_table(disc, disc->net_layers[disc->nb_layers-1]->delta_o, 3*disc->batch_size, 3);
 				}
 				
-				//gen->net_layers[gen->nb_layers-1]->output = disc->net_layers[0]->output;
-				disc->net_layers[1]->previous = gen->net_layers[gen->nb_layers-1];
-				
-				/*if(gen->iter == 1)
-				{
-					cuda_print_table(gen, disc->net_layers[0]->output, 28*28*16, 28);
-				}*/
-				
-				for(k = 0; k < disc->nb_layers-1; k++)
+				for(k = 0; k < disc->nb_layers; k++)
 				{
 					disc->net_layers[disc->nb_layers-1-k]->frozen = 1;
 					disc->net_layers[disc->nb_layers-1-k]->backprop(disc->net_layers[disc->nb_layers-1-k]);
 				}
 				
-				//gen->net_layers[gen->nb_layers-1]->delta_o = disc->net_layers[0]->delta_o;
+				//if(i == nb_iter-1 && j == disc->train.nb_batch - 1)
+				//{			
+				//	cuda_print_table(gen, gen->net_layers[gen->nb_layers-1]->output, 64*64*3*gen->batch_size, 64*64);
+				//	cuda_print_table(gen, gen->net_layers[gen->nb_layers-1]->delta_o, 64*64*3*gen->batch_size, 64*64);
+				//}
+				//exit(1);
+				
+				//cuda_gan_invert_generator_deltao(gen, gen->net_layers[gen->nb_layers-1]->delta_o);
 				
 				for(k = 0; k < gen->nb_layers; k++)
 				{
+					perf_eval_in(gen);
 					gen->net_layers[gen->nb_layers-1-k]->backprop(gen->net_layers[gen->nb_layers-1-k]);
+					perf_eval_out(gen, gen->nb_layers-1-k, gen->back_perf, gen->back_perf_n);
 				}
-				
-				/*if(gen->iter == 1)
-				{
-					cuda_print_table(gen, gen->net_layers[gen->nb_layers-2]->delta_o, 28*28*16*16, 28);
-					//cuda_print_table(gen, disc->net_layers[0]->delta_o, 28*28*16, 28);
-					if(j==1)
-						exit(1);
-				}*/
 			}
 			
-			
-			if(disc->compute_method == C_CUDA)
-			{
-				#ifdef CUDA
-				temp_error = disc->output_error;
-				disc->output_error = disc->cu_inst.output_error_cuda;
-				#endif
-			}
-			// Live loss monitoring
-			output_error(disc->net_layers[disc->nb_layers-1]);
-			
-			
-			if(disc->compute_method == C_CUDA)
-			{
-				#ifdef CUDA
-				cuda_get_table_FP32(disc->output_error, temp_error, disc->batch_size*disc->out_size);
-				disc->output_error = temp_error;
-				#endif
-			}
-			pos = 0;
-			batch_error = 0.0;
-			switch(disc->net_layers[disc->nb_layers-1]->type)
-			{
-				default:
-				case DENSE:
-					for(k = 0; k < disc->length; k++)
-					{
-						for(l = 0; l < disc->out_size; l++)
-						{
-							pos++;
-							batch_error += ((float*)disc->output_error)[pos];
-							total_error += ((float*)disc->output_error)[pos];
-						}
-					}
-					break;
-			}
-			batch_error /= disc->length;
-			if(!silent)
-				print_iter_advance(disc, j+1, disc->train.nb_batch, batch_error, gen->batch_size/batch_eval_out(gen), 1);
-
+			if(silent != 1)
+				print_iter_advance(disc, j+1, disc->train.nb_batch, batch_error, (disc->batch_size*3)/batch_eval_out(disc), 1);
 		}
-		
-		disc->net_layers[0]->output = disc_fake_layer_output;
 		
 		items_per_s = gen->train.size/epoch_eval_out(gen);
 		
 		if(((gen->iter) % control_interv == 0))
 		{
-			//printf("\nControl step iter: %d\n", net->iter);
 			printf("\n%*s", 14, " ");
 			printf("Average Training perf: %0.2f it/s |", items_per_s);
-			printf(" Mean Loss: %g\n", total_error/gen->train.size);
-			printf(" Learning rate : %g | ", gen->learning_rate);
-			gen->is_inference = 1;
-			gen->no_error = 0;
-			//Could be updated, but not really usefull
-			//compute_error(net, net->valid, 0, show_confmat, 1);
-			//printf("\n");
+			printf(" Mean Loss: %.5g |", total_error/disc->train.size);
+			printf(" Learning rate: %.5g | Momentum: %.5g | Weight decay: %.5g\n", gen->learning_rate, gen->momentum, gen->weight_decay);
+			//disc->is_inference = 1;
+			//disc->no_error = 0;
+			//compute_error(net, net->valid, 0, show_confmat, 1, silent);
 		}
 		if(save_every > 0)
 		{
-			if(((gen->iter) % save_every) == 0)
+			if(((disc->iter) % save_every) == 0)
 			{
-				sprintf(net_save_file_name, "net%d_s%04d.dat", gen->id, gen->iter);
-				printf("Saving network for iteration: %d\n", gen->iter);
+				sprintf(net_save_file_name, "net_save/net%d_s%04d.dat", gen->id, gen->iter);
+				printf("Saving network for iteration: %d (mode: %d)\n", gen->iter, save_bin);
 				save_network(gen, net_save_file_name, save_bin);
-				
-				sprintf(net_save_file_name, "net%d_s%04d.dat", disc->id, disc->iter);
-				printf("Saving network for iteration: %d\n", disc->iter);
+				sprintf(net_save_file_name, "net_save/net%d_s%04d.dat", disc->id, disc->iter);
+				printf("Saving network for iteration: %d (mode: %d)\n", disc->iter, save_bin);
 				save_network(disc, net_save_file_name, save_bin);
 			}
 		}
 	}
 	
+	free(gen->output_error);
 	free(disc->output_error);
 	
 	#ifdef CUDA
 	if(gen->compute_method == C_CUDA)
 	{
+		cuda_free_table(gen->cu_inst.output_error_cuda);
 		if(gen->cu_inst.dynamic_load)
 		{
 			cuda_free_table(gen->input);
 			cuda_free_table(gen->target);
 		}
+		else if(shuffle_gpu)
+		{
+			cuda_free_dataset(&gen_shuffle_duplicate);
+			cuda_free_table(gen_index_shuffle_device);
+			free(gen_index_shuffle);
+		}
+		else
+		{
+			free_dataset(&gen_shuffle_duplicate);
+		}	
 	}
-	#endif
 	
-	#ifdef CUDA
 	if(disc->compute_method == C_CUDA)
 	{
+		cuda_free_table(disc_input_alt);
+		cuda_free_table(disc_target_alt);
 		cuda_free_table(disc->cu_inst.output_error_cuda);
 		if(disc->cu_inst.dynamic_load)
 		{
@@ -2552,24 +2527,23 @@ void train_gan(network* gen, network* disc, int nb_iter, int control_interv, flo
 		}
 		else if(shuffle_gpu)
 		{
-			cuda_free_dataset(&shuffle_duplicate);
-			cuda_free_table(index_shuffle_device);
-			free(index_shuffle);
+			cuda_free_dataset(&disc_shuffle_duplicate);
+			cuda_free_table(disc_index_shuffle_device);
+			free(disc_index_shuffle);
 		}
 		else
 		{
-			free_dataset(&shuffle_duplicate);
+			free_dataset(&disc_shuffle_duplicate);
 		}
-		
-		cuda_free_table(gan_half_target);
-		cuda_free_table(gan_reverse_target);	
+	}
+	else
+	{
+		cuda_free_table(disc_input_alt);
+		cuda_free_table(disc_target_alt);
 	}
 	#endif
-	printf("\n");
+	
 }
-#endif
-
-
 
 
 

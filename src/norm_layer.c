@@ -113,7 +113,7 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	int i;
 	long long int mem_approx = 0;
 	layer *current;
-	float eps = 0.00001f;
+	float eps = 0.001f;
 	
 	current = (layer*) malloc(sizeof(layer));
 	net->net_layers[net->nb_layers] = current;
@@ -121,6 +121,12 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	net->nb_layers++;
 	
 	printf("L:%d - CREATING NORMALIZATION LAYER ...\n", net->nb_layers);
+	
+	if(previous == NULL)
+	{
+		printf("\nERROR: Normalization layer is not autorized as first layer.\n");
+		exit(EXIT_FAILURE);
+	}
 	
 	//allocate the space holder for conv layer parameters
 	n_param = (norm_param*) malloc(sizeof(norm_param));
@@ -154,11 +160,6 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	n_param->prev_param = current->previous->param;
 	current->input = previous->output;
 	
-	if(current->previous == NULL)
-	{
-		printf("\nERROR: normalization layer is not autorized as first layer.\n");
-		exit(EXIT_FAILURE);
-	}
 	switch(current->previous->type)
 	{
 		default:

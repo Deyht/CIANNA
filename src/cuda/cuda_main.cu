@@ -660,15 +660,15 @@ float cuda_epoch_eval_out(void)
 
 #define shfl_kern_fct(name, type)																												\
 __global__ void shfl_kern_##name																												\
-	(void** i_in, void** i_targ, void** i_train_dupl, void** i_targ_dupl,																		\
-	int* index, size_t in_size, int b_size, int d_in, int d_out)																				\
+	(void **i_in, void **i_targ, void **i_train_dupl, void **i_targ_dupl,																		\
+	int *index, size_t in_size, int b_size, int d_in, int d_out)																				\
 {																																				\
 	int j, batch, batch2, pos, pos2;																											\
 																																				\
-	type** in   = (type**) i_in;																												\
-	type** targ = (type**) i_targ;																												\
-	type** train_dupl = (type**) i_train_dupl;																									\
-	type** targ_dupl  = (type**) i_targ_dupl;																									\
+	type **in   = (type**) i_in;																												\
+	type **targ = (type**) i_targ;																												\
+	type **train_dupl = (type**) i_train_dupl;																									\
+	type **targ_dupl  = (type**) i_targ_dupl;																									\
 																																				\
 																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
@@ -687,16 +687,16 @@ __global__ void shfl_kern_##name																												\
 
 #define get_back_shuffle_fct(name, type)																										\
 __global__ void get_back_shuffle_##name																											\
-	(void** i_in, void** i_targ, void** i_train_dupl, void** i_targ_dupl,																		\
+	(void **i_in, void **i_targ, void **i_train_dupl, void **i_targ_dupl,																		\
 	size_t in_size, int b_size, int d_in, int d_out)																							\
 {																																				\
 	size_t j;																																	\
 	int batch, pos;																																\
 																																				\
-	type** in   = (type**) i_in;																												\
-	type** targ = (type**) i_targ;																												\
-	type** train_dupl = (type**) i_train_dupl;																									\
-	type** targ_dupl  = (type**) i_targ_dupl;																									\
+	type **in   = (type**) i_in;																												\
+	type **targ = (type**) i_targ;																												\
+	type **train_dupl = (type**) i_train_dupl;																									\
+	type **targ_dupl  = (type**) i_targ_dupl;																									\
 																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	if(i < in_size)																																\
@@ -841,55 +841,71 @@ void cuda_host_only_shuffle(network *net, Dataset data)
 
 #define cuda_gan_disc_mix_input_kernel(name, type)																								\
 __global__ void cuda_gan_disc_mix_input_kernel_##name																							\
-	(void *gen_output, void *disc_input, void* true_input, 																						\
-	int half_offset, int im_flat_size, int nb_channels, int batch_size, size_t len) 															\
+	(void *gen_output, void *disc_input, void* targ_input, int nb_fake, int batch_offset,														\
+	int nb_filters, int flat_f_size, int batch_size, size_t size) 																				\
+{																																				\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int c_batch, c_filter, in_filter_pos;																										\
+																																				\
+	type* g_out   = (type*) gen_output;																											\
+	type* targ_in = (type*) targ_input;																											\
+	type* d_in    = (type*) disc_input;																											\
+																																				\
+	if(i >= size)																																\
+		return;																																	\
+																																				\
+	c_batch = i/(nb_filters*flat_f_size+1);																										\
+	c_filter = (i%(nb_filters*flat_f_size+1))/flat_f_size;																						\
+	in_filter_pos = (i%(nb_filters*flat_f_size+1))%flat_f_size;																					\
+																																				\
+	if(c_batch < nb_fake) /*Fake from generator*/																								\
+	{																																			\
+		if(c_filter == nb_filters)																												\
+			d_in[i] = (type) 0.0f;																												\
+		else																																	\
+			d_in[i] = g_out[(c_batch+batch_offset)*flat_f_size + c_filter*batch_size*flat_f_size + in_filter_pos];								\
+	}																																			\
+	else 			  		 /*True from input training set*/																					\
+		d_in[i] = targ_in[i+(batch_offset-nb_fake)*(nb_filters*flat_f_size+1)];																	\
+}
+
+
+void cuda_gan_disc_mix_input(network *disc, void *gen_output, void *disc_input, void* targ_input, int nb_fake, int batch_offset)
+{
+	cu_blocks = ((disc->input_dim+1)*disc->batch_size + cu_threads - 1) / cu_threads;
+	
+	//printf("%d %d %d %d %d %ld\n", nb_fake, batch_offset, disc->in_dims[3],
+	//	disc->in_dims[0]*disc->in_dims[1]*disc->in_dims[2], disc->batch_size, (disc->input_dim+1)*disc->batch_size);
+	
+	disc->cu_inst.cu_auxil_fcts.cu_gan_disc_mix_input_kernel<<< cu_blocks, cu_threads >>>
+		(gen_output, disc_input, targ_input, nb_fake, batch_offset, disc->in_dims[3],
+		disc->in_dims[0]*disc->in_dims[1]*disc->in_dims[2], disc->batch_size, (disc->input_dim+1)*disc->batch_size);
+	
+}
+
+
+#define cuda_gan_invert_generator_deltao_kernel(name, type)																						\
+__global__ void cuda_gan_invert_generator_deltao_kernel_##name(void *gen_deltao, size_t size)													\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
-	type* g_out = (type*) gen_output;																											\
-	type* d_in  = (type*) disc_input;																											\
-	type* true_in = (type*) true_input;																											\
+	type* gen_do = (type*) gen_deltao;																											\
 																																				\
-	if(i < len)																																	\
-	{																																			\
-		int im_channel = i / (im_flat_size*batch_size);																							\
-		int im_id = (i % (im_flat_size*batch_size))/im_flat_size;																				\
-		int im_coord = (i % (im_flat_size*batch_size))%im_flat_size;																			\
-		int half_im_id = 0;																														\
+	if(i >= size)																																\
+		return;																																	\
 																																				\
-		if(im_id < batch_size*0.5) /*Fake from generator*/																						\
-		{																																		\
-			d_in[i] = g_out[i+int(half_offset*(0.5*batch_size*im_flat_size))];																	\
-		}																																		\
-		else 				  /*True from input training set*/																					\
-		{																																		\
-			half_im_id = im_id - (1-half_offset)*int(0.5*batch_size);																			\
-			d_in[i] = true_in[half_im_id*(im_flat_size*nb_channels+1)																			\
-												+ im_channel*im_flat_size + im_coord];															\
-		}																																		\
-	}																																			\
+	gen_do[i] = -gen_do[i];																														\
 }
 
 
-void cuda_gan_disc_mix_input(layer *gen_output, layer *disc_input, void* true_input, int half_offset)
+void cuda_gan_invert_generator_deltao(network *gen, void *gen_deltao)
 {
-	conv_param *gen_c_param = ((conv_param*)gen_output->param);
-
-	int im_flat_size = gen_c_param->nb_area[0]*gen_c_param->nb_area[1]*gen_c_param->nb_area[2];
-	int nb_channels = gen_c_param->nb_filters;
-	int batch_size = gen_output->c_network->batch_size;
+	cu_blocks = ((gen->out_size)*gen->batch_size + cu_threads - 1) / cu_threads;
 	
-	cu_blocks = ( im_flat_size*nb_channels*batch_size + cu_threads - 1) / cu_threads;
-
-	if(half_offset == -1)
-	{
-		batch_size *= 2;
-		half_offset = 0;
-	}
-
-	disc_input->c_network->cu_inst.cu_auxil_fcts.cu_gan_disc_mix_input_kernel<<< cu_blocks, cu_threads >>>
-		(gen_output->output, disc_input->output, true_input, half_offset, im_flat_size, nb_channels, batch_size, im_flat_size*nb_channels*batch_size);
+	gen->cu_inst.cu_auxil_fcts.cu_gan_invert_generator_deltao_kernel<<< cu_blocks, cu_threads >>>
+		(gen_deltao, (gen->out_size)*gen->batch_size);
 }
+
 
 #define cuda_create_gan_target_kernel(name, type)																								\
 __global__ void cuda_create_gan_target_kernel_##name																							\
@@ -931,7 +947,7 @@ __global__ void cuda_create_gan_target_kernel_##name																							\
 	}																																			\
 }
 
-void cuda_create_gan_target(network* net, void* targ, void* true_targ, float frac_ones, int i_half)
+void cuda_create_gan_target(network *net, void *targ, void *true_targ, float frac_ones, int i_half)
 {
 	cu_blocks = (net->output_dim*net->batch_size + cu_threads - 1) / cu_threads;
 
@@ -959,6 +975,7 @@ host_shuffle_typed(FP32, float);
 cuda_host_only_shuffle_type(FP32, float);
 cuda_gan_disc_mix_input_kernel(FP32, float);
 cuda_create_gan_target_kernel(FP32, float);
+cuda_gan_invert_generator_deltao_kernel(FP32, float);
 
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE)
@@ -984,6 +1001,7 @@ host_shuffle_typed(FP16, half);
 cuda_host_only_shuffle_type(FP16, half);
 cuda_gan_disc_mix_input_kernel(FP16, half);
 cuda_create_gan_target_kernel(FP16, half);
+cuda_gan_invert_generator_deltao_kernel(FP16, half);
 #endif
 
 #if defined(GEN_AMPERE)
@@ -1009,6 +1027,7 @@ host_shuffle_typed(BF16, nv_bfloat16);
 cuda_host_only_shuffle_type(BF16, nv_bfloat16);
 cuda_gan_disc_mix_input_kernel(BF16, nv_bfloat16);
 cuda_create_gan_target_kernel(BF16, nv_bfloat16);
+cuda_gan_invert_generator_deltao_kernel(BF16, nv_bfloat16);
 #endif
 
 
@@ -1040,6 +1059,7 @@ void init_auxil_cuda(network* net)
 			net->cu_inst.cu_auxil_fcts.cu_host_only_shuffle_fct = cuda_host_only_shuffle_FP32;
 			net->cu_inst.cu_auxil_fcts.cu_gan_disc_mix_input_kernel = cuda_gan_disc_mix_input_kernel_FP32;
 			net->cu_inst.cu_auxil_fcts.cu_create_gan_target_kernel = cuda_create_gan_target_kernel_FP32;
+			net->cu_inst.cu_auxil_fcts.cu_gan_invert_generator_deltao_kernel = cuda_gan_invert_generator_deltao_kernel_FP32;
 			break;
 		
 		
@@ -1066,6 +1086,7 @@ void init_auxil_cuda(network* net)
 			net->cu_inst.cu_auxil_fcts.cu_host_only_shuffle_fct = cuda_host_only_shuffle_FP16;
 			net->cu_inst.cu_auxil_fcts.cu_gan_disc_mix_input_kernel = cuda_gan_disc_mix_input_kernel_FP16;
 			net->cu_inst.cu_auxil_fcts.cu_create_gan_target_kernel = cuda_create_gan_target_kernel_FP16;
+			net->cu_inst.cu_auxil_fcts.cu_gan_invert_generator_deltao_kernel = cuda_gan_invert_generator_deltao_kernel_FP16;
 			#else
 			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
 			exit(EXIT_FAILURE);
@@ -1094,6 +1115,7 @@ void init_auxil_cuda(network* net)
 			net->cu_inst.cu_auxil_fcts.cu_host_only_shuffle_fct = cuda_host_only_shuffle_BF16;
 			net->cu_inst.cu_auxil_fcts.cu_gan_disc_mix_input_kernel = cuda_gan_disc_mix_input_kernel_BF16;
 			net->cu_inst.cu_auxil_fcts.cu_create_gan_target_kernel = cuda_create_gan_target_kernel_BF16;
+			net->cu_inst.cu_auxil_fcts.cu_gan_invert_generator_deltao_kernel = cuda_gan_invert_generator_deltao_kernel_BF16;
 			#else
 			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
 			exit(EXIT_FAILURE);
@@ -1110,6 +1132,42 @@ void init_cuda(network* net)
 	if(!is_cuda_init)
 	{
 		stat = cublasCreate(&cu_handle);
+	
+		if(stat != CUBLAS_STATUS_SUCCESS)
+		{
+			switch(stat)
+			{
+				case CUBLAS_STATUS_SUCCESS:
+				    printf("CUBLAS_STATUS_SUCCESS");
+				    break;
+				case CUBLAS_STATUS_NOT_INITIALIZED:
+				    printf("CUBLAS_STATUS_NOT_INITIALIZED");
+					break;
+				case CUBLAS_STATUS_ALLOC_FAILED:
+				    printf("CUBLAS_STATUS_ALLOC_FAILED");
+					break;
+				case CUBLAS_STATUS_INVALID_VALUE:
+				    printf("CUBLAS_STATUS_INVALID_VALUE");
+					break;
+				case CUBLAS_STATUS_ARCH_MISMATCH:
+				    printf("CUBLAS_STATUS_ARCH_MISMATCH");
+					break;
+				case CUBLAS_STATUS_MAPPING_ERROR:
+				    printf("CUBLAS_STATUS_MAPPING_ERROR");
+					break;
+				case CUBLAS_STATUS_EXECUTION_FAILED:
+				    printf("CUBLAS_STATUS_EXECUTION_FAILED");
+					break;
+				case CUBLAS_STATUS_INTERNAL_ERROR:
+				    printf("CUBLAS_STATUS_INTERNAL_ERROR");
+					break;
+				default:
+					break;
+			}
+
+			printf("\nGPU handle create fail\n");
+			exit(EXIT_FAILURE);
+		}
 	
 		//CUDA version <= 11.0
 		#if defined(CUDA_OLD)
@@ -1195,13 +1253,15 @@ void init_cuda(network* net)
 			#endif
 		}
 		#endif
+		
+		//set typed function according to USE_CUDA_TC
+		curandCreateGenerator(&cu_gen, CURAND_RNG_PSEUDO_DEFAULT);
+		curandSetPseudoRandomGeneratorSeed(cu_gen, time(NULL));
 	}
 	
 	is_cuda_init = 1;
 	
-	//set typed function according to USE_CUDA_TC
-	curandCreateGenerator(&cu_gen, CURAND_RNG_PSEUDO_DEFAULT);
-	curandSetPseudoRandomGeneratorSeed(cu_gen, time(NULL));
+
 	init_auxil_cuda(net);
 	init_typed_cuda_activ(net);
 	cuda_dense_init(net);
@@ -1209,43 +1269,6 @@ void init_cuda(network* net)
 	cuda_pool_init(net);
 	cuda_norm_init(net);
 	cuda_lrn_init(net);
-	
-	if(stat != CUBLAS_STATUS_SUCCESS)
-	{
-		switch(stat)
-		{
-		    case CUBLAS_STATUS_SUCCESS:
-		        printf("CUBLAS_STATUS_SUCCESS");
-		        break;
-		    case CUBLAS_STATUS_NOT_INITIALIZED:
-		        printf("CUBLAS_STATUS_NOT_INITIALIZED");
-				break;
-		    case CUBLAS_STATUS_ALLOC_FAILED:
-		        printf("CUBLAS_STATUS_ALLOC_FAILED");
-				break;
-		    case CUBLAS_STATUS_INVALID_VALUE:
-		        printf("CUBLAS_STATUS_INVALID_VALUE");
-				break;
-		    case CUBLAS_STATUS_ARCH_MISMATCH:
-		        printf("CUBLAS_STATUS_ARCH_MISMATCH");
-				break;
-		    case CUBLAS_STATUS_MAPPING_ERROR:
-		        printf("CUBLAS_STATUS_MAPPING_ERROR");
-				break;
-		    case CUBLAS_STATUS_EXECUTION_FAILED:
-		        printf("CUBLAS_STATUS_EXECUTION_FAILED");
-				break;
-		    case CUBLAS_STATUS_INTERNAL_ERROR:
-		        printf("CUBLAS_STATUS_INTERNAL_ERROR");
-				break;
-			default:
-				break;
-		}
-		
-
-		printf("\nGPU handle create fail\n");
-		exit(EXIT_FAILURE);
-	}
 	
 	//place holder for device selection
 }

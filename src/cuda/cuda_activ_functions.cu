@@ -281,7 +281,6 @@ __global__ void logistic_deriv_kernel_##name(void *i_deriv, void *i_value, float
 __global__ void softmax_activation_kernel_##name(void *i_tab, int dim, int biased_dim, 															\
 	int offset, int length, int batch_size, size_t size)																						\
 {																																				\
-	/*difficult to further optimize but can be invastigated*/																					\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	int j, k, l;																																\
 	int nb_filters;																																\
@@ -302,34 +301,34 @@ __global__ void softmax_activation_kernel_##name(void *i_tab, int dim, int biase
 			vmax = *pos;																														\
 			for(j = 0; j < dim; j++)																											\
 			{																																	\
-				off_pos = pos + j*offset;																										\
+				off_pos = pos + j;																												\
 				if(*off_pos > vmax)																												\
 					vmax = *off_pos;																											\
 			}																																	\
 																																				\
 			for(j = 0; j < dim; j++)																											\
 			{																																	\
-				off_pos = pos + j*offset;																										\
+				off_pos = pos + j;																												\
 				*off_pos = exp_fct((float)(*off_pos-vmax));																						\
 				normal += (float)*off_pos;																										\
 			}																																	\
-			pos[dim*offset] = 0.0f;																												\
+			pos[dim] = 0.0f;																													\
 																																				\
 			for(j = 0; j < dim; j++)																											\
 			{																																	\
-				off_pos = pos + j*offset;																										\
+				off_pos = pos + j;																												\
 				*off_pos = (type)((float)*off_pos/normal);																						\
 			}																																	\
-			pos[dim*offset] = 0.0f;																												\
+			pos[dim] = 0.0f;																													\
 		}																																		\
 		else																																	\
 		{																																		\
 			for(j = 0; j < dim; j++)																											\
 			{																																	\
-				off_pos = pos + j*offset;																										\
+				off_pos = pos + j;																												\
 				*off_pos = 0.0f;																												\
 			}																																	\
-			pos[dim*offset] = 0.0f;																												\
+			pos[dim] = 0.0f;																													\
 		}																																		\
 	}																																			\
 	else																																		\
@@ -472,155 +471,266 @@ __global__ void cross_entropy_output_error_kernel_##name																						\
 
 
 //#####################################################
-//Exp activation (SGAN discriminator) related templates
+//Exp activation (GAN discriminator) related templates
 //#####################################################
 
+/*Only Dense layer and just a copy of softmax activation for know*/
 #define exp_disc_activation_kernel(name, type, exp_fct)																							\
-__global__ void exp_disc_activation_kernel_##name(void *i_tab, int len, int dim, int size, int halved, int revert)								\
+__global__ void exp_disc_activation_kernel_##name(void *i_tab, int dim, int biased_dim, 														\
+	int offset, int length, int batch_size, size_t size, int halved, int revert)																\
 {																																				\
-/*difficult to further optimize but can be invastigated*/																						\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	int j;																																		\
-	type* pos;																																	\
+	type *pos, *off_pos;																														\
 	type vmax;																																	\
-	float normal = 0.000001f + 0.0f;																											\
-	/*float add_node = 0.0f;*/																													\
+	float normal = 0.0f;																														\
 	type* tab = (type*) i_tab;																													\
 																																				\
-	if(i >= size)																																\
+	if(i >= batch_size)																															\
 		return;																																	\
 																																				\
-	pos = tab + i*(dim+1);																														\
+	pos = tab + i*(biased_dim);																													\
 																																				\
-	/*if(revert || (halved && i < size/2))*/																									\
-	/*	add_node = 1.0f;				  */																									\
-																																				\
-	if(i < len)																																	\
+	if(i < length)																																\
 	{																																			\
-		if((0 && revert) || (0 && (halved && i < size/2)))																						\
+		vmax = *pos;																															\
+		for(j = 0; j < dim; j++)																												\
 		{																																		\
-			vmax = 0.000001f; /*the "fake" label is set to 0 (exp(0) = 1 in normal offset)	*/													\
-			/*vmax = pos[0];				*/																									\
-			/*for(j = 0; j < dim; j++)*/																										\
-			/*	if(pos[j] > vmax)	*/																											\
-			/*		vmax = pos[j];	*/																											\
-																																				\
-			for(j = 0; j < dim; j++)																											\
-			{																																	\
-				normal += exp_fct((float)(pos[j] - vmax));																						\
-			}																																	\
-																																				\
-			for(j = 0; j < dim; j++)																											\
-				/*pos[j] = exp_fct((float)(pos[j] - vmax));*/																					\
-				pos[j] = (type) (normal/(normal+1.0f));																							\
-			pos[dim] = 0.0f;																													\
+			off_pos = pos + j;																													\
+			if(*off_pos > vmax)																													\
+				vmax = *off_pos;																												\
 		}																																		\
-		else																																	\
+																																				\
+		for(j = 0; j < dim; j++)																												\
 		{																																		\
-			/*if(1 || (revert || (halved && i < size/2)))	*/																					\
-				vmax = 0.000001f;  /*the "fake" label is set to 0 (exp(0) = 1 in normal offset)	*/												\
-			/*else								*/																								\
-			/*	vmax = pos[0];					*/																								\
-			/*for(j = 0; j < dim; j++)			*/																								\
-			/*	if(pos[j] > vmax)				*/																								\
-			/*		vmax = pos[j];				*/																								\
-																																				\
-			for(j = 0; j < dim; j++)																											\
-			{																																	\
-				/*if(pos[j] > (type) 6.0f)		*/																								\
-				/*	pos[j] = 6.0f;				*/																								\
-				pos[j] = exp_fct((float)(pos[j]-vmax));																							\
-				normal += (float)pos[j];																										\
-			}																																	\
-			pos[dim] = 0.0f;																													\
-																																				\
-			/*for(j = 0; j < dim; j++)*/																										\
-			/*	pos[j] /= (type)(normal + 1.0f);*/																								\
-			/*pos[dim] = 0.0f;*/																												\
+			off_pos = pos + j;																													\
+			*off_pos = exp_fct((float)(*off_pos-vmax));																							\
+			normal += (float)*off_pos;																											\
 		}																																		\
+		pos[dim] = 0.0f;																														\
+																																				\
+		for(j = 0; j < dim; j++)																												\
+		{																																		\
+			off_pos = pos + j;																													\
+			*off_pos = (type)((float)*off_pos/normal);																							\
+		}																																		\
+		pos[dim] = 0.0f;																														\
 	}																																			\
 	else																																		\
 	{																																			\
 		for(j = 0; j < dim; j++)																												\
-			pos[j] = 0.0f;																														\
+		{																																		\
+			off_pos = pos + j;																													\
+			*off_pos = 0.0f;																													\
+		}																																		\
 		pos[dim] = 0.0f;																														\
 	}																																			\
 }
 
 
-#define exp_disc_deriv_output_kernel(name, type)																								\
+
+#define exp_disc_deriv_output_kernel(name, type, exp_fct)																						\
 __global__ void exp_disc_deriv_output_kernel_##name																								\
-(void *i_delta_o, void *i_output, void *i_target, int len, int dim, int size, int halved, int revert)											\
+(void *i_delta_o, void *i_output, void *i_target, int dim, int biased_dim, 																		\
+	int offset, int length, int batch_size, size_t size, float TC_scale_factor, int halved, int revert)											\
 {																																				\
-/*difficult to further optimize but can be invastigated*/																						\
 	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
-	int j;																																		\
+	int j, k, pos;																																\
 																																				\
 	type* delta_o = (type*)i_delta_o;																											\
 	type* output  = (type*)i_output;																											\
-	type* target  = (type*)i_target;																											\
+	/*type* target  = (type*)i_target;*/																										\
 																																				\
-	float sum = 0.000001f + 0.0f;																												\
-	float vmax = 0.000001f;																														\
-	int arg_max = 0;																															\
+	float vmax = 0.0f, vmin = 1.0f;																												\
 																																				\
-	delta_o += i*(dim+1);																														\
-	output  += i*(dim+1);																														\
-	target  += i*(dim);																															\
+	pos = i*biased_dim;																															\
 																																				\
-	if(i >= size)																																\
+	if(i >= batch_size)																															\
 		return;																																	\
 																																				\
-	if(i < len)																																	\
+	if(i < length)																																\
 	{																																			\
-																																				\
-		vmax = (float)output[0];																												\
-		/*sum += (float)output[0];*/																											\
-		for(j = 0; j < dim; j++)																												\
+		for(k = 0; k < length; k++)																												\
 		{																																		\
-			if((float)output[j] > vmax)																											\
-			{																																	\
-				vmax = (float)output[j];																										\
-				arg_max = j;																													\
-			}																																	\
-			sum += (float)output[j];																											\
+			if((float)output[k*biased_dim+1] > vmax)																							\
+				vmax = (float)output[k*biased_dim+1];																							\
+			if((float)output[k*biased_dim+1] < vmin)																							\
+				vmin = (float)output[k*biased_dim+1];																							\
 		}																																		\
 																																				\
 		if(revert)																																\
 		{																																		\
-			for(j = 0; j < dim; j++)																											\
+			delta_o[pos+0] = (type) (0.0f);																										\
+			for(j = 1; j < dim; j++)																											\
 			{																																	\
-				if(j == arg_max)																												\
-					delta_o[j] = (type) (((float)(((float)output[j])/(sum+1.0f)) - 0.9f)/**((float)output[j])/(sum+0.0f)*/);					\
-				else																															\
-					delta_o[j] = (type) (((float)(((float)output[j])/(sum+1.0f)) - 0.0f)/**((float)output[j])/(sum+0.0f)*/);					\
+				delta_o[pos+j] = (type) ((((float)output[pos+j] - vmax)/(vmax-vmin))*TC_scale_factor);											\
 			}																																	\
-			delta_o[dim] = (type) 0.0f;																											\
+			delta_o[pos+dim] = (type) 0.0f;																										\
 		}																																		\
 		else																																	\
 		{																																		\
-			if(halved && i < size/2)																											\
+			if(halved && i < batch_size/2)																										\
 			{																																	\
-				for(j = 0; j < dim; j++)																										\
-					delta_o[j] = (type) (((float)(((float)output[j])/(sum+1.0f)) - 0.0f));														\
-				delta_o[dim] = (type) 0.0f;																										\
+				delta_o[pos+0] = (type) (0.0f);																									\
+				for(j = 1; j < dim; j++)																										\
+					delta_o[pos+j] = (type) (((float)output[pos+j] - 0.0f)*TC_scale_factor);													\
+				delta_o[pos+dim] = (type) 0.0f;																									\
 			}																																	\
 			else																																\
 			{																																	\
-				for(j = 0; j < dim; j++)																										\
-					delta_o[j] = (type) (((float)(((float)output[j])/(sum+1.0f)) - (float)target[j]));											\
-				delta_o[dim] = (type) 0.0f;																										\
+				delta_o[pos+0] = (type) (0.0f);																									\
+				for(j = 1; j < dim; j++)																										\
+					delta_o[pos+j] = (type) (((float)output[pos+j] - 1.0f)*TC_scale_factor);													\
+				delta_o[pos+dim] = (type) 0.0f;																									\
 			}																																	\
 		}																																		\
 	}																																			\
 	else																																		\
 	{																																			\
 		for(j = 0; j < dim; j++)																												\
-			delta_o[j] = (type) 0.0f;																											\
-		delta_o[dim] = (type) 0.0f;																												\
+			delta_o[pos+j] = (type) 0.0f;																										\
+		delta_o[pos+dim] = (type) 0.0f;																											\
 	}																																			\
 }
 
+
+
+#define old_exp_disc_deriv_output_kernel(name, type, exp_fct)																					\
+__global__ void old_exp_disc_deriv_output_kernel_##name																							\
+(void *i_delta_o, void *i_output, void *i_target, int dim, int biased_dim, 																		\
+	int offset, int length, int batch_size, size_t size, float TC_scale_factor, int halved, int revert)											\
+{																																				\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int j, pos;																																	\
+																																				\
+	type* delta_o = (type*)i_delta_o;																											\
+	type* output  = (type*)i_output;																											\
+	type* target  = (type*)i_target;																											\
+																																				\
+	float vmax = 0.0f;																															\
+	int arg_max = 0;																															\
+																																				\
+	pos = i*biased_dim;																															\
+																																				\
+	if(i >= batch_size)																															\
+		return;																																	\
+																																				\
+	if(i < length)																																\
+	{																																			\
+		vmax = (float)output[pos+1];																											\
+		for(j = 1; j < dim; j++)																												\
+		{																																		\
+			if((float)output[pos+j] > vmax)																										\
+			{																																	\
+				vmax = (float)output[pos+j];																									\
+				arg_max = j;																													\
+			}																																	\
+		}																																		\
+																																				\
+		if(revert)																																\
+		{																																		\
+			delta_o[pos+0] = (type) (((float)(((float)output[pos+0])) - 0.0f)																	\
+				*((float)output[pos+0]+0.0f)*(1.0f-(float)output[pos+0])*TC_scale_factor);														\
+			for(j = 1; j < dim; j++)																											\
+				delta_o[pos+j] = (type) (((float)(((float)output[pos+j])) - 1.0f)																\
+					*((float)output[pos+j]+0.0f)*(1.0f-(float)output[pos+j])*TC_scale_factor);													\
+			delta_o[pos+dim] = (type) 0.0f;																										\
+		}																																		\
+		else																																	\
+		{																																		\
+			if(halved && i < batch_size/2)																										\
+			{																																	\
+				delta_o[pos+0] = (type) (((float)(((float)output[pos+0])) - 1.0f)																\
+					*((float)output[pos+0]+0.0f)*(1.0f-(float)output[pos+0])*TC_scale_factor);													\
+				for(j = 1; j < dim; j++)																										\
+					delta_o[pos+j] = (type) (((float)(((float)output[pos+j])) - 0.0f)															\
+						*((float)output[pos+j]+0.0f)*(1.0f-(float)output[pos+j])*TC_scale_factor);												\
+				delta_o[pos+dim] = (type) 0.0f;																									\
+			}																																	\
+			else																																\
+			{																																	\
+				delta_o[pos+0] = (type) (((float)(((float)output[pos+0])) - 0.0f)																\
+					*((float)output[pos+0]+0.0f)*(1.0f-(float)output[pos+0])*TC_scale_factor);													\
+				for(j = 1; j < dim; j++)																										\
+					delta_o[pos+j] = (type) (((float)(((float)output[pos+j])) - 1.0f)															\
+						*((float)output[pos+j]+0.0f)*(1.0f-(float)output[pos+j])*TC_scale_factor);												\
+				delta_o[pos+dim] = (type) 0.0f;																									\
+			}																																	\
+		}																																		\
+	}																																			\
+	else																																		\
+	{																																			\
+		for(j = 0; j < dim; j++)																												\
+			delta_o[pos+j] = (type) 0.0f;																										\
+		delta_o[pos+dim] = (type) 0.0f;																											\
+	}																																			\
+}
+
+
+/* lack weight clipping or batch notrm to work properly*/
+#define w_gan_exp_disc_deriv_output_kernel(name, type, exp_fct)																					\
+__global__ void w_gan_exp_disc_deriv_output_kernel_##name																						\
+(void *i_delta_o, void *i_output, void *i_target, int dim, int biased_dim, 																		\
+	int offset, int length, int batch_size, size_t size, float TC_scale_factor, int halved, int revert)											\
+{																																				\
+	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int j, pos;																																	\
+																																				\
+	type* delta_o = (type*)i_delta_o;																											\
+	type* output  = (type*)i_output;																											\
+	type* target  = (type*)i_target;																											\
+																																				\
+	float avg_real = 0.0f, avg_fake = 0.0f;																										\
+	int arg_max = 0;																															\
+																																				\
+	pos = i*biased_dim;																															\
+																																				\
+	if(i >= batch_size)																															\
+		return;																																	\
+																																				\
+	if(i < length)																																\
+	{																																			\
+		if(revert)																																\
+		{																																		\
+			for(j = 0; j < batch_size; j++)																										\
+				avg_fake += (float)output[j*biased_dim];																						\
+			avg_fake /= batch_size;																												\
+			delta_o[pos+0] = (type) 0.0f;																										\
+			for(j = 1; j < dim; j++)																											\
+				delta_o[pos+j] = (type) (avg_fake*TC_scale_factor);																				\
+			delta_o[pos+dim] = (type) 0.0f;																										\
+		}																																		\
+		else																																	\
+		{																																		\
+			if(halved && i < batch_size/2)																										\
+			{																																	\
+				for(j = 0; j < batch_size/2; j++)																								\
+					avg_fake += (float)output[j*biased_dim];																					\
+				avg_fake /= batch_size/2;																										\
+				delta_o[pos+0] = (type) 0.0f;																									\
+				for(j = 1; j < dim; j++)																										\
+					delta_o[pos+j] = (type) (-avg_fake*TC_scale_factor);																		\
+				delta_o[pos+dim] = (type) 0.0f;																									\
+			}																																	\
+			else																																\
+			{																																	\
+				for(j = batch_size/2; j < batch_size; j++)																						\
+					avg_real += (float)output[j*biased_dim];																					\
+				avg_real /= batch_size/2;																										\
+				delta_o[pos+0] = (type) 0.0f;																									\
+				for(j = 1; j < dim; j++)																										\
+					delta_o[pos+j] = (type) (avg_real*TC_scale_factor);																			\
+				delta_o[pos+dim] = (type) 0.0f;																									\
+			}																																	\
+		}																																		\
+	}																																			\
+	else																																		\
+	{																																			\
+		for(j = 0; j < dim; j++)																												\
+			delta_o[pos+j] = (type) 0.0f;																										\
+		delta_o[pos+dim] = (type) 0.0f;																											\
+	}																																			\
+}
 
 
 //#####################################################
@@ -639,7 +749,7 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, size
 	int nb_class = y_param.nb_class, nb_param = y_param.nb_param;																				\
 	/*Default values are in activ_function.c (set_yolo_params)*/																				\
 	float **sm_tab = y_param.slopes_and_maxes_tab;																								\
-	float normal = 0.0000001f;																													\
+	float normal = 0.0f;																														\
 	type vmax;																																	\
 	int fit_dim = y_param.fit_dim;																												\
 	int col, in_col, j;																															\
@@ -1131,7 +1241,7 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 			max_IoU = -2.0f; resp_box = -1;	resp_targ = -1;																						\
 			for(j = 0; j < nb_in_cell; j++)																										\
 				for(k = 0; k < nb_box; k++)																										\
-					if(IoU_table[j*nb_box+k] > max_IoU && dist_prior[j*nb_box+k] < -1.0f)														\
+					if(IoU_table[j*nb_box+k] > max_IoU && dist_prior[j*nb_box+k] < -1.0)														\
 					{																															\
 						max_IoU = IoU_table[j*nb_box+k];																						\
 						resp_targ = j;																											\
@@ -2299,7 +2409,7 @@ softmax_activation_kernel(FP32, float, expf);
 cross_entropy_deriv_output_error_kernel(FP32, float);
 cross_entropy_output_error_kernel(FP32, float);
 exp_disc_activation_kernel(FP32, float, expf);
-exp_disc_deriv_output_kernel(FP32, float);
+exp_disc_deriv_output_kernel(FP32, float, expf);
 YOLO_activation_kernel(FP32, float, expf);
 YOLO_deriv_error_kernel(FP32, float);
 YOLO_error_kernel(FP32, float);
@@ -2317,7 +2427,7 @@ softmax_activation_kernel(FP16, half, expf);
 cross_entropy_deriv_output_error_kernel(FP16, half);
 cross_entropy_output_error_kernel(FP16, half);
 exp_disc_activation_kernel(FP16, half, expf);
-exp_disc_deriv_output_kernel(FP16, half)
+exp_disc_deriv_output_kernel(FP16, half, expf)
 YOLO_activation_kernel(FP16, half, expf);
 YOLO_deriv_error_kernel(FP16, half);
 YOLO_error_kernel(FP16, half);
@@ -2336,7 +2446,7 @@ softmax_activation_kernel(BF16, nv_bfloat16, expf);
 cross_entropy_deriv_output_error_kernel(BF16, nv_bfloat16);
 cross_entropy_output_error_kernel(BF16, nv_bfloat16);
 exp_disc_activation_kernel(BF16, nv_bfloat16, expf);
-exp_disc_deriv_output_kernel(BF16, nv_bfloat16);
+exp_disc_deriv_output_kernel(BF16, nv_bfloat16, expf);
 YOLO_activation_kernel(BF16, nv_bfloat16, expf);
 YOLO_deriv_error_kernel(BF16, nv_bfloat16);
 YOLO_error_kernel(BF16, nv_bfloat16);
@@ -2538,21 +2648,16 @@ void cuda_semi_supervised_gan_deriv_output_error(layer *current, int halved, int
 	//First half unsuperfvised fake	
 	//Second half supervised true (for now)
 	linear_param *param = (linear_param*)current->activ_param;
-	cu_blocks = (current->c_network->batch_size + cu_threads - 1) / cu_threads;
+	/*cu_blocks = (current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	current->c_network->cu_inst.cu_auxil_fcts.cu_exp_disc_activation_kernel<<< cu_blocks, cu_threads >>>
-		(current->output, current->c_network->batch_size, param->dim, current->c_network->length, halved, reversed);
-	
-	if(0 && current->c_network->iter%10 == 0)
-	{
-		printf("in output\n");
-		cuda_print_table(current->c_network, current->output, 11*current->c_network->batch_size, 11);
-		//cuda_print_table(current->c_network, current->c_network->target, 10*current->c_network->batch_size, 10);
-	}
-	
+		(current->output, param->dim, param->biased_dim, param->offset, 
+		current->c_network->length, current->c_network->batch_size, param->size, halved, reversed);
+	*/
 	cu_blocks = (current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	current->c_network->cu_inst.cu_auxil_fcts.cu_exp_disc_deriv_output_kernel<<< cu_blocks, cu_threads >>>
-		(current->delta_o, current->output, current->c_network->target, current->c_network->length,
-		 param->dim, current->c_network->batch_size, halved, reversed);
+		(current->delta_o, current->output, current->c_network->target,
+		param->dim, param->biased_dim, param->offset, current->c_network->length, 
+		current->c_network->batch_size, param->size, current->c_network->TC_scale_factor, halved, reversed);
 }
 
 //#####################################################

@@ -8,18 +8,13 @@ import time
 import albumentations as A
 import cv2
 
-processed_data_path = "./"
 
-class_list = np.loadtxt("ImageNET_aux_data/imagenet_2012_class_list.txt", dtype="str")[:,1]
-
-np.random.seed(int(time.time()))
-	
 nb_images_per_iter = 64*50
 image_size_raw = 500
 nb_class = 1000
 
 nb_keep_val_raw = nb_class*50
-nb_keep_val = nb_class*25 
+nb_keep_val = nb_class*25
 #only half the validation set for computing the val/test loss during training to limit the memory footprint
 
 nb_workers = 8
@@ -37,26 +32,38 @@ else:
 	max_scale = 480.0
 	min_scale = 256.0
 
-block_size = int(nb_images_per_iter / nb_workers)
+def i_ar(int_list):
+	return np.array(int_list, dtype="int")
 
-flat_image_slice = image_size*image_size
+def f_ar(float_list):
+	return np.array(float_list, dtype="float32")
+	
 
-transform_val = A.Compose([
-	A.SmallestMaxSize(max_size=image_size_val, interpolation=1, p=1.0),
-	A.CenterCrop(width=image_size, height=image_size, p=1.0),
-])
-
-
-## Data augmentation
 def init_data_gen(test_mode = 0):
 	
 	global nb_images_per_iter, nb_keep_val_raw, nb_keep_val, image_size_raw, image_size, image_size_val, max_scale, min_scale
-	global flat_image_slice, class_count, nb_workers, block_size, transform_val
-	global input_data, targets, input_val, targets_val, targets_zero, nb_process, nb_class
+	global flat_image_slice, class_count, nb_workers, block_size, transform_val, processed_data_path
+	global input_data, targets, input_val, targets_val, targets_zero, nb_process, nb_class, class_list
+	
+	#processed_data_path = "./"
+	processed_data_path = "/Data-Linux/Work/MINERVA/ImageNet-2012/"
+
+	np.random.seed(int(time.time()))
+
+	block_size = int(nb_images_per_iter / nb_workers)
+
+	flat_image_slice = image_size*image_size
+
+	transform_val = A.Compose([
+		A.SmallestMaxSize(max_size=image_size_val, interpolation=1, p=1.0),
+		A.CenterCrop(width=image_size, height=image_size, p=1.0),
+	])
 	
 	if(not os.path.isdir("ImageNET_aux_data")):
 		os.system("wget https://share.obspm.fr/s/Pqbn4cC2azo84Z2/download/ImageNET_aux_data.tar.gz")
 		os.system("tar -xvzf ImageNET_aux_data.tar.gz")
+		
+	class_list = np.loadtxt("ImageNET_aux_data/imagenet_2012_class_list.txt", dtype="str")[:,1]
 	
 	class_count = np.loadtxt(processed_data_path+"bin_blocks/bin_images_%d/class_count.txt"%(image_size_raw))
 	
@@ -167,56 +174,8 @@ def create_train_batch():
 	
 	return input_data, targets
 
-def create_val_batch(visual_w=0, visual_h=0):
+def create_val_batch():
 	print("Loading validation data ...")
-	
-	visual_iter = 0
-
-	val_list = np.loadtxt("ImageNET_aux_data/imagenet_2012_1000classes_val.txt", dtype="str")
-
-	for i in range(0, nb_keep_val):
-		
-		patch = np.load(processed_data_path+"bin_blocks/bin_images_%d/val/valid_img_%04d.npy"%(image_size_raw,i), allow_pickle=False)
-
-		transformed = transform_val(image=patch)
-		patch_aug = transformed['image']	
-		
-		for depth in range(0,3):
-			input_val[i,depth*flat_image_slice:(depth+1)*flat_image_slice] = (patch_aug[:,:,depth].flatten("C") - 100.0)/155.0
-		
-		targets_val[i,:] = np.copy(targets_zero[:])
-		targets_val[i,int(val_list[i,1])] = 1.0
-		
-		if(visual_w*visual_h > 0):
-			if(visual_iter == 0):
-				fig, ax = plt.subplots(visual_h, visual_w, figsize=(2*visual_w,2*visual_h), dpi=200, constrained_layout=True)
-			
-			c_x = visual_iter // visual_w
-			c_y = visual_iter % visual_w
-			
-			ax[c_x,c_y].imshow(patch_aug)
-			ax[c_x,c_y].axis('off')
-			
-			p_c = int(val_list[i,1])
-			
-			c_text = ax[c_x,c_y].text(15, 25, "%s"%(class_list[p_c]), c=plt.cm.tab20(p_c%20), fontsize=6, clip_on=True)
-			c_text.set_path_effects([path_effects.Stroke(linewidth=1.5, foreground='black'), path_effects.Normal()])
-			
-			visual_iter += 1
-			if(visual_iter >= visual_w*visual_h):
-				plt.savefig("val_target_mosaic.jpg", dpi=200)
-				return
-	
-	return input_val, targets_val
-	
-	
-def visual_pred(load_epoch=0, visual_w=8, visual_h=6):
-	
-	top_error = 5
-	visual_iter = 0
-
-	pred_raw = np.fromfile("fwd_res/net0_%04d.dat"%(load_epoch), dtype="float32")
-	predict = np.reshape(pred_raw, (nb_keep_val,nb_class))
 
 	val_list = np.loadtxt("ImageNET_aux_data/imagenet_2012_1000classes_val.txt", dtype="str")
 
@@ -227,36 +186,80 @@ def visual_pred(load_epoch=0, visual_w=8, visual_h=6):
 		transformed = transform_val(image=patch)
 		patch_aug = transformed['image']
 		
+		for depth in range(0,3):
+			input_val[i,depth*flat_image_slice:(depth+1)*flat_image_slice] = (patch_aug[:,:,depth].flatten("C") - 100.0)/155.0
+		
+		targets_val[i,:] = np.copy(targets_zero[:])
+		targets_val[i,int(val_list[i,1])] = 1.0
+	
+	return input_val, targets_val
+
+
+def visual_val(visual_w, visual_h):
+	
+	#Loading the full validation dataset can take a while => nb_keep_val can be significantly reduced for faster visualization
+	val_list = np.loadtxt("ImageNET_aux_data/imagenet_2012_1000classes_val.txt", dtype="str")
+	
+	fig, ax = plt.subplots(visual_h, visual_w, figsize=(2*visual_w,2*visual_h), dpi=200, constrained_layout=True)
+	l_patch = np.zeros((image_size, image_size, 3))
+	
+	for i in range(0, visual_w*visual_h):
+		c_x = i // visual_w
+		c_y = i % visual_w
+		
+		for depth in range(0,3):
+			l_patch[:,:,depth] = np.reshape((input_val[i,depth*flat_image_slice:(depth+1)*flat_image_slice]*155.0 + 100.0)/255.0, (image_size, image_size))
+		ax[c_x,c_y].imshow(l_patch)
+		ax[c_x,c_y].axis('off')
+		
+		p_c = int(val_list[i,1])
+		
+		c_text = ax[c_x,c_y].text(15, 25, "%s"%(class_list[p_c]), c=plt.cm.tab20(p_c%20), fontsize=6, clip_on=True)
+		c_text.set_path_effects([path_effects.Stroke(linewidth=1.5, foreground='black'), path_effects.Normal()])
+	
+	plt.savefig("val_mosaic.jpg", dpi=200)
+
+	
+def visual_pred(load_epoch=0, visual_w=8, visual_h=6):
+	
+	top_error = 5
+
+	pred_raw = np.fromfile("fwd_res/net0_%04d.dat"%(load_epoch), dtype="float32")
+	predict = np.reshape(pred_raw, (nb_keep_val,nb_class))
+
+	val_list = np.loadtxt("ImageNET_aux_data/imagenet_2012_1000classes_val.txt", dtype="str")
+
+	fig, ax = plt.subplots(visual_h, visual_w, figsize=(2*visual_w,2*visual_h), dpi=200, constrained_layout=True)
+
+	for i in range(0, visual_w*visual_h):
+		
+		patch = np.load(processed_data_path+"bin_blocks/bin_images_%d/val/valid_img_%04d.npy"%(image_size_raw,i), allow_pickle=False)
+
+		transformed = transform_val(image=patch)
+		patch_aug = transformed['image']
 		
 		ind_best = np.argpartition(predict[i], -top_error)[-top_error:]
 		ind_sort = ind_best[np.argsort(predict[i, ind_best])][::-1]
 		pred_values = predict[i, ind_sort]
 		
-		if(visual_w*visual_h > 0):
-			if(visual_iter == 0):
-				fig, ax = plt.subplots(visual_h, visual_w, figsize=(2*visual_w,2*visual_h), dpi=200, constrained_layout=True)
-			
-			c_x = visual_iter // visual_w
-			c_y = visual_iter % visual_w
-			
-			ax[c_x,c_y].imshow(patch_aug)
-			ax[c_x,c_y].axis('off')
-			
-			p_c = int(val_list[i,1])
-			
-			c_text = ax[c_x,c_y].text(15, image_size - 20, "Targ: %s"%(class_list[p_c]), c=plt.cm.tab20(p_c%20), fontsize=6, clip_on=True)
+		c_x = i // visual_w
+		c_y = i % visual_w
+		
+		ax[c_x,c_y].imshow(patch_aug)
+		ax[c_x,c_y].axis('off')
+		
+		p_c = int(val_list[i,1])
+		
+		c_text = ax[c_x,c_y].text(15, image_size - 20, "Targ: %s"%(class_list[p_c]), c=plt.cm.tab20(p_c%20), fontsize=6, clip_on=True)
+		c_text.set_path_effects([path_effects.Stroke(linewidth=1.5, foreground='black'), path_effects.Normal()])
+		
+		for k in range(0, top_error):
+			c_text = ax[c_x,c_y].text(10, 20+k*25, "%0.2f - %s"%(pred_values[k], class_list[ind_sort[k]]), 
+				c=plt.cm.tab20(ind_sort[k]%20), fontsize=6, clip_on=True)
 			c_text.set_path_effects([path_effects.Stroke(linewidth=1.5, foreground='black'), path_effects.Normal()])
 			
-			for k in range(0, top_error):
-				c_text = ax[c_x,c_y].text(10, 20+k*25, "%0.2f - %s"%(pred_values[k], class_list[ind_sort[k]]), 
-					c=plt.cm.tab20(ind_sort[k]%20), fontsize=6, clip_on=True)
-				c_text.set_path_effects([path_effects.Stroke(linewidth=1.5, foreground='black'), path_effects.Normal()])
-			
-			
-			visual_iter += 1
-			if(visual_iter >= visual_w*visual_h):
-				plt.savefig("pred_mosaic.jpg", dpi=200)
-				return
+	plt.savefig("pred_mosaic.jpg", dpi=200)
+
 
 def free_data_gen():
   global input_data, targets, input_val, targets_val

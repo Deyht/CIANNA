@@ -10,17 +10,12 @@ sys.path.insert(0,glob.glob('../../src/build/lib.*/')[-1])
 import CIANNA as cnn
 
 
-def i_ar(int_list):
-	return np.array(int_list, dtype="int")
-
-def f_ar(float_list):
-	return np.array(float_list, dtype="float32")
-
 def data_augm():
 	input_data, targets = create_train_batch()
 	cnn.delete_dataset("TRAIN_buf", silent=1)
 	cnn.create_dataset("TRAIN_buf", nb_images_per_iter, input_data[:,:], targets[:,:], silent=1)
 	return
+
 
 nb_iter_per_augm = 1
 total_iter = 50000

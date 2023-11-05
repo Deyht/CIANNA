@@ -38,7 +38,7 @@
 
 static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	PyArrayObject *py_dims;
+	PyArrayObject *py_dims = NULL;
 	int i;
 	double bias = 0.1;
 	int dims[4] = {1,1,1,1}, nb_channels = 1, out_dim, b_size=8, network_id = nb_networks;
@@ -53,9 +53,8 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 		return Py_None;
 	
 	for(i = 0; i < py_dims->dimensions[0] && i < 3; i++)
-	{
 		dims[i] = *(int *)(py_dims->data + i*py_dims->strides[0]);
-	}
+	
 	dims[3] = nb_channels;
 	
 	init_network(network_id, dims, out_dim, bias, b_size, comp_meth, dynamic_load, py_mixed_precision, inference_only, no_logo, adv_size);
@@ -985,27 +984,21 @@ static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	int py_nb_iter, py_control_interv = 1, py_confmat = 0, save_every = 0, gen_id = nb_networks-2, disc_id = nb_networks-1;
 	int shuffle_gpu = 1, shuffle_every = 1, silent = 0, disc_only = 0;
-	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0;
+	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_weight_decay = 0.0;;
 	double py_TC_scale_factor = 1.0, py_gen_disc_lr_ratio = 2.0;
 	static char *kwlist[] = {"gen_id", "disc_id", "nb_iter", "learning_rate", "end_learning_rate", "gen_disc_lr_ratio", "control_interv",
-		 "momentum", "decay", "confmat", "save_every", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "disc_only", "silent", NULL};
+		 "momentum", "lr_decay", "weight_decay", "confmat", "save_every", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "disc_only", "silent", NULL};
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiid|ddiddiiiidiu", kwlist, &gen_id, &disc_id, &py_nb_iter, &py_learning_rate, 
-		&py_end_learning_rate, &py_gen_disc_lr_ratio, &py_control_interv, &py_momentum, &py_decay, &py_confmat, &save_every, 
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiid|ddidddiiiidiu", kwlist, &gen_id, &disc_id, &py_nb_iter, &py_learning_rate, 
+		&py_end_learning_rate, &py_gen_disc_lr_ratio, &py_control_interv, &py_momentum, &py_decay, &py_weight_decay, &py_confmat, &save_every, 
 		&shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &disc_only, &silent))
 		return Py_None;
-	
-	if(silent == 0)
-		printf("py_nb_iter %d, py_control_interv %d, py_learning_rate %g, py_end_learning_rate %g , py_momentum %0.2f, \
-			py_decay %g, py_confmat %d, save_every %d, shuffle_gpu %d , shuffle_every %d, TC_scale_factor %g\n", 
-			py_nb_iter, py_control_interv, py_learning_rate, py_end_learning_rate, py_momentum, 
-			py_decay, py_confmat, save_every, shuffle_gpu, shuffle_every, py_TC_scale_factor);
 	
 	// GIL MACRO : Allow to serialize C thread with python threads
 	Py_BEGIN_ALLOW_THREADS
 	
 	train_gan(networks[gen_id], networks[disc_id], py_nb_iter, py_control_interv, py_learning_rate, py_end_learning_rate, 
-		py_momentum, py_decay, py_gen_disc_lr_ratio, save_every, 0, shuffle_gpu, shuffle_every, disc_only, py_TC_scale_factor, silent);
+		py_momentum, py_decay, py_weight_decay, py_gen_disc_lr_ratio, save_every, 0, shuffle_gpu, shuffle_every, py_TC_scale_factor, silent);
 	
 	Py_END_ALLOW_THREADS
 

@@ -33,7 +33,7 @@ static conv_param *c_param;
 //due to subsequent matrix operations. Currently memory bound despite only one load per element of the original image.
 //VERSION 5.3
 void im2col_fct_v5
-	(void* i_output, void* i_input, int image_size, int flat_image_size, 
+	(void *i_output, void *i_input, int image_size, int flat_image_size, 
 	int stride_w, int stride_h ,int stride_d, 
 	int padding_w, int padding_h, int padding_d, 
 	int internal_padding_w, int internal_padding_h, int internal_padding_d, 
@@ -96,7 +96,7 @@ void im2col_fct_v5
 	}
 }
 
-void rotate_filter_matrix_fct(void* i_in, void* i_out, int nb_rows, int depth_size, int nb_filters_in, int len)
+void rotate_filter_matrix_fct(void *i_in, void *i_out, int nb_rows, int depth_size, int nb_filters_in, int len)
 {
 	int i, x, y, depth_id;
 
@@ -117,7 +117,7 @@ void rotate_filter_matrix_fct(void* i_in, void* i_out, int nb_rows, int depth_si
 	}
 }
 
-void dropout_select_conv(float* mask, size_t size, float drop_rate)
+void dropout_select_conv(float *mask, size_t size, float drop_rate)
 {
 	size_t i;
 	float rand;
@@ -129,27 +129,38 @@ void dropout_select_conv(float* mask, size_t size, float drop_rate)
 	for(i = 0; i < size; i++)
 	{
 		rand = random_uniform();
-		if(rand < drop_rate)
-			mask[i] = 0;
+		if(rand >= drop_rate)
+			mask[i] = 1.0f;
 		else
-			mask[i] = 1;
+			mask[i] = 0.0f;
 	}
 }
 
-void dropout_apply_conv(void* i_table, float* mask, size_t size)
+
+void dropout_apply_conv(void *i_table, float* mask, size_t size)
 {
 	size_t i;
 	float* table = (float*) i_table;
 	
 	for(i = 0; i < size; i++)
-		table[i] *= mask[i];
+		table[i] = table[i]*mask[i];
+}
+
+
+void dropout_scale_conv(void *i_table, size_t size, float drop_rate)
+{
+	size_t i;
+	float* table = (float*) i_table;
+	
+	for(i = 0; i < size; i++)
+		table[i] = table[i]*(1.0f-drop_rate);
 }
 
 
 void forward_conv_layer(layer *current)
 {
 	int i, j, b;
-	double h, c_dr, w_alpha;
+	double h;
 	int depth_padding;
 	int image_padding;
 	int im2col_prev_bias;
@@ -193,16 +204,6 @@ void forward_conv_layer(layer *current)
 		c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], c_param->flat_f_size,
 		c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
 		c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], im2col_prev_bias, 1);
-	
-	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
-	{
-		c_dr = current->previous->dropout_rate;
-		c_dr = ((c_param->flat_f_size-1)*(1.0f-c_dr)+1)/c_param->flat_f_size;
-		//w_alpha = (1.0f - c_dr); //account for the bias node that is never dropped
-		w_alpha = c_dr;
-	}
-	else
-		w_alpha = 1.0;
 
 	//Input X filters matrix multiplication for the all batch
 	
@@ -221,20 +222,26 @@ void forward_conv_layer(layer *current)
 				h += f_im2col_input[b*(c_param->flat_f_size) + j]
 						* f_filters[i*(c_param->flat_f_size) + j];
 			}
-			f_output[i*(net->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]))+b] = w_alpha * h;
+			f_output[i*(net->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]))+b] = h;
 		}
 	}
 	
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
 	
-	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f)
 	{
-		dropout_select_conv(c_param->dropout_mask, c_param->nb_filters 
-			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);	
-		
-		dropout_apply_conv(current->output, c_param->dropout_mask, c_param->nb_filters 
-			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
+	
+		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
+		{
+			dropout_select_conv(c_param->dropout_mask, c_param->nb_filters 
+				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);
+			dropout_apply_conv(current->output, c_param->dropout_mask, c_param->nb_filters 
+				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
+		}
+		else
+			dropout_scale_conv(current->output, c_param->nb_filters 
+				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);
 	}
 }
 
@@ -252,7 +259,7 @@ void backward_conv_layer(layer *current)
 	
 	c_param = (conv_param*) current->param;
 	
-	if(current->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 	{
 		dropout_apply_conv(current->delta_o, c_param->dropout_mask, c_param->nb_filters 
 			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);

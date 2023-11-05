@@ -30,7 +30,6 @@ static conv_param *c_param;
 
 void blas_forward_conv_layer(layer *current)
 {
-	double c_dr, w_alpha;
 	int depth_padding;
 	int image_padding;
 	int im2col_prev_bias;
@@ -75,34 +74,30 @@ void blas_forward_conv_layer(layer *current)
 		c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], c_param->flat_f_size, 
 		c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2], 
 		c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], im2col_prev_bias, 1);
-	
-	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
-	{
-		c_dr = current->previous->dropout_rate;
-		c_dr = ((c_param->flat_f_size-1)*(1.0f-c_dr)+1)/c_param->flat_f_size;
-		//w_alpha = (1.0f - c_dr); //account for the bias node that is never dropped
-		w_alpha = c_dr;
-	}
-	else
-		w_alpha = 1.0;
 
 	//Input X filters matrix multiplication for the all batch
 	
 	cblas_sgemm(CblasColMajor, CblasTrans, CblasNoTrans, net->batch_size 
-		* (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]), c_param->nb_filters, c_param->flat_f_size, w_alpha, 
+		* (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]), c_param->nb_filters, c_param->flat_f_size, 1.0f, 
 		/*A*/ c_param->im2col_input, c_param->flat_f_size, /*B*/ c_param->filters, c_param->flat_f_size, 0.0f, 
 		/*C*/ current->output, net->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]));
 	
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
 	
-	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f)
 	{
-		dropout_select_conv(c_param->dropout_mask, c_param->nb_filters 
-			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);	
-		
-		dropout_apply_conv(current->output, c_param->dropout_mask, c_param->nb_filters 
-			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
+		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
+		{
+			dropout_select_conv(c_param->dropout_mask, c_param->nb_filters 
+				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);	
+			
+			dropout_apply_conv(current->output, c_param->dropout_mask, c_param->nb_filters 
+				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
+		}
+		else
+			dropout_scale_conv(current->output, c_param->nb_filters 
+				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);
 	}
 }
 
@@ -120,7 +115,7 @@ void blas_backward_conv_layer(layer *current)
 	
 	c_param = (conv_param*) current->param;
 	
-	if(current->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 	{
 		dropout_apply_conv(current->delta_o, c_param->dropout_mask, c_param->nb_filters 
 			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);

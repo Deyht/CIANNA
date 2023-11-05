@@ -33,6 +33,7 @@ cd ../ImageNET
 
 rm error.txt
 rm -rf ImageNET_aux_data
+rm -rf bin_blocks
 rm *.tar.gz
 rm *.jpg
 rm -rf arch
@@ -42,10 +43,33 @@ rm -rf net_save
 
 cd ../PASCAL
 
+rm error.txt
+rm *.dat
+rm *.tar.gz
+rm *.tar
+rm *.jpg
+rm -rf VOCdevkit
+rm -rf arch
+rm -rf fwd_res
+rm -rf net_save
+
 
 cd ../COCO
 
+rm error.txt
+rm *.dat
+rm *.tar.gz
+rm *.jpg
+rm *.zip
+rm -rf annotations
+rm -rf train2017
+rm -rf val2017
+rm -rf arch
+rm -rf fwd_res
+rm -rf net_save
+
 
 cd ../SDC1
+
 
 

@@ -84,10 +84,10 @@ void dropout_select_dense(float *mask, int biased_dim, size_t size, float drop_r
 	for(i = 0; i < size; i++)
 	{
 		rand = random_uniform();
-		if(rand < drop_rate && (i+1)/biased_dim != 0)
-			mask[i] = 0;
+		if(rand >= drop_rate || (i+1) % biased_dim == 0)
+			mask[i] = 1.0f;
 		else
-			mask[i] = 1;
+			mask[i] = 0.0f;
 	}
 }
 
@@ -98,56 +98,29 @@ void dropout_apply_dense(void *table, float *mask, size_t size)
 	
 	float *f_table = (float*) table;
 	
-	for(i = 0; i <size; i++)
-		f_table[i] *= mask[i];
+	for(i = 0; i < size; i++)
+		f_table[i] = f_table[i]*mask[i];
 }
 
 
-void group_normalization_dense(void *i_tab, int b_length, int b_size,
-	int dim, int biased_dim, int group_size, int nb_group)
+void dropout_scale_dense(void *table, int biased_dim, size_t size, float drop_rate)
 {
-	int i, j, k;
-	float *tab = (float*) i_tab;
-	float l_val, eps = 0.00001f;
-	double mean = 0.0, var = 0.0;
-
-	#pragma omp parallel for private(j,k,l_val,mean,var) collapse(2) schedule(guided,1)
-	for(i = 0; i < b_length; i++)
-	{
-		for(j = 0; j < nb_group; j++)
-		{
-			mean = 0.0;
-			var = 0.0;
-												/* Here dim = dim - set_off */
-			for(k = j*group_size; k < (j+1)*group_size && k < dim; k++)
-				mean += (float)tab[i*biased_dim + k];
-			mean /= group_size;
-
-			for(k = j*group_size; k < (j+1)*group_size && k < dim; k++)
-			{
-				l_val = (float)tab[i*biased_dim + k];
-				var += (l_val - mean)*(l_val - mean);
-			}
-			var /= group_size;
-
-			for(k = j*group_size; k < (j+1)*group_size && k < dim; k++)
-			{
-				l_val = (float)tab[i*biased_dim + k];
-				tab[i*biased_dim + k] = (l_val - mean)/sqrt(var + eps);
-			}
-		}
-	}
-	/* Don't do anything for objects after length*/
+	int i;
+	
+	float *f_table = (float*) table;
+	
+	for(i = 0; i < size; i++)
+		if((i+1) % biased_dim != 0)
+			f_table[i] = f_table[i]*(1.0f-drop_rate);
 }
 
 
 void naiv_forward_dense_layer(layer *current)
 {
 	int i, j, b;
-	double h, w_alpha;
+	double h;
 	int nb_area_w, nb_area_h, nb_area_d, depth;
 	void *ref_input;
-	float prev_drop_rate = 0.0f;
 	
 	network* net = current->c_network;
 	
@@ -212,17 +185,6 @@ void naiv_forward_dense_layer(layer *current)
 		ref_input = d_param->flat_input;
 	}
 	
-	//bias weight is included in drop, should change this behavior ?
-	if(net->is_inference && net->inference_drop_mode == AVG_MODEL && current->previous != NULL)
-	{
-		prev_drop_rate = current->previous->dropout_rate;
-		w_alpha = ((d_param->in_size-1)*(1.0f-prev_drop_rate)+1)/d_param->in_size;
-	}
-	else
-	{
-		w_alpha = 1.0f;
-	}
-	
 	float *f_input = (float*) ref_input;
 	//Strongly affected by performance drop of cache miss
 	//Could be optimized by transposing the matrix first => better use OpenBLAS directly
@@ -238,16 +200,21 @@ void naiv_forward_dense_layer(layer *current)
 					* f_input[b*d_param->in_size + j];
 			}
 			
-			f_output[b*(d_param->nb_neurons+1)+i] = w_alpha * h;
+			f_output[b*(d_param->nb_neurons+1)+i] = h;
 		}
 	}
 	
 	current->activation(current);
 	
-	if(current->dropout_rate > 0.01f && (!net->is_inference || net->inference_drop_mode == MC_MODEL))
+	if(current->dropout_rate > 0.01f)
 	{
-		dropout_select_dense(d_param->dropout_mask, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
-		dropout_apply_dense(current->output, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
+		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
+		{
+			dropout_select_dense(d_param->dropout_mask, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
+			dropout_apply_dense(current->output, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
+		}
+		else
+			dropout_scale_dense(current->output, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
 	}
 }
 
@@ -268,7 +235,7 @@ void naiv_backward_dense_layer(layer* current)
 	float *f_flat_delta_o = (float*) d_param->flat_delta_o;
 	float *f_update = (float*) d_param->update;
 	
-	if(current->dropout_rate > 0.01f)
+	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 		dropout_apply_dense(current->delta_o, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
 	
 	//######################## ERROR PROPAGATION ########################

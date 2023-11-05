@@ -229,7 +229,7 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 	c_param->filters = (float*) calloc(nb_filters * (c_param->flat_f_size + c_param->TC_padding), sizeof(float));
 	mem_approx += nb_filters * (c_param->flat_f_size + c_param->TC_padding) * sizeof(float);
 	
-	if(drop_rate > 0.01f || current->activation_type == YOLO)
+	if(drop_rate > 0.01f)
 	{
 		c_param->dropout_mask = (float*) calloc(c_param->nb_filters 
 			* (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) 
@@ -306,6 +306,9 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 	if(current->previous == NULL)
 		current->bias_value = net->input_bias;
 	
+	/*if(current->previous->drop_rate > 0.01f)
+		current->bias_value = 0.0f;
+	*/
 	//set bias value for the current layer, this value will not move during training
 	for(i = 0; i < (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size; i++)
 		((float*)c_param->im2col_input)[i*(c_param->flat_f_size+c_param->TC_padding) 
