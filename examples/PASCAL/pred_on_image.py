@@ -96,15 +96,15 @@ def apply_NMS(c_tile, c_tile_kept, c_box, c_nb_box, amax_array, nms_threshold_sa
 		c_nb_box -= 1
 		i = 0
 
-	for i in range(0,c_box_size_prev):
-		if(c_tile[i,5] < 0.00000001):
-			continue
-		IoU = fct_IoU(c_box[:4], c_tile[i,:4])
-		
-		if((IoU > nms_threshold_same and np.argmax(c_box[7:]) == np.argmax(c_tile[i,7:]))
-			or (IoU > nms_threshold_diff and np.argmax(c_box[7:]) != np.argmax(c_tile[i,7:]))):
-			c_tile[i] = 0.0
-			c_nb_box -= 1
+		for i in range(0,c_box_size_prev):
+			if(c_tile[i,5] < 0.00000001):
+				continue
+			IoU = fct_IoU(c_box[:4], c_tile[i,:4])
+			
+			if((IoU > nms_threshold_same and np.argmax(c_box[7:]) == np.argmax(c_tile[i,7:]))
+				or (IoU > nms_threshold_diff and np.argmax(c_box[7:]) != np.argmax(c_tile[i,7:]))):
+				c_tile[i] = 0.0
+				c_nb_box -= 1
 	 
 	return c_nb_box_final
 

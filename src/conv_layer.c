@@ -324,22 +324,22 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 		{
 			default:
 			case N_XAVIER:
-				xavier_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				xavier_normal( c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
 				break;
 			case U_XAVIER:
 				xavier_uniform(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
 				break;
 			case N_LECUN:
-				lecun_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				lecun_normal(  c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
 				break;
 			case U_LECUN:
-				lecun_uniform(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				lecun_uniform( c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
 				break;
 			case N_RAND:
-				rand_normal(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				rand_normal(   c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
 				break;
 			case U_RAND:
-				rand_uniform(c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
+				rand_uniform(  c_param->filters, c_param->flat_f_size, c_param->nb_filters, 0, 0.0, c_param->TC_padding, init_scaling);
 				break;
 		}
 	}

@@ -422,7 +422,6 @@ void cuda_forward_conv_layer(layer *current)
 		}
 	}
 	
-		
 }
 
 

@@ -72,29 +72,29 @@ def box_extraction(c_pred, c_box, c_tile, obj_threshold, class_soft_limit):
 
 @jit(nopython=True, cache=True, fastmath=False)
 def apply_NMS(c_tile, c_tile_kept, c_box, c_nb_box, amax_array, nms_threshold_same, nms_threshold_diff):
-  c_nb_box_final = 0
-  c_box_size_prev = c_nb_box
+	c_nb_box_final = 0
+	c_box_size_prev = c_nb_box
 
-  while(c_nb_box > 0):
-    max_objct = np.argmax(c_tile[:c_box_size_prev,5]*amax_array[:c_box_size_prev])
-    c_box = np.copy(c_tile[max_objct])
-    c_tile[max_objct,5] = 0.0
-    c_tile_kept[c_nb_box_final] = c_box
-    c_nb_box_final += 1
-    c_nb_box -= 1
-    i = 0
-    
-    for i in range(0,c_box_size_prev):
-      if(c_tile[i,5] < 0.00000001):
-        continue
-      IoU = fct_IoU(c_box[:4], c_tile[i,:4])
-      
-      if((IoU > nms_threshold_same and np.argmax(c_box[7:]) == np.argmax(c_tile[i,7:]))
-      	or (IoU > nms_threshold_diff and np.argmax(c_box[7:]) != np.argmax(c_tile[i,7:]))):
-        c_tile[i] = 0.0
-        c_nb_box -= 1
-     
-  return c_nb_box_final
+	while(c_nb_box > 0):
+		max_objct = np.argmax(c_tile[:c_box_size_prev,5]*amax_array[:c_box_size_prev])
+		c_box = np.copy(c_tile[max_objct])
+		c_tile[max_objct,5] = 0.0
+		c_tile_kept[c_nb_box_final] = c_box
+		c_nb_box_final += 1
+		c_nb_box -= 1
+		i = 0
+
+		for i in range(0,c_box_size_prev):
+			if(c_tile[i,5] < 0.00000001):
+				continue
+			IoU = fct_IoU(c_box[:4], c_tile[i,:4])
+			
+			if((IoU > nms_threshold_same and np.argmax(c_box[7:]) == np.argmax(c_tile[i,7:]))
+				or (IoU > nms_threshold_diff and np.argmax(c_box[7:]) != np.argmax(c_tile[i,7:]))):
+				c_tile[i] = 0.0
+				c_nb_box -= 1
+	 
+	return c_nb_box_final
 
 #The network is resiliant to slight augment in image resolution, which increase the mAP
 #We recommand changing image_size by step of 64 (2 grid elements)

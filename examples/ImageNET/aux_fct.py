@@ -9,6 +9,8 @@ import albumentations as A
 import cv2
 
 
+processed_data_path = "./"
+
 nb_images_per_iter = 64*50
 image_size_raw = 500
 nb_class = 1000
@@ -42,11 +44,8 @@ def f_ar(float_list):
 def init_data_gen(test_mode = 0):
 	
 	global nb_images_per_iter, nb_keep_val_raw, nb_keep_val, image_size_raw, image_size, image_size_val, max_scale, min_scale
-	global flat_image_slice, class_count, nb_workers, block_size, transform_val, processed_data_path
+	global flat_image_slice, class_count, nb_workers, block_size, transform_val
 	global input_data, targets, input_val, targets_val, targets_zero, nb_process, nb_class, class_list
-	
-	#processed_data_path = "./"
-	processed_data_path = "/Data-Linux/Work/MINERVA/ImageNet-2012/"
 
 	np.random.seed(int(time.time()))
 
