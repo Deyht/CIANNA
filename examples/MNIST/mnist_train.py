@@ -54,7 +54,7 @@ cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10,
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)
-cnn.create_dataset("TEST", size=10000, input=data_test, target=target_test)
+cnn.create_dataset("TEST" , size=10000, input=data_test, target=target_test)
 
 #Python side datasets are not required anymore, they can be released to save RAM
 #del (data_train, target_train, data_valid, target_valid, data_test, target_test)
