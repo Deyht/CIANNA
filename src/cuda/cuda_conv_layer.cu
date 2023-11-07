@@ -421,7 +421,6 @@ void cuda_forward_conv_layer(layer *current)
 				c_param->nb_filters * net->batch_size * (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), current->dropout_rate);
 		}
 	}
-	
 }
 
 

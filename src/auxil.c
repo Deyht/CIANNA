@@ -2061,9 +2061,12 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 	double batch_error = 0.0, total_error = 0.0;
 	char net_save_file_name[200];
 	float items_per_s = 0.0;
-	void *disc_input_alt, *disc_target_alt;
-	void *disc_input_back;
+	void *disc_input_alt = NULL;
+	void *disc_input_back = NULL;
+	#ifdef CUDA
+	void *disc_target_alt = NULL;
 	int fake_frac = 0, sep_offset = 0; 
+	#endif
 	
 	if(gen->inference_only || disc->inference_only)
 	{
@@ -2095,11 +2098,13 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 		exit(EXIT_FAILURE);
 	}
 	
+	#ifdef CUDA
 	if(gen->cu_inst.use_cuda_TC != disc->cu_inst.use_cuda_TC)
 	{
 		printf("\n ERROR: Mixed precision setting must be identical for generator and discriminator.\n");
 		exit(EXIT_FAILURE);
 	}
+	#endif
 	
 	eval_init(gen);
 	eval_init(disc);
@@ -2234,8 +2239,10 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 	if(gen->iter == 0 || disc->iter == 0)
 		remove("error.txt");
 	
+	#ifdef CUDA
 	disc_input_alt = (float*) calloc(disc->batch_size*(disc->input_dim+1), sizeof(float));
 	disc_target_alt = (float*) calloc(disc->batch_size*(disc->output_dim), sizeof(float));
+	#endif
 	
 	if(disc->compute_method == C_CUDA)
 	{
@@ -2309,11 +2316,19 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 			batch_eval_in(disc);
 			gen->length = gen->batch_size; disc->length = disc->batch_size;
 		
-			if(gen->compute_method == C_CUDA && gen->cu_inst.dynamic_load)
+			if(gen->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
-				cuda_put_table(gen, gen->input, gen->train.input[j*3], gen->batch_size*(gen->input_dim+1));
-				cuda_put_table(gen, gen->target, gen->train.target[j*3], gen->batch_size*(gen->output_dim));
+				if(gen->cu_inst.dynamic_load)
+				{
+					cuda_put_table(gen, gen->input, gen->train.input[j*3], gen->batch_size*(gen->input_dim+1));
+					cuda_put_table(gen, gen->target, gen->train.target[j*3], gen->batch_size*(gen->output_dim));
+				}
+				else
+				{
+					gen->input = gen->train.input[j*3];
+					gen->target = gen->train.target[j*3];
+				}
 				#endif
 			}
 			else
@@ -2329,11 +2344,19 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 				perf_eval_out(gen, k, gen->fwd_perf, gen->fwd_perf_n);
 			}
 			
-			if(disc->compute_method == C_CUDA && disc->cu_inst.dynamic_load)
+			if(disc->compute_method == C_CUDA)
 			{
 				#ifdef CUDA
-				cuda_put_table(disc, disc->input, disc->train.input[j], disc->batch_size*(disc->input_dim+1));
-				cuda_put_table(disc, disc->target, disc->train.target[j], disc->batch_size*(disc->output_dim));
+				if(disc->cu_inst.dynamic_load)
+				{
+					cuda_put_table(disc, disc->input, disc->train.input[j], disc->batch_size*(disc->input_dim+1));
+					cuda_put_table(disc, disc->target, disc->train.target[j], disc->batch_size*(disc->output_dim));
+				}
+				else
+				{
+					disc->input = gen->train.input[j];
+					disc->target = gen->train.target[j];
+				}
 				#endif
 			}
 			else
@@ -2342,24 +2365,20 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 				disc->target = gen->train.target[j];
 			}
 			
-			/*if(random_uniform() < 0.1)
-			{
-				fake_frac = (int) random_uniform()*disc->batch_size;
-				sep_offset = 0;
-			}
-			else
-			{*/
-				fake_frac = disc->batch_size/2;
-				sep_offset = disc->batch_size/2;
-			//}
+			#ifdef CUDA			
+			fake_frac = disc->batch_size/2;
+			sep_offset = disc->batch_size/2;
+			#endif
 			
 			disc->is_inference = 0;
 			disc->inference_drop_mode = MC_MODEL;
 			
 			for(dbl_disc = 0; dbl_disc < 2; dbl_disc++)
 			{
+				#ifdef CUDA
 				cuda_gan_disc_mix_input(disc, gen->net_layers[gen->nb_layers-1]->output, disc_input_alt, 
 					disc->input, fake_frac, dbl_disc*sep_offset);
+				#endif
 				
 				disc_input_back = disc->input;
 				
@@ -2374,6 +2393,7 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 				}
 				
 				perf_eval_in(disc);
+				#ifdef CUDA
 				cuda_semi_supervised_gan_deriv_output_error(disc->net_layers[disc->nb_layers-1], 1, 0);
 				
 				if(i == nb_iter-1 && j == disc->train.nb_batch - 1)
@@ -2381,6 +2401,7 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 					printf("Mixed\n");
 					cuda_print_table(disc, disc->net_layers[disc->nb_layers-1]->delta_o, 3*disc->batch_size, 3);
 				}
+				#endif
 				
 				for(k = 0; k < disc->nb_layers; k++)
 				{
@@ -2399,11 +2420,19 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 			for(gen_mult = 0; gen_mult < 1; gen_mult++)
 			{ 
 				
-				if(gen->compute_method == C_CUDA && gen->cu_inst.dynamic_load)
+				if(gen->compute_method == C_CUDA)
 				{
 					#ifdef CUDA
-					cuda_put_table(gen, gen->input, gen->train.input[j*3+1+gen_mult], gen->batch_size*(gen->input_dim+1));
-					cuda_put_table(gen, gen->target, gen->train.target[j*3+1+gen_mult], gen->batch_size*(gen->output_dim));
+					if(gen->cu_inst.dynamic_load)
+					{
+						cuda_put_table(gen, gen->input, gen->train.input[j*3+1+gen_mult], gen->batch_size*(gen->input_dim+1));
+						cuda_put_table(gen, gen->target, gen->train.target[j*3+1+gen_mult], gen->batch_size*(gen->output_dim));
+					}
+					else
+					{
+						gen->input = gen->train.input[j*3+1+gen_mult];
+						gen->target = gen->train.target[j*3+1+gen_mult];
+					}
 					#endif
 				}
 				else
@@ -2430,6 +2459,7 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 					perf_eval_out(disc, k, disc->fwd_perf, disc->fwd_perf_n);
 				}
 				
+				#ifdef CUDA
 				cuda_semi_supervised_gan_deriv_output_error(disc->net_layers[disc->nb_layers-1], 0, 1);
 				
 				if(i == nb_iter-1 && j == disc->train.nb_batch - 1)
@@ -2437,6 +2467,8 @@ void train_gan(network *gen, network *disc, int nb_iter, int control_interv, flo
 					printf("Fake reversed\n");
 					cuda_print_table(disc, disc->net_layers[disc->nb_layers-1]->delta_o, 3*disc->batch_size, 3);
 				}
+				
+				#endif
 				
 				for(k = 0; k < disc->nb_layers; k++)
 				{
