@@ -82,9 +82,6 @@ void blas_forward_conv_layer(layer *current)
 		/*A*/ c_param->im2col_input, c_param->flat_f_size, /*B*/ c_param->filters, c_param->flat_f_size, 0.0f, 
 		/*C*/ current->output, net->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]));
 	
-	//Proceed to activation of the given maps regarding the activation parameter
-	current->activation(current);
-	
 	if(current->dropout_rate > 0.01f)
 	{
 		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
@@ -99,6 +96,9 @@ void blas_forward_conv_layer(layer *current)
 			dropout_scale_conv(current->output, c_param->nb_filters 
 				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);
 	}
+	
+	//Proceed to activation of the given maps regarding the activation parameter
+	current->activation(current);
 }
 
 

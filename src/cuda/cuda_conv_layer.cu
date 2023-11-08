@@ -396,9 +396,6 @@ void cuda_forward_conv_layer(layer *current)
 		net->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]),
 		cuda_compute_type, CUBLAS_GEMM_DEFAULT);
 	
-	//Proceed to activation of the given maps regarding the activation parameter
-	current->activation(current);
-	
 	if(current->dropout_rate > 0.01f)
 	{
 		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
@@ -421,6 +418,8 @@ void cuda_forward_conv_layer(layer *current)
 				c_param->nb_filters * net->batch_size * (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), current->dropout_rate);
 		}
 	}
+	//Proceed to activation of the given maps regarding the activation parameter
+	current->activation(current);
 }
 
 

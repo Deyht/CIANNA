@@ -5,6 +5,8 @@
 
 Minor updates toward V-1.0 release
 
+/!\ Break compatibility with previous network saves containing dropout (prediction only, not save file format)
+
 - Update examples, add PASCAL and COCO object detection examples in scripts and notebooks
 
 ====    Interface related    ====
@@ -16,7 +18,8 @@ Minor updates toward V-1.0 release
     + Update old GAN functions to work on the latest version
     + Only CUDA support and hard coded parameters for now
 - Change the dropout output scaling to be done by the layer that is actually dropping. This improve compatibility with other layers and results
-  in more resilient source code. Also make the is_inference and drop_mode parameter checked in backprop for dropping layers, so the gradient 
+  in more resilient source code. The dropout scaling is also moved before the activation function so it improves compatibility with non-linear activation
+  functions (like our default saturated leaky relu). Finally, make the is_inference and drop_mode parameter checked in backprop for dropping layers, so the gradient 
   can be propagated with or without dropout (usefull for some applications like GANs).
 
 ********************************************

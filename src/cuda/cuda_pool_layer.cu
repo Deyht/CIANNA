@@ -468,9 +468,6 @@ void cuda_forward_pool_layer(layer* current)
 				bias_in, p_param->nb_maps * net->batch_size);
 			break;
 	}
-	
-	//Linear == No activation
-	current->activation(current);
 
 	if(current->dropout_rate > 0.01f)
 	{
@@ -489,6 +486,9 @@ void cuda_forward_pool_layer(layer* current)
 			net->cu_inst.cu_pool_fcts.drop_scale_fct<<<cu_blocks, cu_threads>>>(current->output, p_param->dropout_mask, p_param->nb_maps 
 				* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])* net->batch_size, current->dropout_rate);
 	}
+	
+	//Linear == No activation
+	current->activation(current);
 }
 
 

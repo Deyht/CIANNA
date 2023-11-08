@@ -377,8 +377,6 @@ void cuda_forward_dense_layer(layer *current)
 		net->batch_size, d_param->in_size, cu_alpha, d_param->weights, cuda_data_type, 
 		d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, cu_beta, 
 		current->output, cuda_data_type, d_param->nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-	
-	current->activation(current);
 
 	if(current->dropout_rate > 0.01f)
 	{
@@ -396,6 +394,8 @@ void cuda_forward_dense_layer(layer *current)
 			net->cu_inst.cu_dense_fcts.drop_scale_fct<<<cu_blocks, cu_threads>>>(current->output, 
 				d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, (d_param->nb_neurons+1), current->dropout_rate);
 	}
+	
+	current->activation(current);
 }
 
 

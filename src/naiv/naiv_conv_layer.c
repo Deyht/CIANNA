@@ -226,9 +226,6 @@ void forward_conv_layer(layer *current)
 		}
 	}
 	
-	//Proceed to activation of the given maps regarding the activation parameter
-	current->activation(current);
-	
 	if(current->dropout_rate > 0.01f)
 	{
 	
@@ -243,6 +240,9 @@ void forward_conv_layer(layer *current)
 			dropout_scale_conv(current->output, c_param->nb_filters 
 				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);
 	}
+	
+	//Proceed to activation of the given maps regarding the activation parameter
+	current->activation(current);
 }
 
 void backward_conv_layer(layer *current)

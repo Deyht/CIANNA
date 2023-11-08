@@ -394,8 +394,6 @@ void forward_pool_layer(layer* current)
 			break;
 	}
 
-	current->activation(current);
-
 	if(current->dropout_rate > 0.01f)
 	{
 		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
@@ -410,6 +408,8 @@ void forward_pool_layer(layer* current)
 			dropout_scale_pool(current->output, p_param->nb_maps
 				* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, current->dropout_rate);
 	}
+	
+	current->activation(current);
 }
 
 
