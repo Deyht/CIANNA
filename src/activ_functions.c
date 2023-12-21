@@ -1670,7 +1670,7 @@ void YOLO_deriv_error_fct
 		int *target_cell_mask, *box_locked;
 		float *IoU_table, *dist_prior, *box_in_pix;
 		int i, j, k, l, l_o, l_t;
-		int c_batch, f_offset, best_prior_id, nb_obj_target, s_p_i = 0;
+		int c_batch, f_offset, nb_obj_target, s_p_i = 0;
 		int nb_in_cell, id_in_cell, l_r_b = -1, resp_box = -1, resp_targ = -1, targ_diff_flag = 0;
 		float best_dist, c_dist, max_IoU, current_IoU;
 		int cell_pos[3], c_nb_area[3], obj_c[3];
@@ -1737,12 +1737,6 @@ void YOLO_deriv_error_fct
 				best_dist = c_dist;
 				s_p_i = k;
 			}
-			
-			//for(l = 0; l < y_param.max_nb_obj_per_image * nb_box; l++)
-			//{
-			//	IoU_table[l] = -2.0f;
-			//	dist_prior[l] = -2.0f;
-			//}
 		}
 		
 		nb_in_cell = 0;
@@ -1852,21 +1846,13 @@ void YOLO_deriv_error_fct
 				
 				for(l = 0; l < strict_box_size_association; l++)
 				{
-					best_dist = 1000000.0f;	best_prior_id = -1;
+					best_dist = 1000000.0f;
 					for(k = 0; k < nb_box; k++)
 						if(dist_prior[id_in_cell*nb_box+k] > 0.0 && dist_prior[id_in_cell*nb_box+k] < best_dist)
-						{
 							best_dist = dist_prior[id_in_cell*nb_box+k];
-							best_prior_id = k;
-						}
 					for(k = 0; k < nb_box; k++) /* Flag the closest theoritical prior (and identical ones if any) */
-					{
-						c_prior_size = prior_size + k*3;
-						if(prior_size[best_prior_id*3+0] == c_prior_size[0]
-							&& prior_size[best_prior_id*3+1] == c_prior_size[1]
-							&& prior_size[best_prior_id*3+2] == c_prior_size[2])
+						if(abs(dist_prior[id_in_cell*nb_box+k] - best_dist) < 0.001f )
 							dist_prior[id_in_cell*nb_box+k] = -2.0f;
-					}
 				}
 			}
 		
@@ -1975,7 +1961,7 @@ void YOLO_deriv_error_fct
 						for(l = 0; l < 6; l++)
 							targ_int[l] = copysignf(0.5f,l-2.5f)*targ_size[l%3];
 					
-					best_dist = 100000.0f; best_prior_id = -1;
+					best_dist = 100000.0f;
 					for(k = 0; k < nb_box; k++)
 					{
 						c_prior_size = prior_size + k*3;
@@ -1984,12 +1970,12 @@ void YOLO_deriv_error_fct
 							case DIST_IOU:
 								for(l = 0; l < 6; l++)
 									out_int[l] = copysignf(0.5f,l-2.5f)*c_prior_size[l%3];
-								c_dist = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
+								dist_prior[resp_targ*nb_box + k] = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
 								break;
 							
 							default:
 							case DIST_SIZE:
-								c_dist = sqrt(
+								dist_prior[resp_targ*nb_box + k] = sqrt(
 									 (targ_size[0]-c_prior_size[0])*(targ_size[0]-c_prior_size[0])
 									+(targ_size[1]-c_prior_size[1])*(targ_size[1]-c_prior_size[1])
 									+(targ_size[2]-c_prior_size[2])*(targ_size[2]-c_prior_size[2]));
@@ -2007,31 +1993,25 @@ void YOLO_deriv_error_fct
 										obj_in_offset[l+3] = logf(obj_in_offset[l+3]);
 								}
 								
-								c_dist = 
+								dist_prior[resp_targ*nb_box + k] = 
 									 abs(obj_in_offset[3])
 									+abs(obj_in_offset[4])
 									+abs(obj_in_offset[5]);
 								break;
 						}
-						if(c_dist < best_dist)
-						{
-							best_dist = c_dist;
-							best_prior_id = k;
-						}
+						if(dist_prior[resp_targ*nb_box + k] < best_dist)
+							best_dist = dist_prior[resp_targ*nb_box + k];
 					}
 					max_IoU = -2.0f;
 					for(k = 0; k < nb_box; k++)
 					{
-						c_prior_size = prior_size + k*3;
-						if((c_prior_size[best_prior_id*3+0] == c_prior_size[0]
-							&& c_prior_size[best_prior_id*3+1] == c_prior_size[1]
-							&& c_prior_size[best_prior_id*3+2] == c_prior_size[2])
-							&& IoU_table[resp_targ*nb_box+k] > max_IoU)
+						if(fabsf(dist_prior[resp_targ*nb_box+k] - best_dist) < 0.001f && IoU_table[resp_targ*nb_box+k] > max_IoU)
 						{
 							max_IoU = IoU_table[resp_targ*nb_box+k];
 							resp_box = k;
 						}
 					}
+					/* If the best prior (or identical) is not available, the resp_box is unchanged */
 					/* Should always get a resp_box != -1, regarding all previous conditions */
 				}
 			}
@@ -2403,7 +2383,7 @@ void YOLO_error_fct
 		int *target_cell_mask, *box_locked;
 		float *IoU_table, *dist_prior, *box_in_pix, *IoU_monitor;
 		int l_o, l_t, i, j, k, l;
-		int c_batch, f_offset, best_prior_id, nb_obj_target, s_p_i = 0;
+		int c_batch, f_offset, nb_obj_target, s_p_i = 0;
 		int nb_in_cell, id_in_cell, resp_box = -1, resp_targ = -1, targ_diff_flag = 0;
 		float best_dist, c_dist, max_IoU, current_IoU;
 		int cell_pos[3], c_nb_area[3], obj_c[3];
@@ -2473,12 +2453,6 @@ void YOLO_error_fct
 				best_dist = c_dist;
 				s_p_i = k;
 			}
-			
-			//for(l = 0; l < y_param.max_nb_obj_per_image * nb_box; l++)
-			//{
-			//	IoU_table[l] = -2.0f;
-			//	dist_prior[l] = -2.0f;
-			//}
 			
 			IoU_monitor[k*2] = -1.0f;
 			IoU_monitor[k*2+1] = -1.0f;
@@ -2590,21 +2564,13 @@ void YOLO_error_fct
 				
 				for(l = 0; l < strict_box_size_association; l++)
 				{
-					best_dist = 1000000.0f;	best_prior_id = -1;
+					best_dist = 1000000.0f;
 					for(k = 0; k < nb_box; k++)
 						if(dist_prior[id_in_cell*nb_box+k] > 0.0 && dist_prior[id_in_cell*nb_box+k] < best_dist)
-						{
 							best_dist = dist_prior[id_in_cell*nb_box+k];
-							best_prior_id = k;
-						}
 					for(k = 0; k < nb_box; k++) /* Flag the closest theoritical prior (and identical ones if any) */
-					{
-						c_prior_size = prior_size + k*3;
-						if(prior_size[best_prior_id*3+0] == c_prior_size[0]
-							&& prior_size[best_prior_id*3+1] == c_prior_size[1]
-							&& prior_size[best_prior_id*3+2] == c_prior_size[2])
+						if(abs(dist_prior[id_in_cell*nb_box+k] - best_dist) < 0.001f )
 							dist_prior[id_in_cell*nb_box+k] = -2.0f;
-					}
 				}
 			}
 			
@@ -2676,7 +2642,7 @@ void YOLO_error_fct
 						for(l = 0; l < 6; l++)
 							targ_int[l] = copysignf(0.5f,l-2.5f)*targ_size[l%3];
 					
-					best_dist = 100000.0f; best_prior_id = -1;
+					best_dist = 100000.0f;
 					for(k = 0; k < nb_box; k++)
 					{
 						c_prior_size = prior_size + k*3;
@@ -2685,12 +2651,12 @@ void YOLO_error_fct
 							case DIST_IOU:
 								for(l = 0; l < 6; l++)
 									out_int[l] = copysignf(0.5f,l-2.5f)*c_prior_size[l%3];
-								c_dist = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
+								dist_prior[resp_targ*nb_box + k] = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
 								break;
 							
 							default:
 							case DIST_SIZE:
-								c_dist = sqrt(
+								dist_prior[resp_targ*nb_box + k] = sqrt(
 									 (targ_size[0]-c_prior_size[0])*(targ_size[0]-c_prior_size[0])
 									+(targ_size[1]-c_prior_size[1])*(targ_size[1]-c_prior_size[1])
 									+(targ_size[2]-c_prior_size[2])*(targ_size[2]-c_prior_size[2]));
@@ -2708,31 +2674,25 @@ void YOLO_error_fct
 										obj_in_offset[l+3] = logf(obj_in_offset[l+3]);
 								}
 								
-								c_dist = 
+								dist_prior[resp_targ*nb_box + k] = 
 									 abs(obj_in_offset[3])
 									+abs(obj_in_offset[4])
 									+abs(obj_in_offset[5]);
 								break;
 						}
-						if(c_dist < best_dist)
-						{
-							best_dist = c_dist;
-							best_prior_id = k;
-						}
+						if(dist_prior[resp_targ*nb_box + k] < best_dist)
+							best_dist = dist_prior[resp_targ*nb_box + k];
 					}
 					max_IoU = -2.0f;
 					for(k = 0; k < nb_box; k++)
 					{
-						c_prior_size = prior_size + k*3;
-						if((c_prior_size[best_prior_id*3+0] == c_prior_size[0]
-							&& c_prior_size[best_prior_id*3+1] == c_prior_size[1]
-							&& c_prior_size[best_prior_id*3+2] == c_prior_size[2])
-							&& IoU_table[resp_targ*nb_box+k] > max_IoU)
+						if(fabsf(dist_prior[resp_targ*nb_box+k] - best_dist) < 0.001f && IoU_table[resp_targ*nb_box+k] > max_IoU)
 						{
 							max_IoU = IoU_table[resp_targ*nb_box+k];
 							resp_box = k;
 						}
 					}
+					/* If the best prior (or identical) is not available, the resp_box is unchanged */
 					/* Should always get a resp_box != -1, regarding all previous conditions */
 				}
 			}

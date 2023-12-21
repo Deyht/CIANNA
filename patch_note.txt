@@ -21,6 +21,8 @@ Minor updates toward V-1.0 release
   in more resilient source code. The dropout scaling is also moved before the activation function so it improves compatibility with non-linear activation
   functions (like our default saturated leaky relu). Finally, make the is_inference and drop_mode parameter checked in backprop for dropping layers, so the gradient 
   can be propagated with or without dropout (usefull for some applications like GANs).
+- Fix an error affecting low_IoU_best_box association and random_best_box_association, was not affecting the appropriate prior in most cases.
+
 
 ********************************************
 ===== V-0.9.3.4 =====
