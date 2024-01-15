@@ -38,7 +38,7 @@ if(os.environ.get('USE_OPENMP') != None):
 	open_mp_extra = ['-fopenmp']
 
 setup(name = 'CIANNA', 
-	version = '0.9.3.4', 
+	version = '0.9.3.5', 
 	ext_modules = [Extension('CIANNA', ['python_module.c'], 
 	extra_objects=['conv_layer.o', 'dense_layer.o', 'pool_layer.o', 'norm_layer.o', 'lrn_layer.o', 'activ_functions.o', 'initializers.o', 'vars.o', 'auxil.o', 'naiv/naiv_dense_layer.o', 'naiv/naiv_conv_layer.o', 'naiv/naiv_pool_layer.o', 'naiv/naiv_norm_layer.o'] + cuda_obj + blas_obj,
 	include_dirs= cuda_include + blas_include + [numpy.get_include()],

@@ -87,7 +87,7 @@ void reduce_group_dgamma_conv_fct(float *input, float *delta_output, float *d_ga
 	float *group_var, float *group_mean, int group_size, int nb_group, int flat_a_size, int batch_size)
 {	
 	int i, j;
-	float eps = 0.00001f;
+	float eps = 0.001f;
 	double sum;
 	
 	#pragma omp parallel for private(j, sum) schedule(guided,2)
@@ -109,7 +109,7 @@ void group_normalization_conv_fct(float *output, float *input, float *gamma, flo
 {
 	/* Could be optimized with advanced multi-thread reduction */
 	int i, j;
-	float l_val, eps = 0.00001f;
+	float l_val, eps = 0.001f;
 	float mean = 0.0f, var = 0.0f;
 	int filter_offset = flat_a_size*b_size;
 	int group_id, batch_id;
@@ -153,7 +153,7 @@ void group_normalization_conv_back_fct(
 {
 	int i, j;
 
-	float eps = 0.00001f;
+	float eps = 0.001f;
 	float mean = 0.0f, var = 0.0f;
 	float l_d_gamma, l_d_beta;
 	int filter_offset = flat_a_size*b_size;

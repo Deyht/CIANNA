@@ -175,7 +175,7 @@ __global__ void reduce_group_dgamma_conv_kernel_##name(void *idata, void *d_outp
 	if (tid < 32) 																																\
 		warpReduce(sdata, blockSize, tid);																										\
 	if (tid == 0) 																																\
-		d_gamma[block_id] = (1.0f/sqrt(group_var[block_id]+eps))*sdata[0];																		\
+		d_gamma[block_id] = sdata[0]*(1.0f/sqrt(group_var[block_id]+eps));																		\
 }
 
 #define group_normalization_conv_kernel(name, type) 																							\
