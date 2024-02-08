@@ -69,7 +69,15 @@ rm -rf fwd_res
 rm -rf net_save
 
 
-cd ../SDC1
+cd ../SKAO_SDC1
+rm error.txt
+rm train_cat_norm_limits.txt
+rm iter_score_list.txt
+rm -rf figures
+rm -rf SDC1_data
+rm -rf arch
+rm -rf fwd_res
+rm -rf net_save
 
 
 
