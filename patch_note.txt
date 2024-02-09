@@ -7,6 +7,7 @@ Minor updates toward V-1.0 release
 
 /!\ Break compatibility with previous network saves containing dropout (prediction only, not save file format)
 
+- Add examples on the SKAO SDC1 following submission of the associated Cornu et al.2024 (scripts and Colab notebook)
 - Update examples, add PASCAL and COCO object detection examples in scripts and notebooks
 
 ====    Interface related    ====
@@ -22,7 +23,7 @@ Minor updates toward V-1.0 release
   functions (like our default saturated leaky relu). Finally, make the is_inference and drop_mode parameter checked in backprop for dropping layers, so the gradient 
   can be propagated with or without dropout (usefull for some applications like GANs).
 - Fix an error affecting low_IoU_best_box association and random_best_box_association, was not affecting the appropriate prior in most cases.
-
+- Fix a discrepancy in the eps value used in group norm for CPU and GPU
 
 ********************************************
 ===== V-0.9.3.4 =====

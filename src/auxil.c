@@ -81,7 +81,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-0.9.3.5 BETA BUILD (12/2023), by D.Cornu\n\
+CIANNA V-0.9.3.5 BETA BUILD (02/2024), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
