@@ -1772,7 +1772,8 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 	
 	for(i = 0; i < nb_iter; i++)
 	{
-		printf("\n");
+		if(silent < 1)
+			printf("\n");
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-net->decay*net->iter);
 		net->iter++;
 	
@@ -1928,7 +1929,7 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 					break;
 			}
 			batch_error /= net->length;
-			if(silent != 1)
+			if(silent < 1)
 				print_iter_advance(net, j+1, net->train.nb_batch, batch_error, net->batch_size/batch_eval_out(net), 1);
 			
 		}
@@ -1937,10 +1938,13 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 		
 		if(((net->iter) % control_interv == 0))
 		{
-			printf("\n%*s", 14, " ");
-			printf("Average Training perf: %0.2f it/s |", items_per_s);
-			printf(" Mean Loss: %.5g |", total_error/net->train.size);
-			printf(" Learning rate: %.5g | Momentum: %.5g | Weight decay: %.5g\n", net->learning_rate, net->momentum, net->weight_decay);
+			if(silent < 1)
+			{
+				printf("\n%*s", 14, " ");
+				printf("Average Training perf: %0.2f it/s |", items_per_s);
+				printf(" Mean Loss: %.5g |", total_error/net->train.size);
+				printf(" Learning rate: %.5g | Momentum: %.5g | Weight decay: %.5g\n", net->learning_rate, net->momentum, net->weight_decay);
+			}
 			net->is_inference = 1;
 			net->no_error = 0;
 			compute_error(net, net->valid, 0, show_confmat, 1, silent);

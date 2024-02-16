@@ -12,6 +12,8 @@ Minor updates toward V-1.0 release
 
 ====    Interface related    ====
 - Various minor visual/log adjustments
+- Change the behavior of "silent" in cianna.train so it know properly skip all output.
+  Also add the possibility to specify silent=2 so only the control steps are displayed.
 
 ==== Low-level modifications ====
 - Various minor visual/log adjusments
