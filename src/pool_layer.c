@@ -88,7 +88,7 @@ void pool_define_activation_param(layer *current, const char *activ)
 	switch(current->activation_type)
 	{
 		case RELU:
-			set_relu_activ(current, size, biased_dim, dim, offset, activ);
+			set_relu_activ(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case LOGISTIC:
