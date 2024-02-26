@@ -36,9 +36,9 @@ float ellapsed_time(struct timeval tstart)
     struct timeval tmp;
     long long diff;
     gettimeofday(&tmp, NULL);
-    diff = tmp.tv_usec - tstart.tv_usec;
-    diff += (tmp.tv_sec - tstart.tv_sec) * 1000000;
-    return ((float)diff*1.0e-6);
+    diff = (tmp.tv_usec - tstart.tv_usec);
+    diff += (tmp.tv_sec - tstart.tv_sec)*1000000;
+    return ((float)diff); //return in micro sec
 }
 
 void sig_handler(int signo)
@@ -750,12 +750,12 @@ void perf_eval_out(network *net, int layer_id, float *vect, int *n_vect)
 	if(net->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		time = cuda_perf_eval_out();
+		time = cuda_perf_eval_out(); //in micro sec
 		#endif
 	}
 	else
 	{
-		time = ellapsed_time(t_perf_eval)*1000000;
+		time = ellapsed_time(t_perf_eval);
 	}
 	
 	if(n_vect[layer_id] < 999)
@@ -772,12 +772,12 @@ float batch_eval_out(network *net)
 	if(net->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		time = cuda_batch_eval_out()/1000000;
+		time = cuda_batch_eval_out()/1000000.0f;
 		#endif
 	}
 	else
 	{
-		time = ellapsed_time(t_batch_eval)*1000000;
+		time = ellapsed_time(t_batch_eval)/1000000.0f;
 	}
 	return time;
 }
@@ -788,12 +788,12 @@ float epoch_eval_out(network *net)
 	if(net->compute_method == C_CUDA)
 	{
 		#ifdef CUDA
-		time = cuda_epoch_eval_out()/1000000;
+		time = cuda_epoch_eval_out()/1000000.0f;
 		#endif
 	}
 	else
 	{
-		time = ellapsed_time(t_epoch_eval)*1000000;
+		time = ellapsed_time(t_epoch_eval)/1000000.0f;
 	}
 	return time;
 }
