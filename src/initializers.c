@@ -123,7 +123,7 @@ void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float 
 			f_tab[i] = 0.0;
 		else
 		{	
-			f_tab[i] = random_uniform()*sqrt(12.0/(dim_in+dim_out))*manual_scaling; //real Xavier normal
+			f_tab[i] = (random_uniform()*2.0f-1.0f)*sqrt(12.0/(dim_in+dim_out))*manual_scaling; //real Xavier normal
 		}
 	}
 	
@@ -192,7 +192,7 @@ void lecun_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float b
 			f_tab[i] = 0.0;
 		else
 		{
-			f_tab[i] = random_uniform()*sqrt(3.0f/(dim_in))*manual_scaling;
+			f_tab[i] = (random_uniform()*2.0f-1.0f)*sqrt(3.0f/(dim_in))*manual_scaling;
 		}
 	}
 	
@@ -264,7 +264,7 @@ void rand_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bi
 			f_tab[i] = 0.0;
 		else
 		{	
-			f_tab[i] = random_uniform()*manual_scaling; 
+			f_tab[i] = (random_uniform()*2.0f-1.0f)*manual_scaling; 
 		}
 	}
 	
