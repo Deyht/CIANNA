@@ -17,7 +17,7 @@ if (len(sys.argv) > 1):
 init_data_gen(test_mode=1)
 
 cnn.init(in_dim=i_ar([image_size,image_size]), in_nb_ch=3, out_dim=nb_class, bias=0.1,
-	 b_size=16, comp_meth='C_CUDA', dynamic_load=1, mixed_precision="FP16C_FP32A", adv_size=35)
+	 b_size=16, comp_meth='C_CUDA', dynamic_load=1, mixed_precision="FP32C_FP32A", adv_size=35)
 
 #Compute on only half the validation set to reduce memory footprint
 input_test, targets_test = create_val_batch()

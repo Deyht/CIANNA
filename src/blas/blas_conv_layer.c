@@ -64,7 +64,7 @@ void blas_forward_conv_layer(layer *current)
 	}
 	
 	//im2col conversion fct -> one of the most complex function, go see details above
-	im2col_fct_v5(c_param->im2col_input, current->input, 
+	im2col_fct(c_param->im2col_input, current->input, 
 		c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
 		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * c_param->flat_f_size, 
 		c_param->stride[0], c_param->stride[1], c_param->stride[2],
@@ -148,7 +148,7 @@ void blas_backward_conv_layer(layer *current)
 				back_padding[k] = 0;
 		}
 		
-		im2col_fct_v5(c_param->im2col_delta_o,
+		im2col_fct(c_param->im2col_delta_o,
 			current->delta_o, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], 
 			(c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * flat_f_size, 
 			c_param->int_padding[0] + 1, c_param->int_padding[1] + 1, c_param->int_padding[2] + 1,
@@ -194,7 +194,7 @@ void blas_backward_conv_layer(layer *current)
 		current->c_network->momentum, c_param->update, c_param->flat_f_size);
 		
 		update_weights(c_param->filters, c_param->update, net->learning_rate*net->weight_decay, 
-			c_param->flat_f_size, c_param->flat_f_size*c_param->nb_filters);
+			0, c_param->flat_f_size*c_param->nb_filters);
 	}
 }
 

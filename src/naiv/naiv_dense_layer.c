@@ -334,7 +334,7 @@ void naiv_backward_dense_layer(layer* current)
 		}
 		
 		update_weights(d_param->weights, d_param->update, net->learning_rate*net->weight_decay, 
-			(d_param->nb_neurons+1), d_param->in_size*(d_param->nb_neurons+1));
+			1, d_param->in_size*(d_param->nb_neurons+1));
 	}
 }
 

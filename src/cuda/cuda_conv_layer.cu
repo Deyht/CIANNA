@@ -32,9 +32,9 @@ static conv_param *c_param;
 //One of the most important function, aims to convert an image into a table that contains all the
 //areas that will be used for convolution. Highly redundant but still allows a significant speed up
 //due to subsequent matrix operations. Currently memory bound despite only one load per element of the original image.
-//VERSION 5.3
-#define im2col_kernel_v5(name, type) 																											\
-__global__ void im2col_kernel_v5_##name																											\
+//VERSION 5.4
+#define im2col_kernel(name, type) 																												\
+__global__ void im2col_kernel_##name																											\
 	(void* i_output, void* i_input, 																											\
 	int image_size, size_t flat_image_size, 																									\
 	int stride_w, int stride_h ,int stride_d, 																									\
@@ -54,7 +54,7 @@ __global__ void im2col_kernel_v5_##name																											\
 																																				\
 	int w, h, d, x, y, z;																														\
 	int pos_w_filter, pos_h_filter, pos_d_filter;																								\
-	long long int loc;																															\
+	size_t loc;																																	\
 																																				\
 	if(i < batch_size)																															\
 	{																																			\
@@ -76,23 +76,23 @@ __global__ void im2col_kernel_v5_##name																											\
 				for(z = d/stride_d; (d-z*stride_d < f_size_d); z -=1)																			\
 				{																																\
 					pos_d_filter = d-z*stride_d;																								\
-					if((z < 0) || (pos_d_filter > d_size + (d_size-1)*internal_padding_d + 2*padding_d - f_size_d))								\
+					if((z < 0) || (z > (d_size + (d_size-1)*internal_padding_d + 2*padding_d - f_size_d)/stride_d))								\
 						continue;																												\
 					for(y = h/stride_h; (h-y*stride_h < f_size_h); y -= 1)																		\
 					{																															\
 						pos_h_filter = h-y*stride_h;																							\
-						if((y < 0) || (pos_h_filter > h_size + (h_size-1)*internal_padding_h + 2*padding_h - f_size_h))							\
+						if((y < 0) || (y > (h_size + (h_size-1)*internal_padding_h + 2*padding_h - f_size_h)/stride_h))							\
 							continue;																											\
 						for(x = w/stride_w; (w-x*stride_w < f_size_w); x -= 1)																	\
 						{																														\
 							pos_w_filter = w-x*stride_w;																						\
-							if((x < 0) || (pos_w_filter > w_size + (w_size-1)*internal_padding_w + 2*padding_w - f_size_w))						\
+							if((x < 0) || (x > (w_size + (w_size-1)*internal_padding_w + 2*padding_w - f_size_w)/stride_w))						\
 								continue;																										\
-							loc = (z*(long long int)nb_area_w*nb_area_h + y*nb_area_w + x)*(flat_f_size+TC_padding)								\
+							loc = (z*(size_t)nb_area_w*nb_area_h + y*nb_area_w + x)*(flat_f_size+TC_padding)									\
 								 + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;										\
-							if((bias_out && (loc)%(flat_f_size+TC_padding) >= flat_f_size - 1))													\
+							if((bias_out && (loc)%(flat_f_size+TC_padding) >= flat_f_size-1))													\
 								continue;																										\
-							if(loc >= 0 && loc < flat_image_size)																				\
+							if(loc < flat_image_size)	/* loc is > 0 by construction */														\
 								output[loc] = local_pix;																						\
 						}																														\
 					}																															\
@@ -162,20 +162,20 @@ __global__ void cuda_dropout_scale_conv_##name(void* i_table, float* mask, size_
 
 
 
-im2col_kernel_v5(FP32, float);
+im2col_kernel(FP32, float);
 cuda_rotate_filter_matrix(FP32, float); 
 cuda_dropout_apply_conv(FP32, float);
 cuda_dropout_scale_conv(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
-im2col_kernel_v5(FP16, half);
+im2col_kernel(FP16, half);
 cuda_rotate_filter_matrix(FP16, half);
 cuda_dropout_apply_conv(FP16, half);
 cuda_dropout_scale_conv(FP16, half);
 #endif
 
 #if defined (GEN_AMPERE)
-im2col_kernel_v5(BF16, nv_bfloat16);
+im2col_kernel(BF16, nv_bfloat16);
 cuda_rotate_filter_matrix(BF16, nv_bfloat16); 
 cuda_dropout_apply_conv(BF16, nv_bfloat16);
 cuda_dropout_scale_conv(BF16, nv_bfloat16);
@@ -189,7 +189,7 @@ void cuda_conv_init(network* net)
 		default:
 		case FP32C_FP32A:
 		case TF32C_FP32A:
-			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v5_FP32;
+			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_FP32;
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_FP32;
 			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_FP32;
 			net->cu_inst.cu_conv_fcts.drop_scale_fct = cuda_dropout_scale_conv_FP32;
@@ -198,7 +198,7 @@ void cuda_conv_init(network* net)
 		case FP16C_FP32A:
 		case FP16C_FP16A:
 			#if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
-			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v5_FP16;
+			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_FP16;
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_FP16;
 			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_FP16;
 			net->cu_inst.cu_conv_fcts.drop_scale_fct = cuda_dropout_scale_conv_FP16;
@@ -210,7 +210,7 @@ void cuda_conv_init(network* net)
 
 		case BF16C_FP32A:
 			#if defined (GEN_AMPERE)
-			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_v5_BF16;
+			net->cu_inst.cu_conv_fcts.im2col_fct = im2col_kernel_BF16;
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_BF16;
 			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_BF16;
 			net->cu_inst.cu_conv_fcts.drop_scale_fct = cuda_dropout_scale_conv_BF16;
@@ -557,7 +557,7 @@ void cuda_backward_conv_layer(layer *current)
 			(c_param->flat_f_size + c_param->TC_padding), cuda_compute_type, CUBLAS_GEMM_DEFAULT);
 			
 		cuda_update_weights(net, c_param->FP32_filters, c_param->update, net->learning_rate*net->weight_decay,
-			c_param->flat_f_size, (c_param->flat_f_size + c_param->TC_padding) * c_param->nb_filters);
+			0, (c_param->flat_f_size + c_param->TC_padding) * c_param->nb_filters);
 	}
 }
 

@@ -31,8 +31,8 @@ static conv_param *c_param;
 //One of the most important function, aims to convert an image into a table that contains all the
 //areas that will be used for convolution. Highly redundant but still allows a significant speed up
 //due to subsequent matrix operations. Currently memory bound despite only one load per element of the original image.
-//VERSION 5.3
-void im2col_fct_v5
+//VERSION 5.4
+void im2col_fct
 	(void *i_output, void *i_input, int image_size, int flat_image_size, 
 	int stride_w, int stride_h ,int stride_d, 
 	int padding_w, int padding_h, int padding_d, 
@@ -70,19 +70,19 @@ void im2col_fct_v5
 				for(z = d/stride_d; (d-z*stride_d < f_size_d); z -=1)
 				{
 					pos_d_filter = d-z*stride_d;
-					if((z < 0) || (pos_d_filter > d_size + (d_size-1)*internal_padding_d + 2*padding_d - f_size_d))
+					if((z < 0) || (z > (d_size + (d_size-1)*internal_padding_d + 2*padding_d - f_size_d)/stride_d))
 						continue;
 					for(y = h/stride_h; (h-y*stride_h < f_size_h); y -= 1)
 					{
 						pos_h_filter = h-y*stride_h;
-						if((y < 0) || (pos_h_filter > h_size + (h_size-1)*internal_padding_h + 2*padding_h - f_size_h))
+						if((y < 0) || (y > (h_size + (h_size-1)*internal_padding_h + 2*padding_h - f_size_h)/stride_h))
 							continue;
 						for(x = w/stride_w; (w-x*stride_w < f_size_w); x -= 1)
 						{
 							pos_w_filter = w-x*stride_w;
-							if((x < 0) || (pos_w_filter > w_size + (w_size-1)*internal_padding_w + 2*padding_w - f_size_w))
+							if((x < 0) || (x > (w_size + (w_size-1)*internal_padding_w + 2*padding_w - f_size_w)/stride_w))
 								continue;
-							loc = z*nb_area_w*nb_area_h*flat_f_size + y*nb_area_w*flat_f_size 
+							loc = z*(size_t)nb_area_w*nb_area_h*flat_f_size + y*nb_area_w*flat_f_size 
 								+ x*flat_f_size + pos_w_filter + pos_h_filter*f_size_w + pos_d_filter*f_size_w*f_size_h;
 							if((bias_out && (loc)%flat_f_size >= flat_f_size - 1))
 								continue;
@@ -195,7 +195,7 @@ void forward_conv_layer(layer *current)
 	}
 	
 	//im2col conversion fct -> one of the most complex function, go see details above
-	im2col_fct_v5(c_param->im2col_input, current->input, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
+	im2col_fct(c_param->im2col_input, current->input, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
 		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * c_param->flat_f_size, 
 		c_param->stride[0], c_param->stride[1], c_param->stride[2],
 		c_param->padding[0], c_param->padding[1], c_param->padding[2],
@@ -292,7 +292,7 @@ void backward_conv_layer(layer *current)
 				back_padding[k] = 0;
 		}
 		
-		im2col_fct_v5(c_param->im2col_delta_o,
+		im2col_fct(c_param->im2col_delta_o,
 			current->delta_o, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], 
 			(c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * flat_f_size, 
 			c_param->int_padding[0] + 1, c_param->int_padding[1] + 1, c_param->int_padding[2] + 1,
@@ -365,7 +365,7 @@ void backward_conv_layer(layer *current)
 		}
 		
 		update_weights(c_param->filters, c_param->update, net->learning_rate*net->weight_decay, 
-			c_param->flat_f_size, c_param->flat_f_size*c_param->nb_filters);
+			0, c_param->flat_f_size*c_param->nb_filters);
 	}
 }
 

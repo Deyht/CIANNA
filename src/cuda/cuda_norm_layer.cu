@@ -449,10 +449,8 @@ void cuda_backward_norm_layer(layer *current)
 
 				n_param->gamma_update[j] = net->momentum*n_param->gamma_update[j] 
 					+ net->learning_rate*(sum_dgamma/net->batch_size);
-					/*+ 0.0f*net->weight_decay*(n_param->gamma[j]-1.0f)*net->TC_scale_factor);*/
 				n_param->beta_update[j] = net->momentum*n_param->beta_update[j]  
 					+ net->learning_rate*(sum_dbeta/net->batch_size);
-					/*+ 0.0f*net->weight_decay*n_param->beta[j]*net->TC_scale_factor);*/
 				
 				n_param->gamma[j] -= n_param->gamma_update[j] / net->TC_scale_factor;
 				n_param->beta[j] -= n_param->beta_update[j] / net->TC_scale_factor; 

@@ -255,10 +255,8 @@ void naiv_backward_norm_layer(layer *current)
 				//could add momentum
 				n_param->gamma_update[j] = net->momentum*n_param->gamma_update[j] 
 					+ net->learning_rate*(sum_dgamma/net->batch_size);
-					/*+ 0.0f*net->weight_decay*(1.0f-n_param->gamma[j]));*/
 				n_param->beta_update[j] = net->momentum*n_param->beta_update[j]  
 					+ net->learning_rate*(sum_dbeta/net->batch_size);
-					/*+ 0.0f*net->weight_decay*n_param->beta[j]);*/
 				
 				n_param->gamma[j] -= n_param->gamma_update[j];
 				n_param->beta[j] -= n_param->beta_update[j]; 

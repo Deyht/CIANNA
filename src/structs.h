@@ -99,7 +99,7 @@ struct cuda_auxil_fcts
 	void (*cu_get_batched_table_fct)(void **tab, int batch_size, int nb_batch, size_t size);
 	void (*cu_convert_batched_host_table_FP32_to_fct)(void **tab, int batch_size, int nb_batch, size_t size);
 	void (*cu_master_weight_copy_kernel)(float *master, void *copy, size_t size);
-	void (*cu_update_weights_kernel)(float *weights, void* update, float weight_decay, int bias_id, size_t size, float TC_scale_factor);
+	void (*cu_update_weights_kernel)(float *weights, void* update, float weight_decay, int is_pivot, size_t size, float TC_scale_factor);
 	void (*cu_print_table_fct)(void* tab, size_t size, int return_every);
 	void (*cu_shfl_kern_fct)(void** i_in, void** i_targ, void** i_train_dupl, void** i_targ_dupl,
 		int* index, size_t in_size, int b_size, int d_in, int d_out);

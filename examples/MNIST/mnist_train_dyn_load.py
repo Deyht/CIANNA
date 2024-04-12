@@ -125,7 +125,7 @@ else:
 #To create a latex table and associated pdf with the current architecture	
 #cnn.print_arch_tex("./arch/", "arch", activation=1)
 
-for k in range(0,40):
+for k in range(0,60):
 
 	t = Thread(target=data_augm)
 	t.start()

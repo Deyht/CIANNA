@@ -53,7 +53,7 @@ void write_formated_dataset(network *net, const char *filename, Dataset *data, i
 Dataset load_formated_dataset(network *net, const char *filename, int input_data_type, int output_data_type);
 void set_normalize_dataset_parameters(network *net, float *offset_input, float *norm_input, int dim_size_input, float *offset_output, float *norm_output, int dim_size_output);
 void normalize_dataset(network *net, Dataset c_data);
-void update_weights(void *weights, void* update, float weight_decay, int bias_id, int size);
+void update_weights(void *weights, void* update, float weight_decay, int is_pivot, int size);
 void perf_eval_display(network *net);
 void print_architecture_tex(network *net, const char *path, const char *file_name,
 	int l_size, int l_in_size, int l_f_size, int l_out_size, int l_stride, int l_padding, 
@@ -176,7 +176,7 @@ void dropout_apply_conv(void* i_table, float* mask, size_t size);
 void dropout_scale_conv(void* i_table, size_t size, float drop_rate);
 //void group_normalization_conv(void *i_tab, int b_length, int b_size,
 //	int group_size, int nb_group, int nb_filters, int flat_f_size);
-void im2col_fct_v5
+void im2col_fct
 	(void* i_output, void* i_input, int image_size, int flat_image_size, 
 	int stride_w, int stride_h ,int stride_d, 
 	int padding_w, int padding_h, int padding_d, 
@@ -214,7 +214,7 @@ extern cublasComputeType_t cuda_compute_type;
 void cuda_master_weight_FP32_to_FP32(float *master, void *copy, size_t size);
 void cuda_master_weight_FP32_to_FP16(float *master, void *copy, size_t size);
 void cuda_master_weight_FP32_to_BF16(float *master, void *copy, size_t size);
-void cuda_update_weights(network* net, void *weights, void* update, float weight_decay, int bias_id, size_t size);
+void cuda_update_weights(network* net, void *weights, void* update, float weight_decay, int is_pivot, size_t size);
 __global__ void init_block_state(unsigned int seed,  curandState_t* states, size_t size);
 
 #endif

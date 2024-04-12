@@ -76,7 +76,7 @@ else:
 #To create a latex table and associated pdf with the current architecture	
 #cnn.print_arch_tex("./arch/", "arch", activation=1)
 
-cnn.train(nb_iter=10, learning_rate=0.004, momentum=0.8, confmat=1, save_every=0)
+cnn.train(nb_iter=20, learning_rate=0.004, momentum=0.8, confmat=1, save_every=10)
 cnn.perf_eval()
 
 #Uncomment to save network prediction

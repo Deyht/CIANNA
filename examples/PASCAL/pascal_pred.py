@@ -39,30 +39,30 @@ pred_compute_map()
 
 
 """
-AP_all (0.50): 76.095814%
+AP_all (0.50): 75.989870%
 **** Per class AP ****
-AP aeroplane      : 77.77%   Total:  285 - T:  239 - F: 2474
-AP bicycle        : 86.65%   Total:  337 - T:  314 - F: 1347
-AP bird           : 71.22%   Total:  459 - T:  373 - F: 3318
-AP boat           : 68.39%   Total:  263 - T:  222 - F: 3899
-AP bottle         : 49.42%   Total:  469 - T:  335 - F: 7119
-AP bus            : 83.14%   Total:  213 - T:  190 - F: 1547
-AP car            : 81.77%   Total: 1201 - T: 1051 - F: 9559
-AP cat            : 86.86%   Total:  358 - T:  324 - F: 1443
-AP chair          : 57.53%   Total:  756 - T:  633 - F: 12270
-AP cow            : 74.96%   Total:  244 - T:  211 - F: 1077
-AP diningtable    : 74.50%   Total:  206 - T:  190 - F: 1813
-AP dog            : 82.15%   Total:  489 - T:  437 - F: 1856
-AP horse          : 86.26%   Total:  348 - T:  313 - F: 1011
-AP motorbike      : 83.77%   Total:  325 - T:  288 - F: 1149
-AP person         : 78.82%   Total: 4528 - T: 3945 - F: 24082
-AP pottedplant    : 48.52%   Total:  480 - T:  346 - F: 10257
-AP sheep          : 74.96%   Total:  242 - T:  206 - F: 1279
-AP sofa           : 78.36%   Total:  239 - T:  224 - F: 1487
-AP train          : 87.93%   Total:  282 - T:  271 - F: 2110
-AP tvmonitor      : 72.71%   Total:  308 - T:  258 - F: 3483
+AP aeroplane      : 77.67%   Total:  285 - T:  245 - F: 2755
+AP bicycle        : 86.26%   Total:  337 - T:  310 - F: 1461
+AP bird           : 71.34%   Total:  459 - T:  376 - F: 3981
+AP boat           : 67.09%   Total:  263 - T:  216 - F: 4808
+AP bottle         : 48.45%   Total:  469 - T:  328 - F: 8662
+AP bus            : 82.77%   Total:  213 - T:  189 - F: 1584
+AP car            : 81.60%   Total: 1201 - T: 1045 - F: 11001
+AP cat            : 86.88%   Total:  358 - T:  327 - F: 1594
+AP chair          : 57.04%   Total:  756 - T:  632 - F: 15643
+AP cow            : 74.49%   Total:  244 - T:  208 - F: 1020
+AP diningtable    : 73.61%   Total:  206 - T:  187 - F: 2283
+AP dog            : 82.88%   Total:  489 - T:  441 - F: 1949
+AP horse          : 86.27%   Total:  348 - T:  315 - F: 1040
+AP motorbike      : 84.03%   Total:  325 - T:  288 - F: 1234
+AP person         : 78.81%   Total: 4528 - T: 3949 - F: 26780
+AP pottedplant    : 47.55%   Total:  480 - T:  351 - F: 13960
+AP sheep          : 74.69%   Total:  242 - T:  204 - F: 1401
+AP sofa           : 77.55%   Total:  239 - T:  220 - F: 1583
+AP train          : 87.47%   Total:  282 - T:  268 - F: 2302
+AP tvmonitor      : 73.26%   Total:  308 - T:  263 - F: 3863
 
-**** mAP (0.50): 75.285394% ****
+**** mAP (0.50): 74.984838% ****
 """
 #Note: mAP@50 for an input resolution of 416. 
 #The network is resiliant to slight augment in image resolution, which increase the mAP

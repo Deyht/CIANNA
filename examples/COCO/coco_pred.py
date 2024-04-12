@@ -52,7 +52,7 @@ os.system("python3 coco_eval.py")
  Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.354
  Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.548
 """
-#Note: mAP for an input resolution of 416. 
+#Note: mAP for an input resolution of 416x416
 #The network is resiliant to slight augment in image resolution, which increase the mAP
 #We recommand changing image_size by step of 64 (2 grid elements)
 

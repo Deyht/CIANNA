@@ -81,7 +81,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-0.9.3.5 BETA BUILD (02/2024), by D.Cornu\n\
+CIANNA V-0.9.3.5 BETA BUILD (04/2024), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -649,18 +649,16 @@ void host_only_shuffle(network *net, Dataset data)
 }
 
 
-void update_weights(void *weights, void* update, float weight_decay, int bias_id, int size)
+void update_weights(void *weights, void* update, float weight_decay, int is_pivot, int size)
 {
 	int i;
 	
 	float* f_weights = (float*) weights;
 	float* f_update = (float*) update;
 	
-	//No pragma parallel. No perf improvement. Must be re-tested since addition of weight decay
-	for(i = 0; i < size; i++)
+	//No pragma parallel. No perf improvement. Could be re-tested since addition of weight decay
+	for(i = 0; i < size-is_pivot; i++)
 	{   //Here the weight_decay variable include the learning rate scaling
-		//No weight decay for the bias
-		//if((i+1) % bias_id != 0)
 		f_update[i] += weight_decay*f_weights[i];
 		f_weights[i] -= f_update[i];
 	}

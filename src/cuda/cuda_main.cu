@@ -458,26 +458,24 @@ void cuda_master_weight_copy(network* net, float *master, void *copy, size_t siz
 
 #define cuda_update_weights_kernel(name, type)																									\
 __global__ void cuda_update_weights_##name(float *weights, void* update, 																		\
-	float weight_decay, int bias_id, size_t size, float TC_scale_factor)																		\
+	float weight_decay, int is_pivot, size_t size, float TC_scale_factor)																		\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	type *c_update = ((type*)update);																											\
 																																				\
-	if(i < size)																																\
+	if(i < size-is_pivot)																														\
 	{	/*Here the weight_decay variable include the learning rate scaling*/																	\
-		/*No weight decay for the bias*/																										\
-		/*if((i+1) % bias_id != 0)*/																											\
 		c_update[i] += weight_decay*weights[i]*TC_scale_factor;																					\
 		weights[i] -= (float)(((float)c_update[i]) / TC_scale_factor);																			\
 	}																																			\
 }
 
 
-void cuda_update_weights(network* net, void *weights, void* update, float weight_decay, int bias_id, size_t size)
+void cuda_update_weights(network* net, void *weights, void* update, float weight_decay, int is_pivot, size_t size)
 {
 	cu_blocks = (size + cu_threads - 1) / cu_threads;
 	net->cu_inst.cu_auxil_fcts.cu_update_weights_kernel<<< cu_blocks, cu_threads >>>
-		((float*)weights, update, weight_decay, bias_id, size, net->TC_scale_factor);
+		((float*)weights, update, weight_decay, is_pivot, size, net->TC_scale_factor);
 }
 
 //Could be updated to follow new template construction if needed

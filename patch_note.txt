@@ -28,6 +28,10 @@ Minor updates toward V-1.0 release
 - Fix a discrepancy in the eps value used in group norm for CPU and GPU
 - Fix a variable ordering when setting activation to RELU, has no impact as the two variable where having the same value in cases where ordering was wrong.
 - Fix an error in Uniform initializers that was producing all positive weights instead of 0 centered distributions
+- Fix an error in weight decay that was causing the matrix bias pivot value used for dense layer to decay over time.
+- Fix a boundary error in im2col that was causing edge errors in both forward processing and backpropagation of the gradient. 
+  This error was affecting several convolutional layer configuration. While it affects the exact inference results of almost all example models,
+  we observed no significant impact on the predictive performance with or withour re-training.
 
 ********************************************
 ===== V-0.9.3.4 =====

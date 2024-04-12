@@ -160,7 +160,7 @@ for depth in range(0,3):
 
 
 cnn.init(in_dim=i_ar([image_size,image_size]), in_nb_ch=3, out_dim=1, b_size=1,
-	comp_meth='C_CUDA', dynamic_load=1, mixed_precision="FP16C_FP32A", inference_only=1)
+	comp_meth='C_CUDA', dynamic_load=1, mixed_precision="FP32C_FP32A", inference_only=1)
 
 cnn.create_dataset("TEST", 1, input_data, empty_target)
 
