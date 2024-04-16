@@ -119,7 +119,6 @@ nb_area_w = int((map_pixel_size-orig_offset)/patch_shift)
 nb_area_h = int((map_pixel_size-orig_offset)/patch_shift)
 
 nb_images_all = nb_area_w*nb_area_h
-overlap = fwd_image_size - patch_shift
 
 val_med_lims = np.array([0.6,0.3,0.1])
 val_med_obj  = np.array([0.9,0.7,0.5])
