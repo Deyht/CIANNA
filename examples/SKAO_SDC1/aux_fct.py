@@ -111,21 +111,25 @@ fwd_image_size = 512
 c_size = 16 #Grid element size / reduction factor
 yolo_nb_reg = int(fwd_image_size/c_size) #Number of grid element per dimension
 
-overlap 	= c_size*2
+overlap = c_size*2
 patch_shift = fwd_image_size - overlap #240
-orig_offset = int(int(map_pixel_size/2) - int(fwd_image_size/2) + 1)//patch_shift
+orig_offset = patch_shift - ((int(map_pixel_size/2) - int(fwd_image_size/2) + patch_shift)%patch_shift)
 
-nb_area_w = int((map_pixel_size-orig_offset)/patch_shift)
-nb_area_h = int((map_pixel_size-orig_offset)/patch_shift)
+print (orig_offset)
+
+nb_area_w = int((map_pixel_size+2*orig_offset)/patch_shift)
+nb_area_h = int((map_pixel_size+2*orig_offset)/patch_shift)
+
+print (nb_area_w, nb_area_h)
 
 nb_images_all = nb_area_w*nb_area_h
 
 val_med_lims = np.array([0.6,0.3,0.1])
 val_med_obj  = np.array([0.9,0.7,0.5])
 
-first_nms_thresholds 	 = np.array([0.05,-0.1,-0.3,-0.5]) #lower is stricter
-first_nms_obj_thresholds = np.array([1.0,0.70,0.50,0.30])
-second_nms_threshold 	 = -0.15
+first_nms_thresholds = np.array([0.05,-0.1,-0.3,-0.5]) #lower is stricter
+first_nms_obj_thresholds = np.array([1.0,0.7,0.50,0.30])
+second_nms_threshold = -0.15
 
 
 @jit(nopython=True, cache=True, fastmath=False)

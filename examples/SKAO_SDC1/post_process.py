@@ -88,10 +88,10 @@ for current_epoch in np.arange(epoch_start, epoch_end+1, epoch_interv):
 				c_nb_box_final = c_nb_box
 				c_nb_box_final = first_NMS(c_tile, c_tile_kept, c_box, c_nb_box, first_nms_thresholds, first_nms_obj_thresholds)
 				
-				out_range = 1
+				out_range = 2
 				if(ph < out_range or ph >= nb_area_h-out_range or pw < out_range or pw >= nb_area_w-out_range):
 				    c_nb_box_final = 0
-						
+				
 				final_boxes.append(np.copy(c_tile_kept[0:c_nb_box_final]))
 
 		final_boxes = np.reshape(np.array(final_boxes, dtype="object"), (nb_area_h, nb_area_w))
