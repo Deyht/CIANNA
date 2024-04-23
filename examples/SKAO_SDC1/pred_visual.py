@@ -45,10 +45,10 @@ load_iter = 0 #Change for your best iteration, using the pretrained model it sho
 #Obj thresholds should be optimize for specif training or iter (using post_process.py)
 
 #For best score (YOLO-CIANNA-ref)
-prob_obj_cases = np.array([0.2314, 0.1366, 0.2454, 0.1215, 0.2314, 0.2183, 0.0638, 0.0638, 0.0505])
+prob_obj_cases = np.array([0.2314, 0.1449, 0.2602, 0.1289, 0.2454, 0.2183, 0.0602, 0.0677, 0.0536])
 
 #For good precision (YOLO-CIANNA-alt)
-#prob_obj_cases = np.array([0.6102, 0.5254, 0.6271, 0.4237, 0.6271, 0.6102, 0.7288, 0.7288, 0.8])
+#prob_obj_cases = np.array([0.6102, 0.5424, 0.6441, 0.4407, 0.6271, 0.6102, 0.7119, 0.7288, 0.88])
 
 #To sample the full mAP curve (require low value for all)
 #prob_obj_cases = np.array([0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03]) 
@@ -311,7 +311,7 @@ for ph in tqdm(range(0,nb_area_h)):
 		
 		#Manually set all edge predictions to 0
 		#The network was not train to interpret these cases which results in artifacts
-		out_range = 1
+		out_range = 2
 		if(ph < out_range or ph >= nb_area_h-out_range or pw < out_range or pw >= nb_area_w-out_range):
 			c_nb_box_final = 0
 		
