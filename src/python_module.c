@@ -25,7 +25,6 @@
 #include <Python.h>
 #include <numpy/arrayobject.h>
 
-#include <string.h>
 #include "prototypes.h"
 
 
@@ -38,6 +37,7 @@
 
 static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	PyArrayObject *py_dims = NULL;
 	int i;
 	double bias = 0.1;
@@ -65,6 +65,7 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 
 static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	int i, j, k, l;
 	Dataset *data = NULL;
 	const char *dataset_type;
@@ -197,6 +198,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 
 static PyObject* py_delete_dataset(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	const char *dataset_type;
 	int network_id = nb_networks-1, silent = 0;
 	Dataset *data = NULL;
@@ -259,6 +261,7 @@ static PyObject* py_delete_dataset(PyObject* self, PyObject *args, PyObject *kwa
 
 static PyObject* py_swap_data_buffers(PyObject* self, PyObject* args)
 {
+	setlocale(LC_ALL, "C");
 	int network_id = nb_networks - 1;
 	const char *dataset_type;
 	Dataset temp;
@@ -293,6 +296,7 @@ static PyObject* py_swap_data_buffers(PyObject* self, PyObject* args)
 
 static PyObject* py_linear(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	char *string = NULL;
 	
 	string = (char*) malloc(40*sizeof(char));
@@ -303,6 +307,7 @@ static PyObject* py_linear(PyObject* self, PyObject *args, PyObject *kwargs)
 
 static PyObject* py_relu(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	double saturation = 0.0/0.0, leaking = 0.0/0.0;
 	static char *kwlist[] = {"saturation", "leaking", NULL};
 
@@ -326,6 +331,7 @@ static PyObject* py_relu(PyObject* self, PyObject *args, PyObject *kwargs)
 
 static PyObject* py_logistic(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	double saturation = 0.0/0.0, beta = 0.0/0.0;
 	static char *kwlist[] = {"saturation", "beta", NULL};
 
@@ -348,6 +354,7 @@ static PyObject* py_logistic(PyObject* self, PyObject *args, PyObject *kwargs)
 
 static PyObject* py_softmax(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	char *string = NULL;
 	
 	string = (char*) malloc(40*sizeof(char));
@@ -359,6 +366,7 @@ static PyObject* py_softmax(PyObject* self, PyObject *args, PyObject *kwargs)
 
 static PyObject* py_yolo(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	char *string = NULL;
 	
 	string = (char*) malloc(40*sizeof(char));
@@ -371,6 +379,7 @@ static PyObject* py_yolo(PyObject* self, PyObject *args, PyObject *kwargs)
 //############################################################
 static PyObject* py_dense(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
+	setlocale(LC_ALL, "C");
 	int nb_neurons, prev_layer = -1, network_id = nb_networks-1, strict_size = 0, current_layer_id = -1;
 	const char *activation = "RELU", *init_fct = "xavier";
 	double drop_rate = 0.0, py_bias = 0.0/0.0, init_scaling=-1.0;
@@ -411,6 +420,7 @@ static PyObject* py_dense(PyObject* self, PyObject *args, PyObject *kwargs)
 
 static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
+	setlocale(LC_ALL, "C");
 	int i;
 	int nb_filters, prev_layer = -1, network_id = nb_networks-1, current_layer_id = -1;
 	PyArrayObject *py_f_size = NULL, *py_stride = NULL, *py_padding = NULL, *py_int_padding = NULL, *py_input_shape = NULL;
@@ -473,6 +483,7 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 
 static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
+	setlocale(LC_ALL, "C");
 	int i;
 	int prev_layer = -1, network_id = nb_networks-1, global = 0, current_layer_id = -1;
 	PyArrayObject *py_pool_size = NULL, *py_pool_stride = NULL, *py_pool_padding = NULL;
@@ -524,7 +535,8 @@ static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 
 
 static PyObject* py_norm(PyObject* self, PyObject *args, PyObject *kwargs)
-{
+{	
+	setlocale(LC_ALL, "C");
 	int prev_layer = -1, network_id = nb_networks-1, current_layer_id = -1;
 	const char *norm_type = "GN";
 	const char *activation = "LIN";
@@ -550,7 +562,8 @@ static PyObject* py_norm(PyObject* self, PyObject *args, PyObject *kwargs)
 
 /*EXPERIMENTAL, NOT FULLY TESTED*/
 static PyObject* py_lrn(PyObject* self, PyObject *args, PyObject *kwargs)
-{
+{	
+	setlocale(LC_ALL, "C");
 	int prev_layer = -1, network_id = nb_networks-1, current_layer_id = -1;
 	const char *activation = "LIN";
 	int range = 5;
@@ -577,6 +590,7 @@ static PyObject* py_lrn(PyObject* self, PyObject *args, PyObject *kwargs)
 /*EXPERIMENTAL, NOT FULLY TESTED*/
 static PyObject* py_set_frozen_layers(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
+	setlocale(LC_ALL, "C");
 	int i;
 	int network_id = nb_networks-1;
 	PyArrayObject *py_froz_array = NULL;
@@ -600,7 +614,8 @@ static PyObject* py_set_frozen_layers(PyObject* self, PyObject *args, PyObject *
 
 
 static PyObject* py_set_IoU_limits(PyObject* self, PyObject *args, PyObject *kwargs)
-{
+{	
+	setlocale(LC_ALL, "C");
 	float *IoU_limits_array = NULL;
 	PyObject *py_IoU_limits_array = NULL;
 	float good_IoU_lim = -2.0f, low_IoU_best_box_assoc = -2.0f, min_prob_IoU_lim = -2.0f, min_obj_IoU_lim = -2.0f;
@@ -633,7 +648,8 @@ static PyObject* py_set_IoU_limits(PyObject* self, PyObject *args, PyObject *kwa
 
 
 static PyObject* py_set_fit_parts(PyObject* self, PyObject *args, PyObject *kwargs)
-{
+{	
+	setlocale(LC_ALL, "C");
 	int *fit_parts_array = NULL;
 	PyObject *py_fit_parts_array = NULL;
 	int position = -2, size = -2, probability = -2, objectness = -2, classes = -2, parameters = -2;
@@ -663,6 +679,7 @@ static PyObject* py_set_fit_parts(PyObject* self, PyObject *args, PyObject *kwar
 
 static PyObject* py_set_error_scales(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	float *error_scales_array = NULL;
 	PyObject *py_error_scales_array = NULL;
 	float position = -1.0f, size = -1.0f, probability = -1.0f, objectness = -1.0f, classes = -1.0f, parameters = -1.0f;
@@ -692,6 +709,7 @@ static PyObject* py_set_error_scales(PyObject* self, PyObject *args, PyObject *k
 
 static PyObject* py_set_sm_single(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	float *sm_single_array = NULL;
 	PyObject *py_sm_single_array = NULL;
 	float slope = -1.0f, max = 100000.0f, min = -100000.0f;
@@ -716,6 +734,7 @@ static PyObject* py_set_sm_single(PyObject* self, PyObject *args, PyObject *kwar
 
 static PyObject* py_set_slopes_and_maxes(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	int i, j;
 	float *slopes_and_maxes = NULL;
 	PyObject *py_slopes_and_maxes = NULL;
@@ -758,6 +777,7 @@ static PyObject* py_set_slopes_and_maxes(PyObject* self, PyObject *args, PyObjec
 
 static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	int i,j;
 	int nb_box = 0, nb_class = 0, nb_param = 0, max_nb_obj_per_image = 0;
 	int strict_box_size_association = 0, fit_dim = 0, rand_startup = -1, network_id = 0;
@@ -881,6 +901,7 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 
 static PyObject* perf_eval(PyObject* self, PyObject* args)
 {
+	setlocale(LC_ALL, "C");
 	int network_id = nb_networks - 1;
 	if(!PyArg_ParseTuple(args, "|i", &network_id))
 		return Py_None;
@@ -893,6 +914,7 @@ static PyObject* perf_eval(PyObject* self, PyObject* args)
 
 static PyObject* py_load_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	const char *file = "relative_path_to_the_save_file_location_which_must_be_long_enough";
 	int iter, network_id = nb_networks-1, nb_layers = 0, f_bin = 0;
 	static char *kwlist[] = {"file", "iteration", "network", "nb_layers", "bin",NULL};
@@ -907,6 +929,7 @@ static PyObject* py_load_network(PyObject* self, PyObject *args, PyObject *kwarg
 
 static PyObject* py_save_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	const char *file = "relative_path_to_the_save_file_location_which_must_be_long_enough";
 	int network_id = nb_networks-1, f_bin = 0;
 	static char *kwlist[] = {"file", "network", "bin", NULL};
@@ -925,7 +948,7 @@ static PyObject* py_save_network(PyObject* self, PyObject *args, PyObject *kwarg
 
 static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-	
+	setlocale(LC_ALL, "C");
 	int py_nb_iter, py_control_interv = 1, py_confmat = 0, save_every = 0, network_id = nb_networks-1;
 	int shuffle_gpu = 1, shuffle_every = 1, silent = 0, save_bin = 0;
 	double py_learning_rate=0.0, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 1.0, py_weight_decay = 0.0;
@@ -951,6 +974,7 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 
 static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	int repeat = 1, network_id = nb_networks-1, C_drop_mode = AVG_MODEL, no_error = 0, saving = 1, silent = 0;
 	const char *drop_mode = "AVG_MODEL";
 	static char *kwlist[] = {"saving", "drop_mode", "no_error", "repeat", "network", "silent", NULL};
@@ -982,6 +1006,7 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 // Experimental function for now, only for development purposes
 static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	int py_nb_iter, py_control_interv = 1, py_confmat = 0, save_every = 0, gen_id = nb_networks-2, disc_id = nb_networks-1;
 	int shuffle_gpu = 1, shuffle_every = 1, silent = 0, disc_only = 0;
 	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_weight_decay = 0.0;;
@@ -1008,6 +1033,7 @@ static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
 
 static PyObject* py_print_architecture_tex(PyObject* self, PyObject *args, PyObject *kwargs)
 {
+	setlocale(LC_ALL, "C");
 	int network_id = nb_networks-1, l_size = 1, l_in_size = 1, l_f_size = 1, l_out_size = 1, 
 		l_stride = 1, l_padding = 1, l_in_padding = 0, l_activation = 0, l_bias = 0, l_dropout = 0, l_param_count = 0;
 	const char *path = "relative_path_to_the_save_file_location_which_must_be_long_enough", *file_name = "A_long_filename_template_for_user_setup";

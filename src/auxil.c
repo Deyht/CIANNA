@@ -81,7 +81,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-0.9.3.5 BETA BUILD (04/2024), by D.Cornu\n\
+CIANNA V-0.9.3.5 BETA BUILD (05/2024), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -1317,7 +1317,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 									in_col = l%(8+a_param->nb_class+a_param->nb_param);
 									
 									for(m = 0; m < 3; m++)
-										priors[m] = a_param->prior_size[l_box*3+m]; /*time im_size for size as a image fraction*/
+										priors[m] = a_param->prior_size[l_box*3+m];
 									
 									for(m = 0; m < batch_offset; m++)
 									{
@@ -1987,6 +1987,7 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 
 void forward_testset(network *net, int saving, int repeat, int drop_mode, int silent)
 {
+	
 	if(repeat > 1 && silent != 1)
 	{
 		printf("Forwarding with repeat = %d", repeat);

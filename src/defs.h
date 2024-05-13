@@ -35,6 +35,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <locale.h>
 
 #ifdef comp_CUDA
 #ifdef CUDA

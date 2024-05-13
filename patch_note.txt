@@ -14,6 +14,8 @@ Minor updates toward V-1.0 release
 - Various minor visual/log adjustments
 - Change the behavior of "silent" in cianna.train so it know properly skip all output.
   Also add the possibility to specify silent=2 so only the control steps are displayed.
+- Add a setlocale(LC_ALL, "C") a the beginning of all interface functions to prevent python library to affect the inner variable formatting of CIANNA 
+  (e.g., some calls to the matplotlib library was affecting the ascii net save file formatting) 
 
 ==== Low-level modifications ====
 - Various minor visual/log adjusments
