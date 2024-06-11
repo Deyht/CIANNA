@@ -390,8 +390,6 @@ struct dense_param
 	int in_size;
 	int nb_neurons;
 	
-	int activation;
-	
 	void *flat_input;
 	void *flat_delta_o;
 	

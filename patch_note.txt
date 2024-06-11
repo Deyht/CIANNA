@@ -14,7 +14,7 @@ Minor updates toward V-1.0 release
 - Various minor visual/log adjustments
 - Change the behavior of "silent" in cianna.train so it know properly skip all output.
   Also add the possibility to specify silent=2 so only the control steps are displayed.
-- Add a setlocale(LC_ALL, "C") a the beginning of all interface functions to prevent python library to affect the inner variable formatting of CIANNA 
+- Add a setlocale(LC_ALL, "C") at the beginning of all interface functions to prevent python library to affect the inner variable formatting of CIANNA 
   (e.g., some calls to the matplotlib library was affecting the ascii net save file formatting) 
 
 ==== Low-level modifications ====
@@ -34,6 +34,7 @@ Minor updates toward V-1.0 release
 - Fix a boundary error in im2col that was causing edge errors in both forward processing and backpropagation of the gradient. 
   This error was affecting several convolutional layer configuration. While it affects the exact inference results of almost all example models,
   we observed no significant impact on the predictive performance with or withour re-training.
+- Fix an issue that was not including pooling layer memory footprint in the total network memory footprint.
 
 ********************************************
 ===== V-0.9.3.4 =====

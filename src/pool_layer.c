@@ -297,6 +297,7 @@ int pool_create(network *net, layer *previous, int *pool_size, int* stride, int 
 		p_param->padding[0], p_param->padding[1], p_param->padding[2],
 		s_pool_type, p_param->global, activ, current->dropout_rate,
 		(int)(mem_approx/1000000));
+	net->memory_footprint += mem_approx;
 	
 	return net->nb_layers - 1;
 }
