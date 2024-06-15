@@ -598,7 +598,13 @@ void load_network(network *net, const char *filename, int iter, int nb_layers, i
 			case 'D':
 				dense_load(net, f, f_bin);
 				break;
+			case ' ':
+			case '\n':
+				layer_count--;
+				break;
 			default:
+				printf("ERROR: Layer type not recognized when loading the save model, likely file format error!\n");
+				exit(EXIT_FAILURE);
 				break;
 		}
 		layer_count++;

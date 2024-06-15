@@ -35,6 +35,7 @@ Minor updates toward V-1.0 release
   This error was affecting several convolutional layer configuration. While it affects the exact inference results of almost all example models,
   we observed no significant impact on the predictive performance with or withour re-training.
 - Fix an issue that was not including pooling layer memory footprint in the total network memory footprint.
+- Fix an error when loading a specific number of layers from a save model file in text format.
 
 ********************************************
 ===== V-0.9.3.4 =====
