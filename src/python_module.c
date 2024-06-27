@@ -1002,35 +1002,6 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 	return Py_None;
 }
 
-#ifdef CUDA
-// Experimental function for now, only for development purposes
-static PyObject* py_gan_train(PyObject* self, PyObject *args, PyObject *kwargs)
-{
-	setlocale(LC_ALL, "C");
-	int py_nb_iter, py_control_interv = 1, py_confmat = 0, save_every = 0, gen_id = nb_networks-2, disc_id = nb_networks-1;
-	int shuffle_gpu = 1, shuffle_every = 1, silent = 0, disc_only = 0;
-	double py_learning_rate=0.02, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_weight_decay = 0.0;;
-	double py_TC_scale_factor = 1.0, py_gen_disc_lr_ratio = 2.0;
-	static char *kwlist[] = {"gen_id", "disc_id", "nb_iter", "learning_rate", "end_learning_rate", "gen_disc_lr_ratio", "control_interv",
-		 "momentum", "lr_decay", "weight_decay", "confmat", "save_every", "shuffle_gpu", "shuffle_every", "TC_scale_factor", "disc_only", "silent", NULL};
-	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "iiid|ddidddiiiidiu", kwlist, &gen_id, &disc_id, &py_nb_iter, &py_learning_rate, 
-		&py_end_learning_rate, &py_gen_disc_lr_ratio, &py_control_interv, &py_momentum, &py_decay, &py_weight_decay, &py_confmat, &save_every, 
-		&shuffle_gpu, &shuffle_every, &py_TC_scale_factor, &disc_only, &silent))
-		return Py_None;
-	
-	// GIL MACRO : Allow to serialize C thread with python threads
-	Py_BEGIN_ALLOW_THREADS
-	
-	train_gan(networks[gen_id], networks[disc_id], py_nb_iter, py_control_interv, py_learning_rate, py_end_learning_rate, 
-		py_momentum, py_decay, py_weight_decay, py_gen_disc_lr_ratio, save_every, 0, shuffle_gpu, shuffle_every, py_TC_scale_factor, silent);
-	
-	Py_END_ALLOW_THREADS
-
-	return Py_None;
-}
-#endif
-
 static PyObject* py_print_architecture_tex(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	setlocale(LC_ALL, "C");
@@ -1084,9 +1055,6 @@ static PyMethodDef CIANNAMethods[] = {
 	{ "train", (PyCFunction)py_train_network, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
 	{ "forward", (PyCFunction)py_forward_network, METH_VARARGS | METH_KEYWORDS, "Apply the trained network to the test set and save results" },
 	{ "print_arch_tex", (PyCFunction)py_print_architecture_tex, METH_VARARGS | METH_KEYWORDS, "Print the architecture in a table using .tex and export to .pdf" },
-	#ifdef CUDA
-	{ "gan_train", (PyCFunction)py_gan_train, METH_VARARGS | METH_KEYWORDS, "Launch a training phase with the specified arguments" },
-	#endif
 	{ NULL, NULL, 0, NULL }
 };
 

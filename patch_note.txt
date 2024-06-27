@@ -9,6 +9,7 @@ Minor updates toward V-1.0 release
 
 - Add examples on the SKAO SDC1 following submission of the associated Cornu et al.2024 (scripts and Colab notebook)
 - Update examples, add PASCAL and COCO object detection examples in scripts and notebooks
+- Fix an error occurring when setting control_interv to <= 0; now it just properly do no control step.
 
 ====    Interface related    ====
 - Various minor visual/log adjustments
