@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -94,8 +94,7 @@ void define_activation(layer *current)
 			
 		case YOLO:
 			current->activation = YOLO_activation;
-			current->deriv_activation = YOLO_deriv; //should not be needed
-			//YOLO_activ_init(current); //needed ?
+			current->deriv_activation = YOLO_deriv;
 			break;
 			
 		case LINEAR:
@@ -339,7 +338,6 @@ void linear_output_error(layer *current)
 
 
 
-
 //#####################################################
 //		 ReLU activation related functions
 //#####################################################
@@ -414,7 +412,6 @@ void ReLU_activation_fct(void *tab, int dim, int biased_dim, int offset,
 }
 
 
-//should be adapted for both conv and dense layer if dim is properly defined
 void ReLU_deriv_fct(void *deriv, void *value, int dim, int biased_dim,	int offset,	
 	 float saturation, float leaking_factor, int length, size_t size)
 {
@@ -469,7 +466,6 @@ void ReLU_deriv(layer *previous)
 }
 
 
-// Should re write a output function to take into account ReLU for Conv output format
 void ReLU_deriv_output_error(layer* current)
 {
 	ReLU_param *param = (ReLU_param*)current->activ_param;
@@ -574,7 +570,6 @@ void quadratic_output_error(void *output_error, void *output, void *target, int 
 		}
 	}
 }
-
 
 //#####################################################
 
@@ -750,8 +745,6 @@ void softmax_activation(layer *current)
 void softmax_activation_fct(void *tab, int dim, int biased_dim,
 	int offset, int length, int batch_size, size_t size)
 {
-	//difficult to optimize but can be invastigated
-	//provides a probabilistic output
 	int i, j, k, l;
 	float *pos, *off_pos;
 	float vmax;
@@ -952,7 +945,6 @@ void softmax_deriv(layer *previous)
 
 void softmax_deriv_output_error(layer *current)
 {
-	//use by default a cross entropy error
 	softmax_param *param = (softmax_param*)current->activ_param;
 	cross_entropy_deriv_output_error(current->delta_o, current->output, current->c_network->target,
 		param->dim, param->biased_dim, param->offset, current->c_network->length, param->size);
@@ -961,7 +953,6 @@ void softmax_deriv_output_error(layer *current)
 
 void softmax_output_error(layer *current)
 {
-	//use by default a cross entropy error
 	softmax_param *param = (softmax_param*)current->activ_param;
 	cross_entropy_output_error(current->c_network->output_error, current->output, 
 		current->c_network->target, param->dim, param->biased_dim, param->offset, 
@@ -975,8 +966,6 @@ void softmax_output_error(layer *current)
 //#####################################################
 //		 YOLO activation related functions
 //#####################################################
-
-//conv only activation, so most of elements can be extracted from c_param directly
 
 void set_yolo_activ(layer *current)
 {
@@ -1003,14 +992,12 @@ void set_yolo_activ(layer *current)
 	
 	param->prior_size = (float*) calloc(param->nb_box*3, sizeof(float));
 	
-	/*Having prior relative to image size in a good idea in principle, but it hides the fact that the network has a given receptive field related to its architecture.
-	Therefore, therefore increasing the input resolution will end up to cases where object sizes are too large.
-	For now we prefer to have prior as a fixed pixel size, so it is easy to scale input for probleme where the size of object is constant in pixel regardless of the image size.
-	*/
+	/*Having prior relative to image size is a good idea in principle, but it hides the fact that the network has a given receptive field related to its architecture.
+	Therefore, increasing the input resolution will end up to cases where object sizes are too large.
+	For now we prefer to have prior as a fixed pixel size, so it is easy to scale input for probleme where the size of object is constant in pixel regardless of the image size.*/
 	for(i = 0; i < param->nb_box; i++)
 		for(j = 0; j < 3; j++)
 			param->prior_size[i*3+j] = fmax(1.0f, current->c_network->y_param->prior_size[i*3+j]);
-			//param->prior_size[i*3+j] = fmax(1.0f, current->c_network->y_param->prior_size[i*3+j] * current->c_network->in_dims[j]);
 	
 	for(i = 0; i < 6; i++)
 	{
@@ -1028,7 +1015,6 @@ void set_yolo_activ(layer *current)
 	for (i = 0; i < 3; i++)
 		param->cell_size[i] = current->c_network->in_dims[i] / c_param->nb_area[i];
 	
-	//Shared ancillary arrays
 	param->IoU_monitor = (float*) calloc(2 * param->nb_box * c_param->nb_area[0] 
 		* c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, sizeof(float));
 	param->target_cell_mask = (int*) calloc(c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]
@@ -1898,8 +1884,8 @@ void YOLO_deriv_error_fct
 							resp_box = k;
 						}
 				
-				/* If strict_box_size > 0 and no more good prior is available, or if there is more targets than boxes */
-				/* In that case all the remaining target are unable to be associated to */
+				/* If strict_box_size > 0 and no more good prior is available, or if there are more targets than boxes */
+				/* In that case all the remaining targets are unable to be associated to */
 				/* any other box and the id_in_cell loop must be stoped */
 				if(resp_box == -1)
 					continue;
@@ -2171,8 +2157,7 @@ void YOLO_deriv_error_fct
 					delta_o[(l_o+7)*f_offset] = (0.0f);
 					break;
 			}
-		
-			/* Note : mean square error on classes => could be changed to soft max but difficult to balance */
+			
 			switch(fit_class)
 			{
 				case 1:
@@ -2330,7 +2315,6 @@ void YOLO_deriv_error_fct
 }
 
 
-// Only minimal optimisation has been performed for now => might be responsible for a significant portion of the total network time
 void YOLO_error_fct
 	(float *i_output_error, void *i_output, void *i_target, int flat_target_size, int flat_output_size,
 	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, int size)
@@ -2443,8 +2427,6 @@ void YOLO_error_fct
 			for(l = 0; l < 3; l++)
 				c_box_in_pix[l+3] = c_prior_size[l]*expf((float)output[(l_o+l+3)*f_offset]);
 			
-			/* Min prior best association could be improved by using the "fit_dim" parameter to avoid definition issues with unused dimensions */
-			/* This would allow to verify if each used dimension is smaller, rather that using a surface criteria (later in this function) */
 			c_dist = sqrt(c_prior_size[0]*c_prior_size[0]
 						+ c_prior_size[1]*c_prior_size[1]
 						+ c_prior_size[2]*c_prior_size[2]);

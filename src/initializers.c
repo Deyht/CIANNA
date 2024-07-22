@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -38,9 +38,6 @@ int get_init_type(const char *s_init)
 	else
 		return N_XAVIER;
 }
-
-
-//Should be changed to a robust "Numerical recipes" random generator
 
 //return a random Real value between 0 <= x < 1
 double random_uniform(void)

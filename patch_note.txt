@@ -1,9 +1,20 @@
 
 ********************************************
+===== V-1.0.0.0 =====
+ (interface V-1.0)
+
+Minor update from V-0.9.5.5 for 1.0 realease
+Mostly code cleanup and minor readibility adjustment.
+Update all the date and version related hard coded values.
+Remove some experimental functions, but that will be present in the dev branch.
+
+
+
+********************************************
 ===== V-0.9.3.5 =====
  (interface V-0.6.6)
 
-Minor updates toward V-1.0 release
+Minor update toward V-1.0 release
 
 /!\ Break compatibility with previous network saves containing dropout (prediction only, not save file format)
 

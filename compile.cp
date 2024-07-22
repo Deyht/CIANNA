@@ -1,4 +1,4 @@
-
+#!/bin/sh
 #	Copyright (C) 2020 David Cornu
 #	for the Convolutional Interactive Artificial 
 #	Neural Network by/for Astrophysicists (CIANNA) Code
@@ -15,9 +15,6 @@
 #	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #	See the License for the specific language governing permissions and
 #	limitations under the License.
-
-
-
 
 
 

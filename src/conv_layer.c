@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -77,7 +77,6 @@ void conv_define_activation_param(layer *current, const char *activ)
 }
 
 
-//Used to allocate a convolutionnal layer
 int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int *stride, int *padding, 
 	int *int_padding, int *in_shape, const char *activation, float *bias, float drop_rate, 
 	const char *init_fct, float init_scaling, FILE *f_load, int f_bin)
@@ -152,7 +151,7 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 				if(in_shape == NULL)
 				{
 					printf("ERROR: dense to conv conversion requires input_shape to be defined in conv_layer.\n\n");
-					exit(EXIT_FAILURE); //add verification of shape match between dense size and conv sizes
+					exit(EXIT_FAILURE); //should add verification of shape match between dense size and conv sizes
 				}
 				for(k = 0; k < 3; k++)
 					c_param->prev_size[k] = in_shape[k];
@@ -183,7 +182,7 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 						if(in_shape == NULL)
 						{
 							printf("ERROR: dense to conv conversion requires input_shape to be defined in conv_layer.\n\n");
-							exit(EXIT_FAILURE); //add verification of shape match between dense size and conv sizes
+							exit(EXIT_FAILURE); //should add verification of shape match between dense size and conv sizes
 						}
 						for(k = 0; k < 3; k++)
 							c_param->prev_size[k] = in_shape[k];
@@ -223,8 +222,6 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 		c_param->nb_area[k] = nb_area_comp(c_param->prev_size[k], c_param->f_size[k], 
 			c_param->padding[k], c_param->int_padding[k], c_param->stride[k]);
 	
-	//printf("Layer output: %d %d %d\n", c_param->nb_area[0],c_param->nb_area[1],c_param->nb_area[2]);
-	
 	//allocate all the filters in a flatten table. One filter is continuous. (include bias weight)
 	c_param->filters = (float*) calloc(nb_filters * (c_param->flat_f_size + c_param->TC_padding), sizeof(float));
 	mem_approx += nb_filters * (c_param->flat_f_size + c_param->TC_padding) * sizeof(float);
@@ -243,7 +240,6 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 	//Activation maps are not continuous for each image : 
 	//		A1_im1, A1_im2, A1_im3, ... , A2_im1, A2_im2, A2_im3, ... 
 	
-	//printf("%d %d %d %d\n", c_param->nb_filters, c_param->nb_area_w, c_param->nb_area_h, net->batch_size);
 	current->output = (float*) calloc( c_param->nb_filters 
 		* (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) 
 		* net->batch_size, sizeof(float));
@@ -293,11 +289,8 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 	}
 	
 	current->nb_params = nb_filters * c_param->flat_f_size;
-
 	current->param = c_param;
-	
 	conv_define_activation_param(current, activation);
-	
 	c_param = (conv_param*)current->param;
 	
 	if(bias != NULL)
@@ -306,9 +299,6 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 	if(current->previous == NULL)
 		current->bias_value = net->input_bias;
 	
-	/*if(current->previous->drop_rate > 0.01f)
-		current->bias_value = 0.0f;
-	*/
 	//set bias value for the current layer, this value will not move during training
 	for(i = 0; i < (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size; i++)
 		((float*)c_param->im2col_input)[i*(c_param->flat_f_size+c_param->TC_padding) 

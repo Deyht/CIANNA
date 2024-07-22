@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -14,8 +14,6 @@
 	See the License for the specific language governing permissions and
 	limitations under the License.
 */
-
-
 
 
 
@@ -137,13 +135,6 @@ int pool_create(network *net, layer *previous, int *pool_size, int* stride, int 
 		printf("Consider adding the dropout on the present pooling layer or inserting a non-droping layer between the two.\n");
 		exit(EXIT_FAILURE);
 	}
-	/*
-	if(current->previous != NULL && current->previous->type == NORM && current->dropout_rate > 0.01f)
-	{
-		printf("\nERROR: A normalization layer cannot be followed by a pooling layer with dropout due to problem with weight/output rescaling.\n");
-		printf("Consider inserting a non-droping conv layer between the two.\n");
-		exit(EXIT_FAILURE);
-	}*/
 	
 	p_param->nb_area = (int*) calloc(3, sizeof(int));
 	p_param->prev_size = (int*) calloc(3, sizeof(int));
@@ -178,9 +169,6 @@ int pool_create(network *net, layer *previous, int *pool_size, int* stride, int 
 		p_param->prev_depth = net->in_dims[3];
 		//input pointer must be set at the begining of forward
 		current->input = net->input;
-		
-		//printf("ERROR : Starting with a pooling layer is currently not allowed.\n");
-		//exit(EXIT_FAILURE);
 	}
 	else
 	{
@@ -258,9 +246,7 @@ int pool_create(network *net, layer *previous, int *pool_size, int* stride, int 
 	
 	//Linear activation only = no activation
 	pool_define_activation_param(current, activation);
-	
 	p_param = (pool_param*) current->param;
-	
 	//No weights initialization in a pool layer
 	
 	//associate the conv specific functions to the layer

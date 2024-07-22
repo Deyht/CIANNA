@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -45,7 +45,7 @@ void sig_handler(int signo)
 {
 	if(signo == SIGINT)
 		printf("\n WARNING: program interrupted\n");
-	//Could handle exit more gracefully by freeing everything (postponed)
+	//Could handle exit more gracefully by freeing everything (postponed ATM)
 	exit(EXIT_SUCCESS);
 }
 
@@ -81,7 +81,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-0.9.3.5 BETA BUILD (06/2024), by D.Cornu\n\
+CIANNA V-1.0.0.0 Release build (07/2024), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -229,7 +229,6 @@ CIANNA V-0.9.3.5 BETA BUILD (06/2024), by D.Cornu\n\
 	net->inference_only = inference_only;
 	net->nb_layers = 0;
 	net->iter = 0;
-	net->norm_factor_defined = 0; //depreciated
 	net->is_inference = 0;
 	net->inference_drop_mode = AVG_MODEL;
 	net->no_error = 0;
@@ -238,7 +237,7 @@ CIANNA V-0.9.3.5 BETA BUILD (06/2024), by D.Cornu\n\
 	net->memory_footprint = 0;
 	net->adv_size = adv_size;
 	if(adv_size <= 0)
-		net->adv_size = 35;
+		net->adv_size = 30;
 	
 	net->train_buf.localization = NO_LOC;
 	net->test_buf.localization = NO_LOC;
@@ -473,9 +472,6 @@ void save_network(network *net, const char *filename, int f_bin)
 	char full_filename[300];
 	struct stat st = {0};
 	
-	//printf("Manual network save to %s\n", filename);
-	
-	//will allow prefix/patch customization in the futur
 	sprintf(full_filename, "%s", filename);
 	
 	if(stat("net_save", &st) == -1)
@@ -1188,11 +1184,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		batch_eval_in(net);
 		
 		//##########################################################
-		
 		if(j == data.nb_batch - 1 && data.size%net->batch_size > 0)
-		{
 			net->length = data.size%net->batch_size;
-		}
 		else
 			net->length = net->batch_size;
 		
@@ -1225,8 +1218,6 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 		{
 			for(k = repeat_start; k < net->nb_layers; k++)
 			{
-				// Could be even more efficient by only doing dropmask on the first layer with drop, 
-				// as the un-masked output is constant in a batch repeat
 				if(repeat_start == 0 && net->net_layers[k]->dropout_rate > 0.01f)
 					repeat_start = k;
 				perf_eval_in(net);
@@ -1280,10 +1271,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 							}
 						}
 						else if(saving == 2)
-						{
 							for(k = 0; k < net->length; k++)
 								fwrite(&((float*)output_save)[k*net->out_size], sizeof(float), net->out_size, f_save);
-						}
 						break;
 					case CONV:
 					case POOL:
@@ -1361,20 +1350,16 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 								for(k = 0; k < net->length; k++)
 								{
 									for(l = 0; l < nb_filters; l++)
-									{
 										for(m = 0; m < batch_offset; m++)
 											fprintf(f_save,"%g ", ((float*)output_save)[k*batch_offset + l*filter_offset + m]);
-									}
 									fprintf(f_save, "\n");
 								}
 							}
 							else if(saving == 2)
 							{
 								for(k = 0; k < net->length; k++)
-								{
 									for(l = 0; l < nb_filters; l++)
 										fwrite(&((float*)output_save)[k*batch_offset + l*filter_offset], sizeof(float), batch_offset, f_save);
-								}
 							}
 						}
 						break;
@@ -1468,7 +1453,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 								}
 							}
 							
-							//move the alloc and free to avoid having them at each batch
+							//could move the alloc and free to avoid having them at each batch
 							#ifdef CUDA
 							if(net->compute_method == C_CUDA)
 							{
@@ -1724,7 +1709,6 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 				cuda_convert_table_int(&index_shuffle_device, net->train.size,0);
 			}
 		}
-		
 	}
 	#endif
 	
@@ -1852,7 +1836,6 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 				perf_eval_out(net, k, net->fwd_perf, net->fwd_perf_n);
 			}
 			
-			
 			perf_eval_in(net); //Include output deriv error in the last layer performance metric
 			output_deriv_error(net->net_layers[net->nb_layers-1]);
 			
@@ -1864,7 +1847,6 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 				net->net_layers[net->nb_layers-1-k]->backprop(net->net_layers[net->nb_layers-1-k]);
 				perf_eval_out(net, net->nb_layers-1-k, net->back_perf, net->back_perf_n);
 			}
-			
 			
 			if(net->compute_method == C_CUDA)
 			{
@@ -1963,7 +1945,6 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 			}
 		}
 	}
-	
 	free(net->output_error);
 	
 	#ifdef CUDA
@@ -1993,7 +1974,6 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 
 void forward_testset(network *net, int saving, int repeat, int drop_mode, int silent)
 {
-	
 	if(repeat > 1 && silent != 1)
 	{
 		printf("Forwarding with repeat = %d", repeat);

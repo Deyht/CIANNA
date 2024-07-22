@@ -2,8 +2,18 @@
 <p align="center">
 <img src="https://github.com/Deyht/CIANNA/assets/21009408/90708962-e7ed-4dcb-88e7-f832a04753ff" alt="cianna_logo" width="80%"/>
 </p>
-
 *Logo made by &copy; Sarah E. Anderson*
+<p align="center">
+	<a href="https://github.com/Deyht/CIANNA/releases" alt="Release-version">
+		<img src="https://img.shields.io/badge/Latest%20release-1.0-green" /></a>
+	<a href="https://github.com/Deyht/CIANNA/" alt="Current-version">
+		<img src="https://img.shields.io/badge/Current%20version-1.0-green" /></a>
+	<a href="https://github.com/Deyht/CIANNA/wiki" alt="Wiki-read">
+		<img src="https://img.shields.io/badge/Wiki-Read-blue" /></a>
+</p>
+
+
+### The first CIANNA release (V-1.0) is here! Check the [release page](https://github.com/Deyht/CIANNA/releases)!
 
 ## CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists
 
@@ -16,10 +26,6 @@ Dev - Gregory Sainton, AI Research engineer, FR - LERMA / Observatoire de Paris
 Preferred contact point: david.cornu@observatoiredeparis.psl.eu
 
 See Copyright &copy; and [License](#License) terms at the end.
-
-&nbsp;
-
-**Note:** The current version is transitioning to the 1.0 release. The source code and the API documentation are up-to-date, but several modifications will happen in the upcoming days for all other pages/examples/etc.
 
 &nbsp;
 
@@ -76,7 +82,7 @@ List of known [publications](https://github.com/Deyht/CIANNA/wiki/Related-public
 
 ## License
 
-These files are Copyright &copy; 2023 [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
+These files are Copyright &copy; 2024 [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
 
 &nbsp;
 

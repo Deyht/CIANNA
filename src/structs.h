@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -107,15 +107,6 @@ struct cuda_auxil_fcts
 		size_t in_size, int b_size, int d_in, int d_out);
 	void (*cu_host_shuffle_fct)(network *net, Dataset data, Dataset duplicate);
 	void (*cu_host_only_shuffle_fct)(network *net, Dataset data);
-	void (*cu_gan_disc_mix_input_kernel)(void *gen_output, void *disc_input, void* targ_input, int nb_fake, int batch_offset,
-		int nb_filters, int flat_f_size, int batch_size, size_t size);
-	void (*cu_create_gan_target_kernel)(void* i_targ, void* i_true_targ, int out_size, 
-		int batch_size, float frac_ones, int i_half, size_t len);
-	void (*cu_exp_disc_activation_kernel)(void *i_tab, int dim, int biased_dim,
-		int offset, int length, int batch_size, size_t size, int halved, int revert);
-	void (*cu_exp_disc_deriv_output_kernel)(void *i_delta_o, void *i_output, void *i_target, int dim, int biased_dim,
-		int offset, int length, int batch_size, size_t size, float TC_scale_factor, int halved, int revert);
-	void (*cu_gan_invert_generator_deltao_kernel)(void *gen_delta_o, size_t size);
 };
 
 
@@ -274,7 +265,6 @@ struct CUDA_net_instance
 
 
 
-
 //############################################
 //                  Global
 //############################################
@@ -299,7 +289,7 @@ struct layer
 	network *c_network;
 	
 	void *param;
-	void *input; //usually contain adress of previous->output
+	void *input; //usually contains address of previous->output
 	void *output;
 	void *delta_o;
 	
@@ -366,8 +356,7 @@ struct network
 	//Possible yolo_param
 	yolo_param *y_param;
 
-	// Parameters used for the YOLO formated dataset laoding/saving
-	int norm_factor_defined; 
+	// Parameters used for the YOLO formated dataset loading/saving
 	float *offset_input, *offset_output;
 	float *norm_input, *norm_output;
 	int dim_size_input, dim_size_output;

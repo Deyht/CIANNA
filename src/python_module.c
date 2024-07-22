@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -119,19 +119,13 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 		data = &networks[network_id]->test_buf;
 	}
 	
-	struct timeval time;
-	init_timing(&time);
-	
 	*data = create_dataset(networks[network_id], size);
-	//printf("Time raw create %f\n",ellapsed_time(time));
 	
 	if(silent == 0)
 	{
 		printf("input dim :%ld,", networks[network_id]->input_dim);
 		printf("Creating dataset with size %d (nb_batch = %d) ... ", data->size, data->nb_batch);
 	}
-	
-	init_timing(&time);
 	
 	flat_image_size = networks[network_id]->in_dims[2]*networks[network_id]->in_dims[1]*networks[network_id]->in_dims[0];
 	
@@ -175,18 +169,13 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	if(silent == 0)
 		printf("Done !\n");
 	
-	//printf("Time copy %f\n",ellapsed_time(time));
-	
-	init_timing(&time);
 	#ifdef CUDA
 	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->cu_inst.dynamic_load == 0)
 	{
 		if(silent == 0)
 			printf("Converting dataset to GPU device (CUDA)\n");
-		//cuda_convert_dataset(networks[network_id], data);
 		cuda_get_batched_dataset(networks[network_id], data);
 	}
-	//printf("Time convert data for CUDA %f\n", ellapsed_time(time));
 	#endif
 	if(silent == 0)
 		printf("\n");
@@ -395,7 +384,6 @@ static PyObject* py_dense(PyObject* self, PyObject *args, PyObject *kwargs)
 	if(prev_layer == -1)
 		prev_layer = networks[network_id]->nb_layers - 1;
 	
-	//if(py_bias == py_bias) //portable but not compatible with fast math
 	if(!isnan(py_bias)) //work with math.h only for C99 and later
 	{
 		c_bias = (float*) calloc(1,sizeof(float));
@@ -457,7 +445,6 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 		for(i = 0; i < 4; i++)
 			C_input_shape[i] = *(int *)(py_input_shape->data + i*py_input_shape->strides[0]);
 	
-	//if(py_bias == py_bias) //portable but not compatible with fast math
 	if(!isnan(py_bias)) //work with math.h only for C99 and later
 	{
 		c_bias = (float*) calloc(1,sizeof(float));
@@ -698,7 +685,6 @@ static PyObject* py_set_error_scales(PyObject* self, PyObject *args, PyObject *k
 	error_scales_array[3] = objectness;
 	error_scales_array[4] = classes;
 	error_scales_array[5] = parameters;
-
 	
 	dims[0] = 6;
 	py_error_scales_array = PyArray_SimpleNewFromData(1, dims, NPY_FLOAT, (void*)error_scales_array);
@@ -845,7 +831,7 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 		}
 		for(i = 0; i < nb_box; i++)
 			C_prior_noobj_prob[i] = *((float *)(py_prior_noobj_prob->data 
-									 + i * py_prior_noobj_prob->strides[0]));
+									+ i * py_prior_noobj_prob->strides[0]));
 	}
 	
 	if(py_error_scales != NULL)

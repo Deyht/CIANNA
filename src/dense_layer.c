@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -19,8 +19,6 @@
 */
 
 
-
-
 #include "prototypes.h"
 
 
@@ -30,7 +28,6 @@
 static dense_param *d_param;
 
 //public are in "prototypes.h"
-
 
 void dense_define_activation_param(layer *current, const char* activ)
 {
@@ -73,7 +70,6 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	float drop_rate, int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int f_bin)
 {
 	int i, j;
-	//float bias_padding_value; //depreciated
 	long long int mem_approx = 0;
 	layer* current;
 	
@@ -170,7 +166,6 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 				d_param->in_size = ((dense_param*)previous->param)->nb_neurons+1;
 				d_param->flat_delta_o = previous->delta_o;
 				break;
-		
 		}
 		current->input = previous->output;
 	}
@@ -200,9 +195,7 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	
 	//must be before the activation association function
 	current->param = d_param;
-	
 	dense_define_activation_param(current, activation);
-	
 	d_param = (dense_param*)current->param;	
 	
 	if(bias != NULL)
@@ -233,14 +226,10 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 				}
 			}
 			//For other previous layer types, the bias is added by the flatten (or similar) function
-				
 		}
-		//Should add a defaut weight init depending on the activation function
-		//Should add user control over the init
 		if(init_scaling < 0)
 			init_scaling = 1.0f;
 		
-		//Should add a defaut weight init depending on the activation function
 		switch(get_init_type(init_fct))
 		{
 			default:

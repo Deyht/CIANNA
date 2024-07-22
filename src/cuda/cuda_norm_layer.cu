@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -28,11 +28,10 @@ static norm_param *n_param;
 
 //public are in prototypes.h
 
+
 //#####################################################
 //       Layer normalization related templates
 //#####################################################
-
-
 
 
 __device__ int cuda_id_to_conv_fmt(int id, int block_id, int group_size, int nb_group, int flat_a_size, int batch_size)

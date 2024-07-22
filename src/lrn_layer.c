@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -17,8 +17,6 @@
 	See the License for the specific language governing permissions and
 	limitations under the License.
 */
-
-
 
 
 #include "prototypes.h"
@@ -94,7 +92,6 @@ void lrn_define_activation_param(layer *current, const char *activ)
 
 //public are in prototypes.h
 
-//Used to allocate an lrn layer
 int lrn_create(network *net, layer *previous, const char *activation, int range, float k, float alpha, float beta, FILE *f_load, int f_bin)
 {
 	long long int mem_approx = 0;
@@ -137,8 +134,6 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 			n_param->output_dim = ((conv_param*)n_param->prev_param)->nb_filters * net->batch_size * n_param->dim_offset;
 			break;
 		case POOL:
-			//printf("\nERROR: normalization layer is not authorized after pooling atm.\n");
-			//exit(EXIT_FAILURE);
 			n_param->data_format = CONV;
 			n_param->n_dim = ((pool_param*)n_param->prev_param)->nb_maps;
 			n_param->dim_offset = ((pool_param*)n_param->prev_param)->nb_area[0] 
@@ -200,8 +195,8 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 			break;
 		case C_BLAS:
 		case C_NAIV:
-			//naiv_lrn_define(current);
-			//define_activation(current);
+			printf("\nERROR: LRN layer is only available with CUDA compute method ATM.\n");
+			exit(EXIT_FAILURE);
 			break;
 		default:
 			break;
@@ -218,7 +213,6 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 	
 	return net->nb_layers - 1;
 }
-
 
 
 void lrn_save(FILE *f, layer *current, int f_bin)

@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -19,9 +19,11 @@
 */
 
 
-
-
 #include "prototypes.h"
+
+// This file is here to illustrate how CIANNA could be used directly in C.
+// There is no wiki for the C interface ATM, but all the usefull C functions are used in the python_module.c file.
+// The MNIST data loading is not done here, run the python example first to automatically download the data files.
 
 int main()
 {
@@ -32,15 +34,11 @@ int main()
 	
 	int out_dim;
 	network *net;
-	
-	//Common randomized seed based on time at execution
-	srand(time(NULL));
-	
 
 	train_size = 60000; test_size = 10000; valid_size = 10000;
 	dims[0] = 28; dims[1] = 28; dims[2] = 1; dims[3] = 1; out_dim = 10;
 	
-	init_network(0, dims, out_dim, 0.1, 24, "C_CUDA", 1, "off", 0, 0, 0);
+	init_network(0, dims, out_dim, 0.1, 16, "C_CUDA", 1, "off", 0, 0, 0);
 	
 	
 	net = networks[0];
@@ -50,7 +48,7 @@ int main()
 	net->valid = create_dataset(net, valid_size);
 	
 	
-	f = fopen("mnist_dat/mnist_input.dat", "rb+");
+	f = fopen("examples/MNIST/mnist_dat/mnist_input.dat", "rb+");
 	if(f == NULL)
 	{
 		printf("ERROR: Can not open input file ...\n");
@@ -65,7 +63,6 @@ int main()
 				continue;
 			for(k = 0; k < net->input_dim; k ++)
 				fread(&((float**)net->train.input)[i][j*(net->input_dim+1) + k], sizeof(float), 1, f);
-			//bias value should be adapted somehow based on 1st layer
 		}
 	}
 	
@@ -93,7 +90,7 @@ int main()
 	
 	fclose(f);
 	
-	f = fopen("mnist_dat/mnist_target.dat", "rb+");
+	f = fopen("examples/MNIST/mnist_dat/mnist_target.dat", "rb+");
 	if(f == NULL)
 	{
 		printf("ERROR: Can not open input file ...\n");
@@ -136,8 +133,6 @@ int main()
 	
 	fclose(f);
 	
-	
-	
 	//Must be converted if Dynamic load is off !
 	#ifdef CUDA
 	
@@ -164,13 +159,13 @@ int main()
 	int pool_padding[3] = {0,0,0};
 	int pool_stride[3] = {2,2,1};
 	
-	conv_create(net, NULL, f_size, 8, stride, padding, int_pad, NULL, "RELU", NULL, 0.0, NULL, -1.0, NULL, 0);
+	conv_create(net, NULL, f_size, 8, stride, padding, int_pad, NULL, "RELU", NULL, 0.0, "xavier", -1.0, NULL, 0);
 	pool_create(net, net->net_layers[net->nb_layers-1], pooling, pool_stride, pool_padding, "MAX", NULL, 0, 0.0);
-	conv_create(net, net->net_layers[net->nb_layers-1], f_size, 16, stride, padding, int_pad, NULL, "RELU", NULL, 0.0, NULL, -1.0, NULL, 0);
+	conv_create(net, net->net_layers[net->nb_layers-1], f_size, 16, stride, padding, int_pad, NULL, "RELU", NULL, 0.0, "xavier", -1.0, NULL, 0);
 	pool_create(net, net->net_layers[net->nb_layers-1], pooling, pool_stride, pool_padding, "MAX", NULL, 0, 0.0);
-	dense_create(net, net->net_layers[net->nb_layers-1], 256, "RELU", NULL, 0.5, 0, NULL, -1.0, NULL, 0);
-	dense_create(net, net->net_layers[net->nb_layers-1], 128, "RELU", NULL, 0.2, 0, NULL, -1.0, NULL, 0);
-	dense_create(net, net->net_layers[net->nb_layers-1], net->output_dim, "SOFTMAX", NULL, 0.0, 0, NULL, -1.0, NULL, 0);
+	dense_create(net, net->net_layers[net->nb_layers-1], 256, "RELU", NULL, 0.5, 0, "xavier", -1.0, NULL, 0);
+	dense_create(net, net->net_layers[net->nb_layers-1], 128, "RELU", NULL, 0.2, 0, "xavier", -1.0, NULL, 0);
+	dense_create(net, net->net_layers[net->nb_layers-1], net->output_dim, "SOFTMAX", NULL, 0.0, 0, "xavier", -1.0, NULL, 0);
 	
 	printf("Start learning phase ...\n");
 	

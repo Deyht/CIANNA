@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -292,7 +292,7 @@ __global__ void cuda_dropout_apply_pool_##name(void* i_table, float* mask, size_
 	else																																		\
 		mask[i] = 0.0f;																															\
 	 																																			\
-	table[i] = (type)((float)table[i]*mask[i]); 																										\
+	table[i] = (type)((float)table[i]*mask[i]); 																								\
 }
 
 

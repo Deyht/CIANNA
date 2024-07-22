@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -17,7 +17,6 @@
 	See the License for the specific language governing permissions and
 	limitations under the License.
 */
-
 
 
 
@@ -107,7 +106,6 @@ void print_norm_type(FILE *f, layer *current, int f_bin)
 
 //public are in prototypes.h
 
-//Used to allocate a normalization layer
 int norm_create(network *net, layer *previous, const char *norm_type, const char *activation, int group_size, int set_off, FILE *f_load, int f_bin)
 {
 	int i;
@@ -172,8 +170,6 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 			n_param->output_dim = ((conv_param*)n_param->prev_param)->nb_filters * net->batch_size * n_param->dim_offset;
 			break;
 		case POOL:
-			//printf("\nERROR: normalization layer is not authorized after pooling atm.\n");
-			//exit(EXIT_FAILURE);
 			n_param->data_format = CONV;
 			n_param->n_dim = ((pool_param*)n_param->prev_param)->nb_maps;
 			n_param->dim_offset = ((pool_param*)n_param->prev_param)->nb_area[0] 
@@ -246,11 +242,8 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	}
 	
 	current->nb_params = 2*n_param->nb_group - n_param->set_off;
-	
 	current->param = n_param;
-
 	norm_define_activation_param(current, activation);
-
 	n_param = (norm_param*)current->param;
 
 	if(f_load != NULL)

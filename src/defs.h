@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -17,9 +17,6 @@
 	See the License for the specific language governing permissions and
 	limitations under the License.
 */
-
-
-
 
 
 #ifndef DEFS_H
@@ -65,6 +62,10 @@
 static const double two_pi = 2.0*3.14159265358979323846;
 
 #endif //DEFS_H
+
+
+
+
 
 
 

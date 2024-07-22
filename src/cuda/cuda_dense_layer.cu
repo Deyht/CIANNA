@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2023 David Cornu
+	Copyright (C) 2024 David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -283,13 +283,7 @@ size_t cuda_convert_dense_layer(layer *current)
 		* net->batch_size,0);
 		
 	if(current->dropout_rate > 0.01f)
-	{
 		vram_approx += cuda_convert_table_FP32((void**)&(d_param->dropout_mask), (d_param->nb_neurons+1) * net->batch_size, 0);
-		/*cudaMalloc((void**) &d_param->block_state, ((d_param->nb_neurons+1) * net->batch_size) * sizeof(curandState_t));
-		vram_approx += ((d_param->nb_neurons+1) * net->batch_size) * sizeof(curandState_t);
-		cu_blocks = ((d_param->nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
-		init_block_state<<< cu_blocks, cu_threads>>>(time(NULL),(curandState_t*)d_param->block_state, (d_param->nb_neurons+1)*net->batch_size);*/
-	}
 	
 	if(!net->inference_only)
 	{
