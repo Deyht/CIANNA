@@ -2,8 +2,11 @@
 <p align="center">
 <img src="https://github.com/Deyht/CIANNA/assets/21009408/90708962-e7ed-4dcb-88e7-f832a04753ff" alt="cianna_logo" width="80%"/>
 </p>
-*Logo made by &copy; Sarah E. Anderson*
-<p align="center">
+*Logo made by &copy; Sarah E. Anderson*  
+
+&nbsp;
+
+<p align="left">
 	<a href="https://github.com/Deyht/CIANNA/releases" alt="Release-version">
 		<img src="https://img.shields.io/badge/Latest%20release-1.0-green" /></a>
 	<a href="https://github.com/Deyht/CIANNA/" alt="Current-version">
