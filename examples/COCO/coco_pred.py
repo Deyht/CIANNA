@@ -26,9 +26,9 @@ if(1):#switch off after a first prediction to explore post-process parameters
 	if(load_epoch > 0):
 		cnn.load("net_save/net0_s%04d.dat"%load_epoch,load_epoch, bin=1)
 	else:
-		if(not os.path.isfile("net_train_coco_map50_39.9_fp16.dat")):
-			os.system("wget https://share.obspm.fr/s/pqG4jFrkEWi3SWt/download/net_train_coco_map50_39.9_fp16.dat")
-		cnn.load("net_train_coco_map50_39.9_fp16.dat", 0, bin=1)
+		if(not os.path.isfile("CIANNA_net_model_coco_v1.0_darknet19custom_res416_map50_39.9_fp16.dat")):
+			os.system("wget https://zenodo.org/records/12801421/files/CIANNA_net_model_coco_v1.0_darknet19custom_res416_map50_39.9_fp16.dat")
+		cnn.load("CIANNA_net_model_coco_v1.0_darknet19custom_res416_map50_39.9_fp16.dat", 0, bin=1)
 
 	cnn.print_arch_tex("./arch/", "arch", activation=1, dropout=0)
 

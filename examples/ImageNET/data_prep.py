@@ -6,10 +6,12 @@ import cv2
 from multiprocessing import Pool
 import os, glob
 
+#Legal notice: The use of the ImageNET dataset is subject to an agreement over a [set of terms](https://www.kaggle.com/competitions/imagenet-object-localization-challenge/rules#7-competition-data).
+#We hold no responsibility for the use of the preprocessed subset. In addition, it is provided through an institutional link, for which we cannot guarantee long-term availability.
+#In contrast, the trained models are the property of CIANNA's developer and provided through a sustainable Zenodo archive under Creative Commons 4.0.
 
 #/!\ Warning doawnloading ImageNET 2012 requires ~300 GB of free disk space. The .tar.gz files can be deleted after extraction if needed
 #Deleting raw data after processing is possible but not advised in case you want to change the raw image resolution
-#Downloading data folowing instructions from https://github.com/DoranLyong/ImageNet2012-download
 
 data_path = "./"
 processed_data_path = "./"

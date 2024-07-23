@@ -1058,10 +1058,6 @@ PyMODINIT_FUNC PyInit_CIANNA(void)
 	setbuf(stdout, NULL);
 	import_array();
 	
-	printf("###################################################################\n\
-Importing CIANNA Python module V-p.0.6.6 , by D.Cornu\n\
-###################################################################\n\n");
-
 	PyObject *m;
 	m = PyModule_Create(&CIANNA);
 	if (m == NULL)

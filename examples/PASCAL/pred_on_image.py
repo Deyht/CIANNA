@@ -115,7 +115,7 @@ class_list = np.array(["aeroplane", "bicycle","bird","boat","bottle","bus","car"
     "person","pottedplant","sheep","sofa","train","tvmonitor","background"])
 
 #The network is resiliant to slight augment in image resolution, which increase the mAP
-#We recommand changing image_size by step of 64 (2 grid elements)
+#We recommend changing image_size by step of 64 (2 grid elements)
 #Here training resolution was 416
 
 image_size = 416 + 64*1
@@ -170,9 +170,9 @@ load_epoch = 0
 if(load_epoch > 0):
 	cnn.load("net_save/net0_s%04d.dat"%load_epoch,load_epoch, bin=1)
 else:
-	if(not os.path.isfile("net_train_pascal_416_fp16_75.3map.dat")):
-		os.system("wget https://share.obspm.fr/s/XxY3gXnpXgsxA24/download/net_train_pascal_416_fp16_75.3map.dat")
-	cnn.load("net_train_pascal_416_fp16_75.3map.dat", 0, bin=1)
+	if(not os.path.isfile("CIANNA_net_model_pascal_v1.0_darknet19custom_res416_map50_75.3_fp16.dat")):
+		os.system("wget https://zenodo.org/records/12801421/files/CIANNA_net_model_pascal_v1.0_darknet19custom_res416_map50_75.3_fp16.dat")
+	cnn.load("CIANNA_net_model_pascal_v1.0_darknet19custom_res416_map50_75.3_fp16.dat", 0, bin=1)
 
 cnn.print_arch_tex("./arch/", "arch", activation=1, dropout=0)
 

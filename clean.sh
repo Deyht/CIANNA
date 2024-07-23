@@ -27,6 +27,7 @@ rm -rf mnist_dat
 rm -rf arch
 rm -rf fwd_res
 rm -rf net_save
+rm -rf __pycache__
 
 
 cd ../ImageNET
@@ -39,6 +40,7 @@ rm *.jpg
 rm -rf arch
 rm -rf fwd_res
 rm -rf net_save
+rm -rf __pycache__
 
 
 cd ../PASCAL
@@ -52,6 +54,7 @@ rm -rf VOCdevkit
 rm -rf arch
 rm -rf fwd_res
 rm -rf net_save
+rm -rf __pycache__
 
 
 cd ../COCO
@@ -67,6 +70,7 @@ rm -rf val2017
 rm -rf arch
 rm -rf fwd_res
 rm -rf net_save
+rm -rf __pycache__
 
 
 cd ../SKAO_SDC1
@@ -78,6 +82,7 @@ rm -rf SDC1_data
 rm -rf arch
 rm -rf fwd_res
 rm -rf net_save
+rm -rf __pycache__
 
 
 

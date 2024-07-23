@@ -32,13 +32,13 @@ if(load_epoch > 0):
 else:
 	#Not trained as a resolution agnostic network
 	if(image_size == 224):
-		if(not os.path.isfile("ImageNET_aux_data/net_pretrain_medium_224_acc70.dat")):
-			os.system("wget -P ImageNET_aux_data/ https://share.obspm.fr/s/dj69Fm5Gyaenzjw/download/net_pretrain_medium_224_acc70.dat")
-		cnn.load("ImageNET_aux_data/net_pretrain_medium_224_acc70.dat", 0, bin=1)
+		if(not os.path.isfile("ImageNET_aux_data/CIANNA_net_model_imagenet_v1.0_darknet19custom_res224_acc70.dat")):
+			os.system("wget -P ImageNET_aux_data/ https://zenodo.org/records/12801421/files/CIANNA_net_model_imagenet_v1.0_darknet19custom_res224_acc70.dat")
+		cnn.load("ImageNET_aux_data/CIANNA_net_model_imagenet_v1.0_darknet19custom_res224_acc70.dat", 0, bin=1)
 	elif(image_size == 448):
-		if(not os.path.isfile("ImageNET_aux_data/net_pretrain_medium_448_acc74.dat")):
-			os.system("wget -P ImageNET_aux_data/ https://share.obspm.fr/s/PJaJ6an7amZiQBC/download/net_pretrain_medium_448_acc74.dat")
-		cnn.load("ImageNET_aux_data/net_pretrain_medium_448_acc74.dat", 0, bin=1)
+		if(not os.path.isfile("ImageNET_aux_data/CIANNA_net_model_imagenet_v1.0_darknet19custom_res448_acc74.dat")):
+			os.system("wget -P ImageNET_aux_data/ https://zenodo.org/records/12801421/files/CIANNA_net_model_imagenet_v1.0_darknet19custom_res448_acc74.dat")
+		cnn.load("ImageNET_aux_data/CIANNA_net_model_imagenet_v1.0_darknet19custom_res448_acc74.dat", 0, bin=1)
 	else:
 		print("No trained network for the define image resolution")
 		exit()

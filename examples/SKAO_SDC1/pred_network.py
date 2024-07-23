@@ -37,9 +37,9 @@ if (len(sys.argv) > 1):
 if(load_epoch > 0):
 	cnn.load("net_save/net0_s%04d.dat"%load_epoch, load_epoch, bin=1)
 else:
-	if(not os.path.isfile(data_path+"YOLO_CIANNA_ref_SDC1_i3600_s480k_MINERVA_Cornu2024.dat")):
-			os.system("wget -P %s https://share.obspm.fr/s/GELFJjBFtwC4g5A/download/YOLO_CIANNA_ref_SDC1_i3600_s480k_MINERVA_Cornu2024.dat"%(data_path))
-	cnn.load(data_path+"YOLO_CIANNA_ref_SDC1_i3600_s480k_MINERVA_Cornu2024.dat", 0, bin=1)
+	if(not os.path.isfile(data_path+"YOLO_CIANNA_ref_SDC1_s480k_MINERVA_Cornu2024.dat")):
+			os.system("wget -P %s https://zenodo.org/records/12801421/files/YOLO_CIANNA_ref_SDC1_s480k_MINERVA_Cornu2024.dat"%(data_path))
+	cnn.load(data_path+"YOLO_CIANNA_ref_SDC1_s480k_MINERVA_Cornu2024.datt", 0, bin=1)
 	
 cnn.forward(no_error=1, saving=2, repeat=1, drop_mode="AVG_MODEL")
 
