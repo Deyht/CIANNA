@@ -45,10 +45,10 @@ load_iter = 0 #Change for your best iteration, using the pretrained model it sho
 #Obj thresholds should be optimize for specif training or iter (using post_process.py)
 
 #For best score (YOLO-CIANNA-ref)
-prob_obj_cases = np.array([0.2314, 0.1449, 0.2602, 0.1289, 0.2454, 0.2183, 0.0602, 0.0677, 0.0536])
+prob_obj_cases = np.array([0.3101, 0.2759, 0.1536, 0.3101, 0.2759, 0.2314, 0.1146, 0.0962, 0.0468])
 
 #For good precision (YOLO-CIANNA-alt)
-#prob_obj_cases = np.array([0.6102, 0.5424, 0.6441, 0.4407, 0.6271, 0.6102, 0.7119, 0.7288, 0.88])
+#prob_obj_cases = np.array([0.678, 0.6271, 0.4915, 0.678, 0.6441, 0.6102, 0.7288, 0.7458, 0.8305])
 
 #To sample the full mAP curve (require low value for all)
 #prob_obj_cases = np.array([0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03]) 
