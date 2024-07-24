@@ -1,5 +1,5 @@
 
-#	Copyright (C) 2020 David Cornu
+#	Copyright (C) 2024 David Cornu
 #	for the Convolutional Interactive Artificial 
 #	Neural Network by/for Astrophysicists (CIANNA) Code
 #	(https://github.com/Deyht/CIANNA)
