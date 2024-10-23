@@ -78,6 +78,14 @@ List of known [publications](https://github.com/Deyht/CIANNA/wiki/Related-public
 
 ####
 
+
+## Preferred citation method
+
+When referring to a specific functionality or application, feel free to cite the relevant publication.
+In all cases, if your work makes use of any version of CIANNA, please cite the non-version-specific DOI from Zenodo [10.5281/zenodo.12806324](https://doi.org/10.5281/zenodo.12806324).
+
+####
+
 &nbsp;
 
 
