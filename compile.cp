@@ -34,7 +34,7 @@ openblas_include_dir="/opt/OpenBLAS/include/"
 openblas_lib_dir="/opt/OpenBLAS/lib"
 nvcc_path="/usr/local/cuda-12.0/bin/nvcc"
 cuda_lib_path="/usr/local/cuda-12.0/lib64"
-compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
+compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -Wno-uninitialized -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
 
 ######################################################
 
