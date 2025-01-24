@@ -26,8 +26,9 @@
 CIANNA is a general-purpose deep learning framework primarily developed and used for astronomical data analysis. Functionalities and optimizations are added based on relevance for astrophysical problem-solving. CIANNA can be used to build and train large neural network models for various tasks and is provided with a high-level Python interface (similar to keras, pytorch, etc.). One of the specificities of CIANNA is its custom implementation of a YOLO-inspired object detector used in the context of galaxy detection in 2D or 3D radio-astronomical data products. The framework is fully GPU-accelerated through low-level CUDA programming.
 
 **Development team**  
-[David Cornu](https://vm-weblerma.obspm.fr/dcornu/) - creator and lead dev, post-doc researcher, AI Fellow PR[AI]RIE, FR - LERMA / Observatoire de Paris, PSL  
-Gregory Sainton - dev, AI Research engineer, FR - LERMA / Observatoire de Paris
+[David Cornu](https://vm-weblerma.obspm.fr/dcornu/) - creator and lead dev, post-doc researcher, AI Fellow PR[AI]RIE, FR - LUX / Observatoire de Paris, PSL  
+Gregory Sainton - dev, AI Research engineer, FR - LUX / Observatoire de Paris
+Aristide Doussot - dev, HPC Research engineer, FR - LUX / Observatoire de Paris
 
 Preferred contact point: david.cornu@observatoiredeparis.psl.eu
 
