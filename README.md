@@ -27,7 +27,7 @@ CIANNA is a general-purpose deep learning framework primarily developed and used
 
 **Development team**  
 [David Cornu](https://vm-weblerma.obspm.fr/dcornu/) - creator and lead dev, post-doc researcher, AI Fellow PR[AI]RIE, FR - LUX / Observatoire de Paris, PSL  
-Gregory Sainton - dev, AI Research engineer, FR - LUX / Observatoire de Paris
+Gregory Sainton - dev, AI Research engineer, FR - LUX / Observatoire de Paris  
 Aristide Doussot - dev, HPC Research engineer, FR - LUX / Observatoire de Paris
 
 Preferred contact point: david.cornu@observatoiredeparis.psl.eu
