@@ -14,7 +14,10 @@
 	<a href="https://github.com/Deyht/CIANNA/wiki" alt="Wiki-read">
 		<img src="https://img.shields.io/badge/Wiki-Read-blue" /></a>
 </p>
-
+<p align="left">
+<a href="https://github.com/Deyht/CIANNA/wiki/2)-Installation-instructions#dockerfile-installer" alt="Docker">
+		<img src="https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white" /></a>
+</p>
 
 ### The first CIANNA release (V-1.0) is here! Check the [release page](https://github.com/Deyht/CIANNA/releases)!
 
