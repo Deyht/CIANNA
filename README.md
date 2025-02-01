@@ -15,6 +15,12 @@
 		<img src="https://img.shields.io/badge/Wiki-Read-blue" /></a>
 </p>
 <p align="left">
+	<a href="https://doi.org/10.5281/zenodo.12806324" alt="DOI-ref">
+		<img src="https://img.shields.io/badge/DOI-10.5281/zenodo.12806324-blue" /></a>
+	<a href="https://ascl.net/2501.005" alt="ascl-id">
+		<img src="https://img.shields.io/badge/ascl-2501.005-blue.svg?colorB=262255" alt="ascl:2501.005" /></a>
+</p>
+<p align="left">
 <a href="https://github.com/Deyht/CIANNA/wiki/2)-Installation-instructions#dockerfile-installer" alt="Docker">
 		<img src="https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white" /></a>
 </p>
