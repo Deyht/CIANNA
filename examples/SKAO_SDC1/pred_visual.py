@@ -508,8 +508,8 @@ leg = axs[0,0].legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5,1
 		fancybox=False, shadow=True, ncol=2, fontsize=18, markerscale=2.0)
 leg.get_frame().set_linewidth(1.8)
 leg.get_frame().set_edgecolor("black")
-leg.legendHandles[0].set_color("black")
-leg.legendHandles[1].set_color("black")
+leg.legend_handles[0].set_color("black")
+leg.legend_handles[1].set_color("black")
 
 if(savefig_all):
 	plt.savefig("figures/pred_dist_size_per_prior.pdf", dpi=300, bbox_inches='tight')
@@ -1087,8 +1087,8 @@ for run_f in range(0,nb_fields):
 
 		leg1 = axs[run_f,0].legend(handles=sc_handle, loc="upper center", bbox_to_anchor=(0.5,1.18), 
 			fancybox=False, shadow=True, ncol=1, fontsize=17, markerscale=2.0)
-		leg1.legendHandles[0]._sizes = [100]
-		leg1.legendHandles[0].set_linewidth(2.0)
+		leg1.legend_handles[0]._sizes = [100]
+		leg1.legend_handles[0].set_linewidth(2.0)
 
 		leg2 = axs[run_f,1].legend(handles=[match_in_label,match_out_label], loc="upper center", bbox_to_anchor=(0.5,1.18), 
 			fancybox=False, shadow=True, ncol=2, fontsize=17, markerscale=2.0)
