@@ -28,8 +28,6 @@
 
 </p>
 
-### The first CIANNA release (V-1.0) is here! Check the [release page](https://github.com/Deyht/CIANNA/releases)!
-
 ## CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists
 
 CIANNA is a general-purpose deep learning framework primarily developed and used for astronomical data analysis. Functionalities and optimizations are added based on relevance for astrophysical problem-solving. CIANNA can be used to build and train large neural network models for various tasks and is provided with a high-level Python interface (similar to keras, pytorch, etc.). One of the specificities of CIANNA is its custom implementation of a YOLO-inspired object detector used in the context of galaxy detection in 2D or 3D radio-astronomical data products. The framework is fully GPU-accelerated through low-level CUDA programming.
@@ -42,6 +40,22 @@ Aristide Doussot - dev, HPC Research engineer, FR - LUX / Observatoire de Paris
 Preferred contact point: david.cornu@observatoiredeparis.psl.eu
 
 See Copyright &copy; and [License](#License) terms at the end.
+
+&nbsp;
+
+**Quick access:**
+* [CIANNA examples](#cianna-application-examples)
+* [Wiki](https://github.com/Deyht/CIANNA/wiki)
+* [Installation instructions](https://github.com/Deyht/CIANNA/wiki/2\)-Installation-instructions)
+* [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface))
+* [API documentation](https://github.com/Deyht/CIANNA/wiki/4\)-Interface-API-documentation)
+* [Publications](https://github.com/Deyht/CIANNA/wiki/Related-publications)
+
+
+&nbsp;
+
+**CIANNA status upgrade (06/2025)**  
+The first release (V-1.0), published in July 2024 (see the [release page](https://github.com/Deyht/CIANNA/releases)), marked a major milestone in CIANNA development. Since then, there have been mostly minor updates to this repo, but new developments are still ongoing on a private experimental version. We have chosen to maintain this repository as a stable reference version for the moment, as several publications based on V-1.0 are currently in preparation. We also wanted to give the community time to learn about CIANNA and explore the capabilities of this version. Coming back to the experimental version, in the past year, we noticeably added basic support for skip/residual connection layers, slightly reworked the normalization layers, and explored more advanced gradient optimizers (Adam and RMSprop). These changes enabled us to train much deeper architectures and to build Denoising Diffusion Probabilistic Models (see an example of galaxy image generation below), which we plan to utilize in future work. Our focus is now on enabling the construction of less linear architectures, allowing for multi-modality and the development of more complex structural pathways. These latest changes necessitate a rework of certain aspects of the framework and require extensive testing due to the increasing number of possible structures, which means that the next major update will take some time to arrive. Still, early access to these functionalities for research projects can be discussed on a case-by-case basis (see contact above).
 
 &nbsp;
 
