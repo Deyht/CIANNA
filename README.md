@@ -21,8 +21,11 @@
 		<img src="https://img.shields.io/badge/ascl-2501.005-blue.svg?colorB=262255" alt="ascl:2501.005" /></a>
 </p>
 <p align="left">
-<a href="https://github.com/Deyht/CIANNA/wiki/2)-Installation-instructions#dockerfile-installer" alt="Docker">
+	<a href="https://github.com/Deyht/CIANNA/wiki/2)-Installation-instructions#dockerfile-installer" alt="Docker">
 		<img src="https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white" /></a>
+  	<a href="https://launchpad.net/~dcornu/+archive/ubuntu/cianna" alt="ppa_ref">
+		<img src="https://img.shields.io/badge/ppa:-dcornu/cianna-orange" /></a>
+
 </p>
 
 ### The first CIANNA release (V-1.0) is here! Check the [release page](https://github.com/Deyht/CIANNA/releases)!
