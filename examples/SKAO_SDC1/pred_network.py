@@ -39,7 +39,7 @@ if(load_epoch > 0):
 else:
 	if(not os.path.isfile(data_path+"YOLO_CIANNA_ref_SDC1_s480k_MINERVA_Cornu2024.dat")):
 			os.system("wget -P %s https://zenodo.org/records/12801421/files/YOLO_CIANNA_ref_SDC1_s480k_MINERVA_Cornu2024.dat"%(data_path))
-	cnn.load(data_path+"YOLO_CIANNA_ref_SDC1_s480k_MINERVA_Cornu2024.datt", 0, bin=1)
+	cnn.load(data_path+"YOLO_CIANNA_ref_SDC1_s480k_MINERVA_Cornu2024.dat", 0, bin=1)
 	
 cnn.forward(no_error=1, saving=2, repeat=1, drop_mode="AVG_MODEL")
 
