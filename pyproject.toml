@@ -1,0 +1,52 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling", "numpy>=1.26", "scikit-build-core~=0.11.6", "uv-dynamic-versioning" ]
+
+[project]
+name = "cianna"
+description = "CIANNA is a general-purpose deep learning framework primarily developed and used for astronomical data analysis."
+readme = "README.md"
+requires-python = ">=3.9,<3.14"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dynamic = [ "version" ]
+
+dependencies = [
+  "numpy>=1.26",
+]
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.hatch.build.targets.wheel.hooks.scikit-build]
+experimental = true
+
+[tool.scikit-build]
+cmake.version = ">=4.0"
+ninja.version = ">=1.11"
+
+[tool.scikit-build.cmake.define]
+CIANNA_USE_CUDA = { env = "CIANNA_USE_CUDA" }
+CIANNA_CUDA_AUTO_GEN = { env = "CIANNA_CUDA_AUTO_GEN" }
+CMAKE_CUDA_ARCHITECTURES = { env = "CMAKE_CUDA_ARCHITECTURES" }
+
+CIANNA_USE_BLAS = { env = "CIANNA_USE_BLAS" }
+CIANNA_USE_OPENMP = { env = "CIANNA_USE_OPENMP" }
+CIANNA_USE_LPTHREAD = { env = "CIANNA_USE_LPTHREAD" }
+CIANNA_PYTHON_INTERFACE = { env = "CIANNA_PYTHON_INTERFACE" }
+
+[tool.uv]
+#package = false
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+pattern = "default-unprefixed"
+fallback_version = "0.0.0"

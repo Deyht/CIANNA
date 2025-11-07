@@ -137,7 +137,6 @@ void rand_uniform(  void *tab, int dim_in, int dim_out, int bias_padding, float 
 #ifdef BLAS
 void blas_dense_define(layer *current);
 void blas_conv_define(layer *current);
-
 #endif 
 
 void pool_define(layer *current);
@@ -186,7 +185,7 @@ void im2col_fct
 //       CUDA public prototypes
 //######################################
 
-#ifdef comp_CUDA
+#ifdef __CUDACC__
 //when compiled by nvcc must be exported as regular C prototypes
 //when compiled by gcc act as regular prototype C natively
 extern "C"
@@ -296,7 +295,7 @@ size_t cuda_convert_lrn_layer(layer *current);
 	
 //######################################
 
-#ifdef comp_CUDA
+#ifdef __CUDACC__
 }
 #endif
 

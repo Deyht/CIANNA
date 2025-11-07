@@ -34,7 +34,7 @@
 #include <unistd.h>
 #include <locale.h>
 
-#ifdef comp_CUDA
+#ifdef __CUDACC__
 #ifdef CUDA
 #include <cuda_runtime.h>
 #include <cublas_v2.h>

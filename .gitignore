@@ -35,3 +35,9 @@ arch
 ./src/build
 
 __pycache__
+
+build
+cmake-build-*
+uv.lock
+
+.idea
