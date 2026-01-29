@@ -54,6 +54,9 @@ See Copyright &copy; and [License](#License) terms at the end.
 
 &nbsp;
 
+**CIANNA status upgrade (01/2026)**  
+Minor update V-1.0.1 patches some identified bugs and add a few functionalities in the stable version (see the patch note for more details). This update also prepares the distribution of the experimental branch of CIANNA (including merge/skip layers, multiple optimizers, etc) and other planned changes and new functionnalities to the framework.
+
 **CIANNA status upgrade (06/2025)**  
 The first release (V-1.0), published in July 2024 (see the [release page](https://github.com/Deyht/CIANNA/releases)), marked a major milestone in CIANNA development. Since then, there have been mostly minor updates to this repo, but new developments are still ongoing on a private experimental version. We have chosen to maintain this repository as a stable reference version for the moment, as several publications based on V-1.0 are currently in preparation. We also wanted to give the community time to learn about CIANNA and explore the capabilities of this version. Coming back to the experimental version, in the past year, we noticeably added basic support for skip/residual connection layers, slightly reworked the normalization layers, and explored more advanced gradient optimizers (Adam and RMSprop). These changes enabled us to train much deeper architectures and to build Denoising Diffusion Probabilistic Models (see an example of galaxy image generation below), which we plan to utilize in future work. Our focus is now on enabling the construction of less linear architectures, allowing for multi-modality and the development of more complex structural pathways. These latest changes necessitate a rework of certain aspects of the framework and require extensive testing due to the increasing number of possible structures, which means that the next major update will take some time to arrive. Still, early access to these functionalities for research projects can be discussed on a case-by-case basis (see contact above).
 
@@ -123,7 +126,7 @@ In all cases, if your work makes use of any version of CIANNA, please cite the n
 
 ## License
 
-These files are Copyright &copy; 2025-- [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
+These files are Copyright &copy; 2026-- [David Cornu](https://vm-weblerma.obspm.fr/dcornu/), but released under the [Apache2 License](https://github.com/Deyht/CIANNA/blob/master/LICENSE.md).
 
 &nbsp;
 
