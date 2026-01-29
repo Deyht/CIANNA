@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -32,7 +32,6 @@
 //######################################
 
 extern network *networks[MAX_NETWORKS_NB];
-extern int nb_networks;
 extern int is_init;
 extern int is_cuda_init;
 extern int verbose;
@@ -46,6 +45,7 @@ void init_timing(struct timeval* tstart);
 float ellapsed_time(struct timeval tstart);
 void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, const char* compute_method_string, int u_dynamic_load, 
 	const char* cuda_TC_string, int inference_only, int no_logo, int adv_size);
+void free_network(network *net);
 Dataset create_dataset(network *net, int nb_elem);
 void free_dataset(Dataset *data);
 float clip(float n, float lower, float upper);
@@ -61,7 +61,7 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 	int l_in_padding, int l_activation, int l_bias, int l_dropout, int l_param_count);
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat, int silent);
 void save_network(network *net, const char *filename, int f_bin);
-void load_network(network *net, const char *filename, int epoch, int nb_layers, int f_bin);
+void load_network(network *net, const char *filename, int iter, int nb_layers, int nb_skip_layers, int f_bin);
 void set_frozen_layers(network *net, int* tab, int dim);
 void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
 	float u_decay, float u_weight_decay, int show_confmat, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor, int silent);
@@ -90,12 +90,14 @@ int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int
 	int strict_box_size, int rand_startup, float rand_prob_best_box_assoc, float rand_prob, float min_prior_forced_scaling, float *scale_tab, 
 	float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts, int class_softmax, 
 	int diff_flag, const char* error_type, int no_override, int raw_output);
+void free_yolo_params(network *net);
 
 //dense_layer.c
 int dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias,
 	float drop_rate, int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int f_bin);
 void dense_save(FILE *f, layer *current, int f_bin);
-void dense_load(network *net, FILE* f, int f_bin);
+void dense_load(network *net, FILE* f, int f_bin, int skip_layer);
+void free_dense(layer *current);
 
 //conv_layer.c
 int nb_area_comp(int size, int f_size, int padding, int int_padding, int stride);
@@ -103,23 +105,27 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 	int *padding, int *int_padding, int *in_shape, const char* activation, float *bias, 
 	float drop_rate, const char *init_fct, float init_scaling, FILE *f_load, int f_bin);
 void conv_save(FILE *f, layer *current, int f_bin);
-void conv_load(network *net, FILE *f, int f_bin);
+void conv_load(network *net, FILE *f, int f_bin, int skip_layer);
+void free_conv();
 
 //pool_layer.c
 int pool_create(network *net, layer *previous, int *pool_size, int* stride, int *padding, 
 	const char *char_pool_type, const char *activation, int global, float drop_rate);
 void pool_save(FILE *f, layer *current, int f_bin);
-void pool_load(network *net, FILE *f, int f_bin);
+void pool_load(network *net, FILE *f, int f_bin, int skip_layer);
+void free_pool(layer *current);
 
 //norm_layer.c
 int norm_create(network *net, layer *previous, const char *norm_type, const char *activation, int group_size, int set_off, FILE *f_load, int f_bin);
 void norm_save(FILE *f, layer *current, int f_bin);
-void norm_load(network *net, FILE *f, int f_bin);
+void norm_load(network *net, FILE *f, int f_bin, int skip_layer);
+void free_norm(layer *current);
 
 //lrn_layer.c
-int lrn_create(network *net, layer *previous, const char *activation, int range, float k, float alpha, float beta, FILE *f_load, int f_bin);
+int lrn_create(network *net, layer *previous, const char *activation, int range, float k, float alpha, float beta);
 void lrn_save(FILE *f, layer *current, int f_bin);
-void lrn_load(network *net, FILE *f, int f_bin);
+void lrn_load(network *net, FILE *f, int f_bin, int skip_layer);
+void free_lrn(layer *current);
 
 //initializers.c
 int get_init_type(const char *s_init);
@@ -192,7 +198,7 @@ void im2col_fct
 extern "C"
 {
 //only make since sources compiles with nvcc
-//cuda_main.cu
+//cuda_auxil.cu
 extern int cu_threads;
 extern void *cu_alpha, *cu_beta;
 extern void *cu_learning_rate, *cu_momentum;
@@ -268,31 +274,37 @@ void cuda_compute_error(void** data, void** target_data, int nb_data, float** ou
 void init_typed_cuda_activ(network* net);
 void cuda_define_activation(layer *current);
 void cuda_deriv_output_error(layer *current);
+void cuda_free_yolo_activ_param(layer *current);
 
 //cuda_dense_layer.cu
 void cuda_dense_init(network* net);
 void cuda_dense_define(layer *current);
 size_t cuda_convert_dense_layer(layer *current);
+void cuda_free_dense(layer *current);
 
 //cuda_conv_layer.cu
 void cuda_conv_init(network* net);
 void cuda_conv_define(layer *current);
 size_t cuda_convert_conv_layer(layer *current);
+void cuda_free_conv(layer *current);
 
 //cuda_pool_layer.cu
 void cuda_pool_init(network* net);
 void cuda_pool_define(layer *current);
 size_t cuda_convert_pool_layer(layer *current);
+void cuda_free_pool(layer *current);
 
 //cuda_norm_layer.cu
 void cuda_norm_init(network* net);
 void cuda_norm_define(layer *current);
 size_t cuda_convert_norm_layer(layer *current);
+void cuda_free_norm(layer *current);
 
 //cuda_lrn_layer.cu
 void cuda_lrn_init(network* net);
 void cuda_lrn_define(layer *current);
 size_t cuda_convert_lrn_layer(layer *current);
+void cuda_free_lrn(layer *current);
 	
 //######################################
 

@@ -1,7 +1,7 @@
 
-#	Athor and copyright (C) 2025 - David Cornu
-#   Code associated with the acrticle Cornu et al. 2025 (A&A)
-#   Released as part of the archived deposit zenodo/xxxxx
+#	Author and copyright (C) 2026 - David Cornu
+#	Code associated with the article Cornu et al. 2026 (A&A)
+#	Released as part of the archived deposit 10.5281/zenodo.18403011
 
 from config import *
 from aux_fwd import *
@@ -9,53 +9,47 @@ from aux_post_proc import *
 
 
 ### LDEV data download and pre-process ###
+
 load_pre_norm = 0
 
 if(not os.path.isfile("cont_ldev.fits")):
-	  os.system("wget --content-disposition https://www.dropbox.com/scl/fo/e847a6pnjtqk7xmxz6flt/AFDf-W-zw5X7vTVjlGa2ASY/cont_ldev.fits?rlkey=84kkeaw021ajh7t9lqur2n7p8")
+	os.system("wget --content-disposition https://www.dropbox.com/scl/fo/e847a6pnjtqk7xmxz6flt/AFDf-W-zw5X7vTVjlGa2ASY/cont_ldev.fits?rlkey=84kkeaw021ajh7t9lqur2n7p8")
 
 if(load_pre_norm):
 	if(not os.path.isfile("LDEV_norm_cube.bin")):
-	  os.system("wget --content-disposition https://share.obspm.fr/s/MxkMxeE3Scrza7C/download/LDEV_norm_cube.bin")
+		os.system("wget --content-disposition https://share.obspm.fr/s/MxkMxeE3Scrza7C/download/LDEV_norm_cube.bin")
 else:
 	if(not os.path.isfile("sky_ldev_v2.fits")):
-	  os.system("wget --content-disposition https://www.dropbox.com/scl/fo/e847a6pnjtqk7xmxz6flt/AHOoJIR6IHfCa6bWMu0YIrg/sky_ldev_v2.fits?rlkey=84kkeaw021ajh7t9lqur2n7p8")
+		os.system("wget --content-disposition https://www.dropbox.com/scl/fo/e847a6pnjtqk7xmxz6flt/AHOoJIR6IHfCa6bWMu0YIrg/sky_ldev_v2.fits?rlkey=84kkeaw021ajh7t9lqur2n7p8")
 	
-	cube_norm("sky_ldev_v2.dits","cont_ldev.fits")
-	
-
-# Trained model and metadata download
-
-if(not os.path.isfile("YOLO_CIANNA_net_model_SDC2_MC-BT2_MINERVA_Cornu2025.dat")):
-  os.system("wget --content-disposition https://share.obspm.fr/s/bjzsccaCk6NCMKp/download/YOLO_CIANNA_net_model_SDC2_MC-BT2_MINERVA_Cornu2025.dat")
-  
-if(not os.path.isfile("MC-BT2_train_cat_lims.txt")):
-  os.system("wget --content-disposition https://share.obspm.fr/s/44wjj83qt5S8HJi/download/MC-BT2_train_cat_lims.txt")
+	print("Normalizing LDEV cube, this will take a while ...")
+	cube_norm("sky_ldev_v2.fits","cont_ldev.fits")
 
 
 
 ### Actual network inference ###
 
-#sys.path.insert(0,glob.glob('path_to_CIANNA/src/build/lib.*/')[-1])
+# sys.path.insert(0,glob.glob('path_to_CIANNA/src/build/lib.*/')[-1])
 import CIANNA as cnn
 
 inputs_test = create_test_batch()
 targets_test = np.empty((0,0))
 nb_test = np.shape(inputs_test)[0]
 
+# b_size and mixed_precision can be adapted regarding the hardware used for inference
+# Note that changing these values can affect the final result by a small margin (change intermediate computation numerical approximations)
 cnn.init(in_dim=np.array([sky_size,sky_size,freq_size], dtype="int"), in_nb_ch=1, out_dim=0,
-    bias=0.1, b_size=8, comp_meth='C_CUDA', dynamic_load=1,
+    bias=0.1, b_size=32, comp_meth='C_CUDA', dynamic_load=1,
     mixed_precision="FP16C_FP32A", inference_only=1, adv_size=30)
 
 cnn.create_dataset("TEST", nb_test, inputs_test[:,:], targets_test[:,:])
 
 nb_yolo_filters = cnn.set_yolo_params(no_override = 0, raw_output = 0)
 
-cnn.load("Cornu_et_al_2025_SDC2_model_and_catalog_archive/models/YOLO_CIANNA_net_model_SDC2_MC-BT2_MINERVA_Cornu2025.dat", 0, bin=1)
+cnn.load("../../models/YOLO_CIANNA_net_model_SDC2_MC-BT2_MINERVA_Cornu2026.dat", 0, bin=1)
 
 cnn.forward(saving=2, no_error=1)
 cnn.delete_dataset("TEST")
-
 
 
 ### Post-processing (filtering / NMS) ###
@@ -100,7 +94,7 @@ l_overlap = np.array((overlap_sky, overlap_sky, overlap_freq))
 l_patch_shift = np.array((patch_shift_sky, patch_shift_sky, patch_shift_freq))
 l_patch_size = np.array((sky_size, sky_size, freq_size))
 
-#Second NMS over all the overlapping patches
+# Second NMS over all the overlapping patches
 for p_freq in range(0,nb_area_freq):
 	for p_dec in range(0,nb_area_sky_ldev):
 		for p_ra in range(0,nb_area_sky_ldev):
@@ -115,7 +109,7 @@ for p_freq in range(0,nb_area_freq):
 			
 			pred_boxes[p_freq,p_dec,p_ra] = np.copy(boxes)
 
-#Convert boxes from per-input coordinates to original cube pixel coordinates
+# Convert boxes from per-input coordinates to original cube pixel coordinates
 for p_freq in range(0,nb_area_freq):
 	box_freq_offset = p_freq*patch_shift_freq
 	for p_dec in range(0,nb_area_sky_ldev):
@@ -130,26 +124,26 @@ for p_freq in range(0,nb_area_freq):
 			pred_boxes[p_freq,p_dec,p_ra][:,4] = box_dec_offset  + pred_boxes[p_freq,p_dec,p_ra][:,4] - orig_offset_sky_ldev - 0.5
 			pred_boxes[p_freq,p_dec,p_ra][:,5] = box_freq_offset + pred_boxes[p_freq,p_dec,p_ra][:,5] - orig_offset_freq     - 0.5
 
-#Merge predicted box list from all input regions 
+# Merge predicted box list from all input regions 
 box_cat = np.vstack(pred_boxes.flatten())
 box_cat = box_cat[box_cat[:,7].argsort(),:][::-1]
 
-#Save filtered box catalog in detector format ordered by objectness
+# Save filtered box catalog in detector format ordered by objectness
 np.savetxt("pred_ldev_cat_filtered_repos_ordered.dat", box_cat)
 
-#Load cube WCS and convert box pixel (x,y) coordinates to (RA,DEC)
-hdul_ldev = fits.open("sky_dev_v2.fits", memmap=True)
+# Load cube WCS and convert box pixel (x,y) coordinates to (RA,DEC)
+hdul_ldev = fits.open("sky_ldev_v2.fits", memmap=True)
 wcs_ldev = WCS(hdul_ldev[0].header)
 
 cls = utils.pixel_to_skycoord((box_cat[:,3]+box_cat[:,0])*0.5, (box_cat[:,4]+box_cat[:,1])*0.5, wcs_ldev)
 ra_dec_coords = np.array([cls.ra.deg, cls.dec.deg])
 
-#Convert all predicted quantities to the SDC2 source catalog format
+# Convert all predicted quantities to the SDC2 source catalog format
 cat_header = "id ra dec hi_size line_flux_integral central_freq pa i w20"
 cat_size = int(np.shape(box_cat)[0])
 final_box_cat = np.zeros((cat_size,9), dtype="float32")
 
-lims = np.loadtxt("Cornu_et_al_2025_SDC2_model_and_catalog_archive/metadata/MC-BT2_train_cat_lims.txt")
+lims = np.loadtxt("../../metadata/MC-BT2_train_cat_lims.txt")
 
 final_box_cat[:,0] = np.arange(0,cat_size)
 final_box_cat[:,[1,2]] = ra_dec_coords.T
@@ -163,19 +157,24 @@ final_box_cat[:,8] = (np.exp(box_cat[:,11]*lims[2,0] + lims[2,1])*pixel_size_fre
 np.savetxt("pred_ldev_final_catalog.txt", final_box_cat, header=cat_header, comments="", fmt="%d %3.13f %2.13f %1.13f %1.13f %10.1f %3.13f %2.13f %3.13f")
 
 
-
 ### Scoring the predicted catalog ###
 
-min_obj = 0.65 #Apply a permissive objectness filtering by default to reduce the optimization range
+# Require the ska-sdc python package
+from ska_sdc import Sdc2Scorer
+
+if(not os.path.isfile("sky_ldev_truthcat_v2.txt")):
+	os.system("wget --content-disposition https://www.dropbox.com/scl/fo/e847a6pnjtqk7xmxz6flt/AIo4631BbKfwhW2NGhvtbkw/sky_ldev_truthcat_v2.txt?rlkey=84kkeaw021ajh7t9lqur2n7p8")
+
+min_obj = 0.65 # Apply a permissive objectness filtering by default to reduce the optimization range
 max_size = np.shape(final_box_cat)[0] - np.searchsorted(box_cat[:,7][::-1], min_obj)
 pred_cat = final_box_cat[:max_size]
 raw_cat = box_cat[:max_size]
 
-#First scoring to extract per source score for threshold optimization
+# First scoring to extract per source score for threshold optimization
 np.savetxt("pre_opt_cat.txt", pred_cat, header=cat_header, comments="", fmt="%d %3.13f %2.13f %1.13f %1.13f %10.1f %3.13f %2.13f %3.13f")
 
 sub_cat_path = "pre_opt_cat.txt"
-truth_cat_path = "sky_dev_truthcat_v2.txt"
+truth_cat_path = "sky_ldev_truthcat_v2.txt"
 
 scorer = Sdc2Scorer.from_txt(sub_cat_path, truth_cat_path, sub_skiprows=0, truth_skiprows=0)
 scorer.run(detail=True)
@@ -225,7 +224,7 @@ optimized_catalog = np.vstack(optimized_catalog)
 np.savetxt("pred_ldev_final_catalog_optimized.txt", optimized_catalog, header=cat_header, comments="", fmt="%d %3.13f %2.13f %1.13f %1.13f %10.1f %3.13f %2.13f %3.13f")
 
 
-#Final scoring from the optimized predicted source catalog
+# Final scoring from the optimized predicted source catalog
 sub_cat_path = "pred_ldev_final_catalog_optimized.txt"
 truth_cat_path = "sky_dev_truthcat_v2.txt"
 

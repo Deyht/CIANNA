@@ -426,7 +426,21 @@ size_t cuda_convert_pool_layer(layer *current)
 }
 
 
-void cuda_forward_pool_layer(layer* current)
+void cuda_free_pool(layer *current)
+{
+	p_param = (pool_param*)current->param;
+	
+	cudaFree(current->output);
+	if(current->dropout_rate > 0.01f)
+		cudaFree(p_param->dropout_mask);
+	if(!current->c_network->inference_only)
+	{
+		cudaFree(p_param->pool_map);
+		cudaFree(current->delta_o);
+	}
+}
+
+void cuda_forward_pool_layer(layer *current)
 {
 	int bias_in = 0;
 	network* net = current->c_network;

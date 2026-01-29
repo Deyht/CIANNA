@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -310,7 +310,7 @@ void cuda_norm_init(network* net)
 			net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_kernel = group_normalization_conv_kernel_FP16;
 			net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_back_kernel = group_normalization_conv_back_kernel_FP16;
 			#else
-			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
+			printf("\n ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
 			exit(EXIT_FAILURE);
 			#endif
 			break;
@@ -323,7 +323,7 @@ void cuda_norm_init(network* net)
 			net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_kernel = group_normalization_conv_kernel_BF16;
 			net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_back_kernel = group_normalization_conv_back_kernel_BF16;
 			#else
-			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
+			printf("\n ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
 			exit(EXIT_FAILURE);
 			#endif
 			break;
@@ -341,10 +341,10 @@ size_t cuda_convert_norm_layer(layer *current)
 	vram_approx += cuda_convert_table(net, &(current->output), n_param->output_dim, 0);
 	
 	vram_approx += cuda_convert_table_FP32((void**)&(n_param->gamma_gpu), n_param->nb_group, 0);
-	vram_approx += cuda_convert_table_FP32((void**)&(n_param->beta_gpu), n_param->nb_group, 0);
+	vram_approx += cuda_convert_table_FP32((void**)&(n_param->beta_gpu) , n_param->nb_group, 0);
 	
 	vram_approx += cuda_convert_table_FP32((void**)&(n_param->mean), n_param->nb_group*net->batch_size, 0);
-	vram_approx += cuda_convert_table_FP32((void**)&(n_param->var), n_param->nb_group*net->batch_size, 0);
+	vram_approx += cuda_convert_table_FP32((void**)&(n_param->var) , n_param->nb_group*net->batch_size, 0);
 	
 	if(!net->inference_only)
 	{
@@ -355,6 +355,28 @@ size_t cuda_convert_norm_layer(layer *current)
 	}
 	
 	return vram_approx;
+}
+
+void cuda_free_norm(layer *current)
+{
+	n_param = (norm_param*)current->param;
+	
+	cudaFree(current->output);
+
+	cudaFree(n_param->mean);
+	cudaFree(n_param->var);
+	
+	cudaFree(n_param->gamma_gpu);
+	cudaFree(n_param->beta_gpu);
+	
+	if(!current->c_network->inference_only)
+	{
+		cudaFree(current->delta_o);
+		cudaFree(n_param->d_gamma_gpu);
+		cudaFree(n_param->d_beta_gpu);
+	}
+	
+	
 }
 
 

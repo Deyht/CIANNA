@@ -1,13 +1,13 @@
 
-#	Athor and copyright (C) 2025 - David Cornu
-#   Code associated with the acrticle Cornu et al. 2025 (A&A)
-#   Released as part of the archived deposit zenodo/xxxxx
+#	Author and copyright (C) 2026 - David Cornu
+#	Code associated with the article Cornu et al. 2026 (A&A)
+#	Released as part of the archived deposit 10.5281/zenodo.18403011
 
 from config import *
 
 ### Post processing helper functions ###
 
-#Distance IoU in 3D
+# Distance IoU in 3D
 @jit(nopython=True, cache=True, fastmath=False)
 def fct_DIoU(box1, box2):
 	inter_w = max(0.0, min(box1[3], box2[3]) - max(box1[0], box2[0]))

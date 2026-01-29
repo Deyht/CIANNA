@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -53,12 +53,12 @@ void norm_define_activation_param(layer *current, const char *activ)
 			offset = current->c_network->batch_size;
 			break;
 		case DENSE:
-			printf("\nERROR: normalization layer is not authorized after dense layers atm.\n");
+			printf("\n ERROR: normalization layer is not authorized after dense layers atm.\n");
 			exit(EXIT_FAILURE);
 			break;
 		case NORM:
 		case LRN:
-			printf("\nERROR: stacking two normalization layers is not allowed.\n");
+			printf("\n ERROR: stacking two normalization layers is not allowed.\n");
 			exit(EXIT_FAILURE);
 			break;
 	}
@@ -74,12 +74,12 @@ void norm_define_activation_param(layer *current, const char *activ)
 			break;
 			
 		case SOFTMAX:
-			printf("\nERROR: softmax activation for normalization layer is not authorized\n");
+			printf("\n ERROR: softmax activation for normalization layer is not authorized\n");
 			exit(EXIT_FAILURE);
 			break;
 			
 		case YOLO:
-			printf("\nERROR: YOLO activation for normalization layer is not authorized\n");
+			printf("\n ERROR: YOLO activation for normalization layer is not authorized\n");
 			exit(EXIT_FAILURE);
 			break;
 			
@@ -122,7 +122,7 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	
 	if(previous == NULL)
 	{
-		printf("\nERROR: Normalization layer is not autorized as first layer.\n");
+		printf("\n ERROR: Normalization layer is not autorized as first layer.\n");
 		exit(EXIT_FAILURE);
 	}
 	
@@ -138,7 +138,7 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	// define batch_size and set_off
 	if(strncmp(norm_type, "GN", 2) != 0)
 	{
-		printf("Warning: Unrecognized normalization type, use default : none\n");
+		printf("\n WARNING: Unrecognized normalization type, use default : none\n");
 		n_param->group_size = 0;
 		n_param->set_off= 0;
 		return net->nb_layers - 1;
@@ -147,7 +147,7 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	{
 		if(group_size <= 0)
 		{
-			printf("\nERROR: Group Normalization cannot be set with group size <= 0.\n");
+			printf("\n ERROR: Group Normalization cannot be set with group size <= 0.\n");
 			exit(EXIT_FAILURE);
 		}
 		n_param->group_size = group_size;
@@ -178,7 +178,7 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 			n_param->output_dim = ((pool_param*)n_param->prev_param)->nb_maps * net->batch_size * n_param->dim_offset;
 			break;
 		case DENSE:
-			printf("\nERROR: normalization layer is not authorized after dense layers atm.\n");
+			printf("\n ERROR: normalization layer is not authorized after dense layers atm.\n");
 			n_param->data_format = DENSE;
 			n_param->n_dim = ((dense_param*)n_param->prev_param)->nb_neurons;
 			n_param->dim_offset = 1;
@@ -186,12 +186,18 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 			break;
 		case NORM:
 		case LRN:
-			printf("\nERROR: stacking two normalization layers is not allowed.\n");
+			printf("\n ERROR: stacking two normalization layers is not allowed.\n");
 			exit(EXIT_FAILURE);
 			break;
 	}
 	
 	load_activ_param(current, activation);
+	
+	if(n_param->group_size > n_param->n_dim)
+	{
+		n_param->group_size = n_param->n_dim;
+		printf(" WARNING: Group size is larger than the number of input dimensions, falling back to layer normalization.\n");
+	}
 	
 	if(n_param->n_dim%n_param->group_size == 0)
 		n_param->nb_group = n_param->n_dim/n_param->group_size;
@@ -259,7 +265,7 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 				fscanf(f_load, "%f", &(((float*)n_param->gamma)[i]));
 			for(i = 0; i < n_param->nb_group; i++)
 				fscanf(f_load, "%f", &(((float*)n_param->beta)[i]));
-		}	
+		}
 	}
 	
 	//associate the conv specific functions to the layer
@@ -336,17 +342,18 @@ void norm_save(FILE *f, layer *current, int f_bin)
 			fprintf(f, "%g ", n_param->beta[i]);
 		fprintf(f,"\n\n");
 	}
-	
 }
 
-void norm_load(network *net, FILE *f, int f_bin)
+void norm_load(network *net, FILE *f, int f_bin, int skip_layer)
 {
-	int group_size, set_off;
+	int group_size, set_off, nb_group;
+	float temp_read;
 	char norm[40];
 	char activ_type[40];
 	layer *previous;
 	
-	printf("Loading norm layer, L:%d\n", net->nb_layers+1);
+	if(!skip_layer)
+		printf("Loading norm layer, L:%d\n", net->nb_layers+1);
 	
 	if(f_bin)
 	{
@@ -360,12 +367,68 @@ void norm_load(network *net, FILE *f, int f_bin)
 		fscanf(f, " %s S%d_O%d%s\n", norm, &group_size, &set_off, activ_type);
 	}
 
-	if(net->nb_layers <= 0)
-		previous = NULL;
+	if(!skip_layer)
+	{
+		if(net->nb_layers <= 0)
+			previous = NULL;
+		else
+			previous = net->net_layers[net->nb_layers-1];
+		
+		norm_create(net, previous, norm, activ_type, group_size, set_off, f, f_bin);
+	}
 	else
-		previous = net->net_layers[net->nb_layers-1];
+	{
+		if(net->skip_in_dims[3]%group_size == 0)
+			nb_group = net->skip_in_dims[3]/group_size;
+		else
+			nb_group = net->skip_in_dims[3]/group_size + 1;
 	
-	norm_create(net, previous, norm, activ_type, group_size, set_off, f, f_bin);
+		if(f_bin)
+			fseek(f, nb_group*2, SEEK_CUR);
+		else
+			for(int i = 0; i < nb_group*2; i++)
+				fscanf(f, "%f", &temp_read);
+		
+		//norm layer has no impact on skip_input_dim
+	}
+}
+
+void free_norm(layer *current)
+{
+	n_param = (norm_param*)current->param;
+	
+	free(n_param->gamma);
+	free(n_param->beta);
+	
+	if(!current->c_network->inference_only)
+	{	
+		free(n_param->d_gamma);
+		free(n_param->d_beta);
+		
+		free(n_param->gamma_update);
+		free(n_param->beta_update);
+	}
+	
+	#ifdef CUDA
+	if(current->c_network->compute_method == C_CUDA)
+	{	
+		cuda_free_norm(current);
+	}
+	else
+	#endif
+	{
+		free(current->output);
+		
+		free(n_param->mean);
+		free(n_param->var);
+		
+		if(!current->c_network->inference_only)
+			free(current->delta_o);
+	}
+	
+	free(current->activ_param);
+	free(current->param);
+	free(current);
 }
 
 

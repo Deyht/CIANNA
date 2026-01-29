@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -41,7 +41,7 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	PyArrayObject *py_dims = NULL;
 	int i;
 	double bias = 0.1;
-	int dims[4] = {1,1,1,1}, nb_channels = 1, out_dim, b_size=8, network_id = nb_networks;
+	int dims[4] = {1,1,1,1}, nb_channels = 1, out_dim, b_size = 8, network_id = 0;
 	int dynamic_load = 1, no_logo = 0, adv_size = 0, inference_only = 0;
 	const char *py_mixed_precision = "off";
 	const char *comp_meth = "C_CUDA";
@@ -62,6 +62,19 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 	return Py_None;
 }
 
+static PyObject* py_free_network(PyObject* self, PyObject *args, PyObject *kwargs)
+{
+	setlocale(LC_ALL, "C");
+	int network_id = 0;
+	static char *kwlist[] = {"network"};
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|i", kwlist, &network_id))
+		return Py_None;
+	
+	free_network(networks[network_id]);
+	
+	return Py_None;
+}
+
 
 static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwargs)
 {
@@ -74,7 +87,7 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	PyArrayObject *py_data = NULL, *py_target = NULL;
 	int size, silent = 0;
 	int flat_image_size = 0;
-	int network_id = nb_networks-1;
+	int network_id = 0;
 	static char *kwlist[] = {"dataset", "size", "input", "target", "network", "silent", NULL};
 
 	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "siOO|ii", kwlist, &dataset_type, &size, &py_data, &py_target, &network_id, &silent))
@@ -189,7 +202,7 @@ static PyObject* py_delete_dataset(PyObject* self, PyObject *args, PyObject *kwa
 {
 	setlocale(LC_ALL, "C");
 	const char *dataset_type;
-	int network_id = nb_networks-1, silent = 0;
+	int network_id = 0, silent = 0;
 	Dataset *data = NULL;
 	static char *kwlist[] = {"dataset", "network", "silent", NULL};
 
@@ -251,7 +264,7 @@ static PyObject* py_delete_dataset(PyObject* self, PyObject *args, PyObject *kwa
 static PyObject* py_swap_data_buffers(PyObject* self, PyObject* args)
 {
 	setlocale(LC_ALL, "C");
-	int network_id = nb_networks - 1;
+	int network_id = 0;
 	const char *dataset_type;
 	Dataset temp;
 	if(!PyArg_ParseTuple(args, "s|i", &dataset_type, &network_id))
@@ -369,7 +382,7 @@ static PyObject* py_yolo(PyObject* self, PyObject *args, PyObject *kwargs)
 static PyObject* py_dense(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	setlocale(LC_ALL, "C");
-	int nb_neurons, prev_layer = -1, network_id = nb_networks-1, strict_size = 0, current_layer_id = -1;
+	int nb_neurons, prev_layer = -1, network_id = 0, strict_size = 0, current_layer_id = -1;
 	const char *activation = "RELU", *init_fct = "xavier";
 	double drop_rate = 0.0, py_bias = 0.0/0.0, init_scaling=-1.0;
 	float *c_bias = NULL;
@@ -410,7 +423,7 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	setlocale(LC_ALL, "C");
 	int i;
-	int nb_filters, prev_layer = -1, network_id = nb_networks-1, current_layer_id = -1;
+	int nb_filters, prev_layer = -1, network_id = 0, current_layer_id = -1;
 	PyArrayObject *py_f_size = NULL, *py_stride = NULL, *py_padding = NULL, *py_int_padding = NULL, *py_input_shape = NULL;
 	int C_f_size[3] = {1,1,1}, C_stride[3] = {1,1,1}, C_padding[3] = {0,0,0}, C_int_padding[3] = {0,0,0}, C_input_shape[4];
 	const char *activation = "RELU", *init_fct = "xavier";
@@ -472,7 +485,7 @@ static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	setlocale(LC_ALL, "C");
 	int i;
-	int prev_layer = -1, network_id = nb_networks-1, global = 0, current_layer_id = -1;
+	int prev_layer = -1, network_id = 0, global = 0, current_layer_id = -1;
 	PyArrayObject *py_pool_size = NULL, *py_pool_stride = NULL, *py_pool_padding = NULL;
 	const char *s_pool_type = "MAX";
 	const char *activation = "LIN";
@@ -524,7 +537,7 @@ static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 static PyObject* py_norm(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	setlocale(LC_ALL, "C");
-	int prev_layer = -1, network_id = nb_networks-1, current_layer_id = -1;
+	int prev_layer = -1, network_id = 0, current_layer_id = -1;
 	const char *norm_type = "GN";
 	const char *activation = "LIN";
 	int group_size = 8, set_off = 0;
@@ -551,7 +564,7 @@ static PyObject* py_norm(PyObject* self, PyObject *args, PyObject *kwargs)
 static PyObject* py_lrn(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	setlocale(LC_ALL, "C");
-	int prev_layer = -1, network_id = nb_networks-1, current_layer_id = -1;
+	int prev_layer = -1, network_id = 0, current_layer_id = -1;
 	const char *activation = "LIN";
 	int range = 5;
 	double k = 1.0, alpha = 1.0, beta = 0.5;
@@ -569,7 +582,7 @@ static PyObject* py_lrn(PyObject* self, PyObject *args, PyObject *kwargs)
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	current_layer_id = lrn_create(networks[network_id], prev, activation, range, k, alpha, beta, NULL, 0);
+	current_layer_id = lrn_create(networks[network_id], prev, activation, range, k, alpha, beta);
 	
 	return PyLong_FromLong(current_layer_id);
 }
@@ -579,7 +592,7 @@ static PyObject* py_set_frozen_layers(PyObject* self, PyObject *args, PyObject *
 {	
 	setlocale(LC_ALL, "C");
 	int i;
-	int network_id = nb_networks-1;
+	int network_id = 0;
 	PyArrayObject *py_froz_array = NULL;
 	int *c_froz_array = NULL;
 	static char *kwlist[] = {"froz_array", "network",NULL};
@@ -888,7 +901,7 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 static PyObject* perf_eval(PyObject* self, PyObject* args)
 {
 	setlocale(LC_ALL, "C");
-	int network_id = nb_networks - 1;
+	int network_id = 0;
 	if(!PyArg_ParseTuple(args, "|i", &network_id))
 		return Py_None;
 
@@ -902,13 +915,13 @@ static PyObject* py_load_network(PyObject* self, PyObject *args, PyObject *kwarg
 {
 	setlocale(LC_ALL, "C");
 	const char *file = "relative_path_to_the_save_file_location_which_must_be_long_enough";
-	int iter, network_id = nb_networks-1, nb_layers = 0, f_bin = 0;
-	static char *kwlist[] = {"file", "iteration", "network", "nb_layers", "bin",NULL};
+	int iter, network_id = 0, nb_layers = 0, nb_skip_layers = 0, f_bin = 0;
+	static char *kwlist[] = {"file", "iteration", "network", "nb_layers", "nb_skip_layers", "bin",NULL};
 
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "si|iii", kwlist, &file, &iter, &network_id, &nb_layers, &f_bin))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "si|iiii", kwlist, &file, &iter, &network_id, &nb_layers, &nb_skip_layers, &f_bin))
 		return Py_None;
 		
-	load_network(networks[network_id], file, iter, nb_layers, f_bin);
+	load_network(networks[network_id], file, iter, nb_layers, nb_skip_layers, f_bin);
 	
 	return Py_None;
 }
@@ -917,7 +930,7 @@ static PyObject* py_save_network(PyObject* self, PyObject *args, PyObject *kwarg
 {
 	setlocale(LC_ALL, "C");
 	const char *file = "relative_path_to_the_save_file_location_which_must_be_long_enough";
-	int network_id = nb_networks-1, f_bin = 0;
+	int network_id = 0, f_bin = 0;
 	static char *kwlist[] = {"file", "network", "bin", NULL};
 
 	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "s|ii", kwlist, &file, &network_id, &f_bin))
@@ -935,7 +948,7 @@ static PyObject* py_save_network(PyObject* self, PyObject *args, PyObject *kwarg
 static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	setlocale(LC_ALL, "C");
-	int py_nb_iter, py_control_interv = 1, py_confmat = 0, save_every = 0, network_id = nb_networks-1;
+	int py_nb_iter, py_control_interv = 1, py_confmat = 0, save_every = 0, network_id = 0;
 	int shuffle_gpu = 1, shuffle_every = 1, silent = 0, save_bin = 0;
 	double py_learning_rate=0.0, py_momentum = 0.0, py_decay = 0.0, py_end_learning_rate = 0.0, py_TC_scale_factor = 1.0, py_weight_decay = 0.0;
 	static char *kwlist[] = {"nb_iter", "learning_rate", "end_learning_rate", "control_interv", "momentum", "lr_decay", 
@@ -961,7 +974,7 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	setlocale(LC_ALL, "C");
-	int repeat = 1, network_id = nb_networks-1, C_drop_mode = AVG_MODEL, no_error = 0, saving = 1, silent = 0;
+	int repeat = 1, network_id = 0, C_drop_mode = AVG_MODEL, no_error = 0, saving = 1, silent = 0;
 	const char *drop_mode = "AVG_MODEL";
 	static char *kwlist[] = {"saving", "drop_mode", "no_error", "repeat", "network", "silent", NULL};
 	
@@ -991,7 +1004,7 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 static PyObject* py_print_architecture_tex(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	setlocale(LC_ALL, "C");
-	int network_id = nb_networks-1, l_size = 1, l_in_size = 1, l_f_size = 1, l_out_size = 1, 
+	int network_id = 0, l_size = 1, l_in_size = 1, l_f_size = 1, l_out_size = 1, 
 		l_stride = 1, l_padding = 1, l_in_padding = 0, l_activation = 0, l_bias = 0, l_dropout = 0, l_param_count = 0;
 	const char *path = "relative_path_to_the_save_file_location_which_must_be_long_enough", *file_name = "A_long_filename_template_for_user_setup";
 	static char *kwlist[] = {"path", "file_name", "size", "in_size", "f_size", "out_size", 
@@ -1015,6 +1028,7 @@ static PyObject* py_print_architecture_tex(PyObject* self, PyObject *args, PyObj
 
 static PyMethodDef CIANNAMethods[] = {
 	{ "init", (PyCFunction)py_init_network, METH_VARARGS | METH_KEYWORDS, "Initialize network basic shapes and properties" },
+	{ "free_network", (PyCFunction)py_free_network, METH_VARARGS | METH_KEYWORDS, "Free all data structures associated with a given network" },
 	{ "create_dataset", (PyCFunction)py_create_dataset, METH_VARARGS | METH_KEYWORDS, "Allocate dataset structure" },
 	{ "delete_dataset", (PyCFunction)py_delete_dataset, METH_VARARGS | METH_KEYWORDS, "Free dataset structure" },
 	{ "swap_data_buffers", py_swap_data_buffers, METH_VARARGS, "Put the selected buffered dataset as current dataset for training"},

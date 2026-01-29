@@ -50,7 +50,7 @@ print ("Done !", flush=True)
 
 cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10,
 		bias=0.1, b_size=16, comp_meth="C_CUDA", #Change to C_BLAS or C_NAIV
-		dynamic_load=1, mixed_precision="FP32C_FP32A") 
+		dynamic_load=1, mixed_precision="FP32C_FP32A", no_logo=1) 
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)
@@ -64,20 +64,23 @@ load_step = 0
 if(load_step > 0):
 	cnn.load("net_save/net0_s%04d.dat"%(load_step), load_step)
 else:
-	cnn.conv(f_size=i_ar([5,5]), nb_filters=8 , padding=i_ar([2,2]), activation="RELU")
+	cnn.conv(f_size=i_ar([5,5]), nb_filters=8 , padding=i_ar([2,2]), activation="LIN")
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.conv(f_size=i_ar([5,5]), nb_filters=16, padding=i_ar([2,2]), activation="RELU")
+	cnn.norm(group_size=2, activation="RELU")
+	cnn.conv(f_size=i_ar([5,5]), nb_filters=16, padding=i_ar([2,2]), activation="LIN")
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
+	cnn.norm(group_size=4, activation="RELU")
 	cnn.dense(nb_neurons=256, activation="RELU", drop_rate=0.5)
 	cnn.dense(nb_neurons=128, activation="RELU", drop_rate=0.2)
 	cnn.dense(nb_neurons=10, strict_size=1, activation="SMAX")
-
+	
 
 #To create a latex table and associated pdf with the current architecture	
 #cnn.print_arch_tex("./arch/", "arch", activation=1)
 
-cnn.train(nb_iter=20, learning_rate=0.004, momentum=0.8, confmat=1, save_every=10)
+cnn.train(nb_iter=10, learning_rate=0.004, momentum=0.8, confmat=1, save_every=10)
 cnn.perf_eval()
+
 
 #Uncomment to save network prediction
 #cnn.forward(repeat=1, drop_mode="AVG_MODEL")

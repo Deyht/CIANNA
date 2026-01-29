@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -160,7 +160,6 @@ void output_error_fct(layer* current)
 		default:
 			linear_output_error(current);
 			break;
-	
 	}
 }
 
@@ -306,15 +305,62 @@ void set_linear_activ(layer *current, int size, int dim, int biased_dim, int off
 	current->bias_value = 0.5f;
 }
 
+void linear_activation_fct(void *tab, int dim, int biased_dim, int offset, int length, size_t size)
+{
+	size_t i;
+	float *f_tab = (float*) tab;
+	
+	#pragma omp parallel for schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		if(biased_dim > dim)
+		{
+			if(i >= (length*biased_dim) && (i+1)%(dim+1) != 0)
+				f_tab[i] = 0.0f;
+		}
+		else
+		{
+			if((i / dim)%offset >= length)
+				f_tab[i] = 0.0f;
+		}
+	}
+}
+
+
+void linear_deriv_fct(void *deriv, int dim, int biased_dim, int offset, int length, size_t size)
+{
+	size_t i;
+	float *f_deriv = (float*) deriv;
+	
+	#pragma omp parallel for schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		if(biased_dim > dim)
+		{
+			if(i >= (length*biased_dim) && (i+1)%(dim+1) != 0)
+				f_deriv[i] = 0.0f;
+		}
+		else
+		{
+			if((i / dim)%offset >= length)
+				f_deriv[i] = 0.0f;
+		}
+	}
+}
+
 void linear_activation(layer *current)
 {
-	//empty on purpose
+	linear_param *param = (linear_param*)current->activ_param;
+	linear_activation_fct(current->output, param->dim, param->biased_dim, 
+		param->offset, current->c_network->length, param->size);
 }
 
 
 void linear_deriv(layer *previous)
 {
-	//empty on purpose
+	linear_param *param = (linear_param*)previous->activ_param;
+	linear_deriv_fct(previous->delta_o, param->dim, param->biased_dim, 
+		param->offset, previous->c_network->length, param->size);
 }
 
 
@@ -378,7 +424,7 @@ void print_relu_activ_param(layer *current, char *activ)
 void ReLU_activation_fct(void *tab, int dim, int biased_dim, int offset, 
 	float saturation, float leaking_factor, int length, size_t size)
 {
-	int i;
+	size_t i;
 	float *f_tab = (float*) tab;
 	
 	#pragma omp parallel for schedule(guided,4)
@@ -415,7 +461,7 @@ void ReLU_activation_fct(void *tab, int dim, int biased_dim, int offset,
 void ReLU_deriv_fct(void *deriv, void *value, int dim, int biased_dim,	int offset,	
 	 float saturation, float leaking_factor, int length, size_t size)
 {
-	int i;
+	size_t i;
 	float *f_deriv = (float*) deriv;
 	float *f_value = (float*) value;
 	
@@ -489,14 +535,15 @@ void ReLU_output_error(layer* current)
 void quadratic_deriv_output_error(void *delta_o, void *output, void *target, int dim, 
 	int biased_dim, int offset, int length, size_t size)
 {
-	int i;
+	size_t i;
 	int nb_filters, c_batch, c_filter, in_filter_pos, pos;
 	
 	float *f_delta_o = (float*) delta_o;
 	float *f_output = (float*) output;
 	float *f_target = (float*) target;
 	
-	nb_filters = size / (dim*offset);
+	int dim_offset = dim * offset;
+	nb_filters = size / dim_offset;
 	
 	#pragma omp parallel for private(pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -515,7 +562,7 @@ void quadratic_deriv_output_error(void *delta_o, void *output, void *target, int
 		{
 			if((i / dim)%offset < length)
 			{
-				c_filter = i / (dim*offset);
+				c_filter = i / dim_offset;
 				c_batch = (i / dim)%offset;
 				in_filter_pos = i % dim;
 				
@@ -532,14 +579,15 @@ void quadratic_deriv_output_error(void *delta_o, void *output, void *target, int
 void quadratic_output_error(void *output_error, void *output, void *target, int dim, 
 	int biased_dim, int offset, int length, size_t size)
 {
-	int i;
+	size_t i;
 	int nb_filters, c_batch, c_filter, in_filter_pos, pos;
 	
 	float *f_output_error = (float*) output_error;
 	float *f_output = (float*) output;
 	float *f_target = (float*) target;
 	
-	nb_filters = size / (dim*offset);
+	int dim_offset = dim * offset;
+	nb_filters = size / dim_offset;
 	
 	#pragma omp parallel for private(pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -558,7 +606,7 @@ void quadratic_output_error(void *output_error, void *output, void *target, int 
 		{
 			if((i / dim)%offset < length)
 			{
-				c_filter = i / (dim*offset);
+				c_filter = i / dim_offset;
 				c_batch = (i / dim)%offset;
 				in_filter_pos = i % dim;
 				
@@ -622,7 +670,7 @@ void logistic_activation(layer *current)
 void logistic_activation_fct(void *tab, float beta, float saturation, int dim,
 	int biased_dim, int offset, int length, size_t size)
 {
-	int i = 0;
+	size_t i = 0;
 	
 	float *f_tab = (float*) tab;
 
@@ -668,7 +716,7 @@ void logistic_deriv(layer *previous)
 void logistic_deriv_fct(void *deriv, void* value, float beta, int dim,
 	int biased_dim, int offset, int length, size_t size)
 {
-	int i;
+	size_t i;
 	
 	float *f_deriv = (float*) deriv;
 	float *f_value = (float*) value;
@@ -701,7 +749,6 @@ void logistic_deriv_output_error(layer* current)
 		param->biased_dim, param->offset, current->c_network->length, param->size);
 	logistic_deriv_fct(current->delta_o, current->output, param->beta, param->dim, 
 		param->biased_dim, param->offset, current->c_network->length, param->size);
-	
 }
 
 
@@ -749,12 +796,13 @@ void softmax_activation_fct(void *tab, int dim, int biased_dim,
 	float *pos, *off_pos;
 	float vmax;
 	float normal = 0.0f;
-	int nb_filters = size / (dim*batch_size);
+	int batched_dim = dim * batch_size;
+	int nb_filters = size / batched_dim;
 	
 	#pragma omp parallel for private(j, k, l, pos, off_pos, vmax, normal) schedule(guided,4)
 	for(i = 0; i < batch_size; i++)
 	{
-		pos = (float*)tab + i*(biased_dim);
+		pos = (float*)tab + i*biased_dim;
 		normal = 0.0f;
 		
 		if(biased_dim > dim)
@@ -803,7 +851,7 @@ void softmax_activation_fct(void *tab, int dim, int biased_dim,
 				{
 					for(l = 0; l < dim; l++)
 					{
-						off_pos = pos + k*dim*batch_size + l;
+						off_pos = pos + k*batched_dim + l;
 						if(*off_pos > vmax)
 							vmax = *off_pos;
 					}
@@ -813,7 +861,7 @@ void softmax_activation_fct(void *tab, int dim, int biased_dim,
 				{
 					for(l = 0; l < dim; l++)
 					{
-						off_pos = pos + k*dim*batch_size + l;
+						off_pos = pos + k*batched_dim + l;
 						*off_pos = expf((*off_pos-vmax));
 						normal += *off_pos;
 					}
@@ -823,7 +871,7 @@ void softmax_activation_fct(void *tab, int dim, int biased_dim,
 				{
 					for(l = 0; l < dim; l++)
 					{
-						off_pos = pos + k*dim*batch_size + l;
+						off_pos = pos + k*batched_dim + l;
 						*off_pos /= normal;
 					}
 				}
@@ -834,7 +882,7 @@ void softmax_activation_fct(void *tab, int dim, int biased_dim,
 				{
 					for(l = 0; l < dim; l++)
 					{
-						off_pos = pos + k*dim*batch_size + l;
+						off_pos = pos + k*batched_dim + l;
 						*off_pos = 0.0f;
 					}
 				}
@@ -847,21 +895,23 @@ void softmax_activation_fct(void *tab, int dim, int biased_dim,
 void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, 
 	int dim, int biased_dim, int offset, int length, size_t size)
 {
-	int i;
+	size_t i;
 	int nb_filters, c_batch, c_filter, in_filter_pos, pos;
 	
 	float *f_delta_o = (float*) delta_o; 
 	float *f_output = (float*) output;
 	float *f_target = (float*) target;
 	
-	nb_filters = size / (dim*offset);
+	int length_biased_dim = length * biased_dim;
+	int dim_offset = dim * offset;
+	nb_filters = size / dim_offset;
 	
 	#pragma omp parallel for private(c_batch, c_filter, in_filter_pos, pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
 		if(biased_dim > dim)
 		{
-			if(i < (length*biased_dim) && (i+1)%(dim+1) != 0)
+			if(i < (length_biased_dim) && (i+1)%(dim+1) != 0)
 			{
 				pos = i - i/(dim+1);
 				f_delta_o[i] = (f_output[i] - f_target[pos]);
@@ -873,7 +923,7 @@ void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target,
 		{
 			if((i / dim)%offset < length)
 			{
-				c_filter = i / (dim*offset);
+				c_filter = i / dim_offset;
 				c_batch = (i / dim)%offset;
 				in_filter_pos = i % dim;
 				
@@ -890,21 +940,23 @@ void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target,
 void cross_entropy_output_error(void *output_error, void *output, void *target, 
 	int dim, int biased_dim, int offset, int length, size_t size)
 {
-	int i;
+	size_t i;
 	int nb_filters, c_batch, c_filter, in_filter_pos, pos;
 	
 	float *f_output_error = (float*) output_error;
 	float *f_output = (float*) output;
 	float *f_target = (float*) target;
 	
-	nb_filters = size / (dim*offset);
+	int length_biased_dim = length * biased_dim;
+	int dim_offset = dim * offset;
+	nb_filters = size / dim_offset;
 	
 	#pragma omp parallel for private(c_batch, c_filter, in_filter_pos, pos) schedule(guided,4)
 	for(i = 0; i < size; i++)
 	{
 		if(biased_dim > dim)
 		{
-			if(i < (length*biased_dim) && (i+1)%(dim+1) != 0)
+			if(i < (length_biased_dim) && (i+1)%(dim+1) != 0)
 			{
 				pos = i - i/(dim+1);
 				if(f_output[i] > 0.000001f)
@@ -919,7 +971,7 @@ void cross_entropy_output_error(void *output_error, void *output, void *target,
 		{
 			if((i / dim)%offset < length)
 			{
-				c_filter = i / (dim*offset);
+				c_filter = i / dim_offset;
 				c_batch = (i / dim)%offset;
 				in_filter_pos = i % dim;
 				
@@ -969,45 +1021,56 @@ void softmax_output_error(layer *current)
 
 void set_yolo_activ(layer *current)
 {
-	int i,j;
+	int i, j;
 	float* temp = NULL;
+	
 	current->activ_param = (yolo_param*) malloc(sizeof(yolo_param));
 	yolo_param *param = (yolo_param*)current->activ_param;
 	conv_param *c_param = (conv_param*)current->param;
 	
-	if(current->c_network->y_param->nb_box*(8+current->c_network->y_param->nb_class
-			+ current->c_network->y_param->nb_param) != c_param->nb_filters)
+	//From global YOLO settings
+	yolo_param *global_param = (yolo_param*)current->c_network->y_param;
+	
+	//Content copy (and not only pointer) to keep network properties accessible
+	//all necessary pointers are redifined in the following lines
+	*param = *(current->c_network->y_param);
+	
+	int nb_box = param->nb_box;
+	int nb_class = param->nb_class;
+	int nb_param = global_param->nb_param;
+	int max_obj_per_image = param->max_nb_obj_per_image;
+	int output_offset = 8+nb_class+nb_param;
+	
+	int nb_filters = c_param->nb_filters;
+	int total_nb_area = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2];
+	int batched_total_nb_area = total_nb_area * current->c_network->batch_size;
+	
+	if(nb_box*output_offset != nb_filters)
 	{
-		printf("%d %d\n", current->c_network->y_param->nb_box*(8+current->c_network->y_param->nb_class
-			+ current->c_network->y_param->nb_param), c_param->nb_filters);
-		printf("ERROR: Nb filters size mismatch in YOLO dimensions!n");
+		printf("\n ERROR: Nb filters size mismatch in YOLO dimensions!\n");
+		printf("%d %d\n", nb_box*output_offset, nb_filters);
 		exit(EXIT_FAILURE);
 	}
 	
-	//real copy to keep network properties accessible; all necessary pointers are redifined in the following lines
-	*param = *(current->c_network->y_param);	
-	
 	temp = (float*) calloc(6*3, sizeof(float));
 	param->slopes_and_maxes_tab = (float**) malloc(6*sizeof(float*));
-	
-	param->prior_size = (float*) calloc(param->nb_box*3, sizeof(float));
+	param->prior_size = (float*) calloc(nb_box*3, sizeof(float));
 	
 	/*Having prior relative to image size is a good idea in principle, but it hides the fact that the network has a given receptive field related to its architecture.
 	Therefore, increasing the input resolution will end up to cases where object sizes are too large.
 	For now we prefer to have prior as a fixed pixel size, so it is easy to scale input for probleme where the size of object is constant in pixel regardless of the image size.*/
-	for(i = 0; i < param->nb_box; i++)
+	for(i = 0; i < nb_box; i++)
 		for(j = 0; j < 3; j++)
-			param->prior_size[i*3+j] = fmax(1.0f, current->c_network->y_param->prior_size[i*3+j]);
+			param->prior_size[i*3+j] = fmax(1.0f, global_param->prior_size[i*3+j]);
 	
 	for(i = 0; i < 6; i++)
 	{
 		param->slopes_and_maxes_tab[i] = &temp[i*3];
 		for(j = 0; j < 3; j++)
-			  param->slopes_and_maxes_tab[i][j] = current->c_network->y_param->slopes_and_maxes_tab[i][j];
+			  param->slopes_and_maxes_tab[i][j] = global_param->slopes_and_maxes_tab[i][j];
 	}
 	
-	param->size = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] 
-		* c_param->nb_filters * current->c_network->batch_size;
+	param->size = total_nb_area * c_param->nb_filters * current->c_network->batch_size;
 	
 	param->dim = param->size;
 	param->biased_dim = param->dim;
@@ -1015,18 +1078,12 @@ void set_yolo_activ(layer *current)
 	for (i = 0; i < 3; i++)
 		param->cell_size[i] = current->c_network->in_dims[i] / c_param->nb_area[i];
 	
-	param->IoU_monitor = (float*) calloc(2 * param->nb_box * c_param->nb_area[0] 
-		* c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, sizeof(float));
-	param->target_cell_mask = (int*) calloc(c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]
-		* current->c_network->batch_size * param->max_nb_obj_per_image, sizeof(int));
-	param->IoU_table = (float*) calloc(c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]
-		* current->c_network->batch_size * param->max_nb_obj_per_image * param->nb_box, sizeof(float));
-	param->dist_prior = (float*) calloc(c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]
-		* current->c_network->batch_size * param->max_nb_obj_per_image * param->nb_box, sizeof(float));
-	param->box_locked = (int*) calloc(c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]
-		* current->c_network->batch_size * param->nb_box, sizeof(int));
-	param->box_in_pix = (float*) calloc(c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]
-		* current->c_network->batch_size * 6 * param->nb_box, sizeof(float));
+	param->IoU_monitor = (float*) calloc(2 * nb_box * batched_total_nb_area, sizeof(float));
+	param->target_cell_mask = (int*) calloc(batched_total_nb_area * max_obj_per_image, sizeof(int));
+	param->IoU_table = (float*) calloc(batched_total_nb_area * max_obj_per_image * nb_box, sizeof(float));
+	param->dist_prior = (float*) calloc(batched_total_nb_area * max_obj_per_image * nb_box, sizeof(float));
+	param->box_locked = (int*) calloc(batched_total_nb_area * nb_box, sizeof(int));
+	param->box_in_pix = (float*) calloc(batched_total_nb_area * 6 * nb_box, sizeof(float));
 	
 	current->bias_value = 0.5;
 }
@@ -1144,6 +1201,27 @@ int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int
 	char display_class_type[60];
 	char display_difficult[40];
 	
+	// Default setting
+	net->y_param = (yolo_param*) malloc(sizeof(yolo_param));
+	net->y_param->nb_box = 0;
+	net->y_param->IoU_type = IOU;
+	net->y_param->strict_box_size_association = 0;
+	net->y_param->nb_class = 0;
+	net->y_param->nb_param = 0;
+	net->y_param->max_nb_obj_per_image = 0;
+	net->y_param->fit_dim = 0;
+	
+	net->y_param->strict_box_size_association = 0;
+	net->y_param->rand_startup = 0;
+	net->y_param->rand_prob_best_box_assoc = 0.0f;
+	net->y_param->min_prior_forced_scaling = -1.0f;
+	
+	net->y_param->class_softmax = 0;
+	net->y_param->diff_flag = 0;
+	net->y_param->no_override = 0;
+	net->y_param->raw_output = 0;
+	
+	
 	net->y_param->no_override = no_override;
 	net->y_param->raw_output = raw_output;
 	
@@ -1187,7 +1265,7 @@ int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int
 	}
 	else
 	{
-		printf("\n WARNING: Unrecognized IoU type: %s, fallback to default GIoU\n", IoU_type_char);
+		printf(" WARNING: Unrecognized IoU type: %s, fallback to default GIoU\n", IoU_type_char);
 		net->y_param->IoU_type = GIOU;
 		sprintf(display_IoU_type_char, "Generalized GIoU");
 		net->y_param->c_IoU_fct = GIoU_fct;
@@ -1211,7 +1289,7 @@ int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int
 	}
 	else
 	{
-		printf("\n WARNING: Unrecognized prior dist. type: %s, fallback to default dist. Size\n", prior_dist_type_char);
+		printf(" WARNING: Unrecognized prior dist. type: %s, fallback to default dist. Size\n", prior_dist_type_char);
 		net->y_param->prior_dist_type = DIST_SIZE;
 		sprintf(display_prior_dist_type, "Prior dist. SIZE");
 	}
@@ -1308,32 +1386,32 @@ int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int
 	switch(net->y_param->IoU_type)
 	{
 		case IOU:
-			l_IoU_limits[0] = 0.5f;  l_IoU_limits[1] = 0.1f;
-			l_IoU_limits[2] = 0.0f;  l_IoU_limits[3] = 0.0f;
-			l_IoU_limits[4] = 0.2f;  l_IoU_limits[5] = 0.2f;
-			l_IoU_limits[6] = 0.5f;  l_IoU_limits[7] = 0.3f;
+			l_IoU_limits[0] =  0.5f;  l_IoU_limits[1] =  0.1f;
+			l_IoU_limits[2] =  0.0f;  l_IoU_limits[3] =  0.0f;
+			l_IoU_limits[4] =  0.2f;  l_IoU_limits[5] =  0.2f;
+			l_IoU_limits[6] =  0.5f;  l_IoU_limits[7] =  0.3f;
 			break;
 		
 		default:
 		case GIOU:
-			l_IoU_limits[0] = 0.4f;  l_IoU_limits[1] = -0.5f;
+			l_IoU_limits[0] =  0.4f; l_IoU_limits[1] = -0.5f;
 			l_IoU_limits[2] = -1.0f; l_IoU_limits[3] = -1.0f;
 			l_IoU_limits[4] = -0.3f; l_IoU_limits[5] = -0.3f;
-			l_IoU_limits[6] = 0.4f;  l_IoU_limits[7] = 0.2f;
+			l_IoU_limits[6] =  0.4f; l_IoU_limits[7] =  0.2f;
 			break;
 		
 		case DIOU:
-			l_IoU_limits[0] = 0.3f;  l_IoU_limits[1] = -0.6f;
+			l_IoU_limits[0] =  0.3f; l_IoU_limits[1] = -0.6f;
 			l_IoU_limits[2] = -1.0f; l_IoU_limits[3] = -1.0f;
 			l_IoU_limits[4] = -0.5f; l_IoU_limits[5] = -0.5f;
-			l_IoU_limits[6] = 0.3f;  l_IoU_limits[7] = 0.1f;
+			l_IoU_limits[6] =  0.3f; l_IoU_limits[7] =  0.1f;
 			break;
 			
 		case DIOU2:
-			l_IoU_limits[0] = 0.3f;  l_IoU_limits[1] = -0.5f;
+			l_IoU_limits[0] =  0.3f; l_IoU_limits[1] = -0.5f;
 			l_IoU_limits[2] = -1.0f; l_IoU_limits[3] = -1.0f;
 			l_IoU_limits[4] = -0.4f; l_IoU_limits[5] = -0.4f;
-			l_IoU_limits[6] = 0.3f;  l_IoU_limits[7] = 0.1f;
+			l_IoU_limits[6] =  0.3f; l_IoU_limits[7] =  0.1f;
 			break;
 		
 	}
@@ -1476,8 +1554,24 @@ int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int
 	return (net->y_param->nb_box * (8 + net->y_param->nb_class + net->y_param->nb_param));
 }
 
+void free_yolo_params(network *net)
+{
+	yolo_param *y_param = net->y_param;
+	
+	free(y_param->prior_size);
+	free(y_param->noobj_prob_prior);
+	free(y_param->scale_tab);
+	free(y_param->slopes_and_maxes_tab[0]);
+	free(y_param->slopes_and_maxes_tab);
+	free(y_param->param_ind_scale);
+	free(y_param->IoU_limits);
+	free(y_param->fit_parts);
+	
+	free(y_param);
+}
 
-void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_param, int size, int class_softmax)
+
+void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_param, size_t size, int class_softmax)
 {	
 	float* tab = (float*) i_tab;
 	
@@ -1485,7 +1579,8 @@ void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_par
 	/*Default values are in activ_function.c (set_yolo_params)*/
 	float **sm_tab = y_param.slopes_and_maxes_tab;
 	int fit_dim = y_param.fit_dim;	
-	int i, col, in_col;
+	size_t i, col, in_col;
+	int output_offset = 8+nb_class+nb_param;
 	
 	#pragma omp parallel for private(col, in_col) schedule(guided,4)
 	for(i = 0; i < size; i++)
@@ -1493,7 +1588,7 @@ void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_par
 		float normal = 0.0f, vmax;
 		int j;
 		col = i / flat_offset;
-		in_col = col%(8+nb_class+nb_param);
+		in_col = col%output_offset;
 		
 		/*Position*/
 		if(in_col >= 0 && in_col < 3)	
@@ -1608,15 +1703,18 @@ void YOLO_deriv_error_fct
 	float* t_target = (float*) i_target;
 
 	/* Define many "shorts" for y_param content to enhance code redeability*/
-	int nb_box = y_param.nb_box, nb_class = y_param.nb_class, nb_param = y_param.nb_param; 
+	int nb_box                      = y_param.nb_box; 
+	int nb_class                    = y_param.nb_class;
+	int nb_param                    = y_param.nb_param; 
 	int strict_box_size_association = y_param.strict_box_size_association;
-	int fit_dim = y_param.fit_dim, rand_startup = y_param.rand_startup;
-	float rand_prob_best_box_assoc = y_param.rand_prob_best_box_assoc;
-	float rand_prob = y_param.rand_prob;
-	float min_prior_forced_scaling = y_param.min_prior_forced_scaling;
-	int class_softmax = y_param.class_softmax, diff_flag = y_param.diff_flag;
-	int prior_dist_type = y_param.prior_dist_type;
-
+	int fit_dim                     = y_param.fit_dim;
+	int rand_startup                = y_param.rand_startup;
+	float rand_prob_best_box_assoc  = y_param.rand_prob_best_box_assoc;
+	float rand_prob                 = y_param.rand_prob;
+	float min_prior_forced_scaling  = y_param.min_prior_forced_scaling;
+	int class_softmax               = y_param.class_softmax;
+	int diff_flag                   = y_param.diff_flag;
+	int prior_dist_type             = y_param.prior_dist_type;
 
 	float coord_scale = y_param.scale_tab[0], size_scale  = y_param.scale_tab[1];
 	float prob_scale  = y_param.scale_tab[2], obj_scale   = y_param.scale_tab[3];
@@ -1656,8 +1754,9 @@ void YOLO_deriv_error_fct
 		int *target_cell_mask, *box_locked;
 		float *IoU_table, *dist_prior, *box_in_pix;
 		int i, j, k, l, l_o, l_t;
-		int c_batch, f_offset, nb_obj_target, s_p_i = 0;
-		int nb_in_cell, id_in_cell, l_r_b = -1, resp_box = -1, resp_targ = -1, targ_diff_flag = 0;
+		size_t f_offset, c_total_nb_area, c_total_nb_area_batch, total_cell_pos_nb_area, total_area_and_cell_offset;
+		int c_batch, output_offset, target_offset, nb_obj_target, s_p_i = 0;
+		int nb_in_cell, id_in_cell, id_in_cell_offset, l_r_b = -1, resp_box = -1, resp_targ = -1, resp_targ_offset, targ_diff_flag = 0;
 		float best_dist, c_dist, max_IoU, current_IoU;
 		int cell_pos[3], c_nb_area[3], obj_c[3];
 		float *c_box_in_pix, *c_prior_size;
@@ -1665,34 +1764,30 @@ void YOLO_deriv_error_fct
 		float class_only_IoU = -2.0f;
 		
 		c_nb_area[0] = nb_area_w; c_nb_area[1] = nb_area_h; c_nb_area[2] = nb_area_d;
+		c_total_nb_area = c_nb_area[0]*c_nb_area[1]*c_nb_area[2];
 		c_batch = c_pix / flat_output_size;
 		target = t_target + flat_target_size * c_batch;
 		f_offset = size;
+		output_offset = 8+nb_class+nb_param;
+		target_offset = 7+nb_param+diff_flag;
 		
 		i = c_pix % flat_output_size;
 		cell_pos[2] = i / (c_nb_area[0]*c_nb_area[1]);
 		cell_pos[1] = (int)(i % (c_nb_area[0]*c_nb_area[1])) / c_nb_area[0];
 		cell_pos[0] = (int)(i % (c_nb_area[0]*c_nb_area[1])) % c_nb_area[0];
 		
-		delta_o = t_delta_o + (c_nb_area[0]*c_nb_area[1]*c_nb_area[2]) 
-			* c_batch + cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0];
-		output = t_output + (c_nb_area[0]*c_nb_area[1]*c_nb_area[2]) 
-			* c_batch + cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0];
+		c_total_nb_area_batch = c_total_nb_area * c_batch;
+		total_cell_pos_nb_area = cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0];
+		total_area_and_cell_offset = c_total_nb_area_batch + total_cell_pos_nb_area;
 		
-		target_cell_mask = t_target_cell_mask + ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2])*c_batch * y_param.max_nb_obj_per_image);
-		target_cell_mask +=	(cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]) * y_param.max_nb_obj_per_image;
+		delta_o = t_delta_o + total_area_and_cell_offset;
+		output  = t_output  + total_area_and_cell_offset;
 		
-		IoU_table = t_IoU_table + ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2])*c_batch * y_param.max_nb_obj_per_image * nb_box);
-		IoU_table += (cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]) * y_param.max_nb_obj_per_image * nb_box;
-		
-		dist_prior = t_dist_prior + ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2])*c_batch * y_param.max_nb_obj_per_image * nb_box);
-		dist_prior += (cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]) * y_param.max_nb_obj_per_image * nb_box;
-		
-		box_locked = t_box_locked + ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2]) * c_batch * nb_box);
-		box_locked += (cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]) * nb_box;
-		
-		box_in_pix = t_box_in_pix + ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2]) * c_batch * 6 * nb_box);
-		box_in_pix += (cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]) * 6 * nb_box;
+		target_cell_mask = t_target_cell_mask + total_area_and_cell_offset * y_param.max_nb_obj_per_image;
+		IoU_table  = t_IoU_table  + total_area_and_cell_offset * y_param.max_nb_obj_per_image * nb_box;
+		dist_prior = t_dist_prior + total_area_and_cell_offset * y_param.max_nb_obj_per_image * nb_box;
+		box_locked = t_box_locked + total_area_and_cell_offset * nb_box;
+		box_in_pix = t_box_in_pix + total_area_and_cell_offset * 6 * nb_box;
 		
 		nb_obj_target = target[0];
 		target++;
@@ -1703,13 +1798,13 @@ void YOLO_deriv_error_fct
 			class_only_IoU = good_IoU_lim;
 		}
 		
-		best_dist = 100000000;
+		best_dist = 1000000000;
 		for(k = 0; k < nb_box; k++)
 		{
 			box_locked[k] = 0;
 			c_box_in_pix = box_in_pix + k*6;
 			c_prior_size = prior_size + k*3;
-			l_o = k*(8+nb_class+nb_param);
+			l_o = k*output_offset;
 			for(l = 0; l < 3; l++)
 				c_box_in_pix[l] = ((float)output[(l_o+l)*f_offset] + cell_pos[l]) * cell_size[l];
 			for(l = 0; l < 3; l++)
@@ -1728,7 +1823,7 @@ void YOLO_deriv_error_fct
 		nb_in_cell = 0;
 		for(j = 0; j < nb_obj_target; j++)
 		{
-			l_t = j*(7+nb_param+diff_flag);
+			l_t = j*target_offset;
 			for(l = 0; l < 6; l++)
 				targ_int[l] = target[l_t+1+l];
 			
@@ -1764,10 +1859,11 @@ void YOLO_deriv_error_fct
 		id_in_cell = 0;
 		for(j = 0; j < nb_obj_target; j++)
 		{
+			id_in_cell_offset = id_in_cell*nb_box;
 			if(target_cell_mask[j] == 0)
 				continue;
 		
-			l_t = j*(7+nb_param+diff_flag);
+			l_t = j*target_offset;
 			for(l = 0; l < 6; l++)
 				targ_int[l] = target[l_t+1+l];
 			for(l = 0; l < 3; l++)
@@ -1780,8 +1876,8 @@ void YOLO_deriv_error_fct
 					out_int[l] = c_box_in_pix[l%3] + copysignf(0.5f,l-2.5f)*c_box_in_pix[3+l%3];
 				
 				current_IoU = y_param.c_IoU_fct(out_int, targ_int);
-				IoU_table[id_in_cell*nb_box + k] = current_IoU;
-				dist_prior[id_in_cell*nb_box + k] = -2.0f;
+				IoU_table[id_in_cell_offset + k] = current_IoU;
+				dist_prior[id_in_cell_offset + k] = -2.0f;
 			}
 			
 			/* Restrict the association to the l best theoritical prior (times repetition of identical priors) */
@@ -1799,12 +1895,12 @@ void YOLO_deriv_error_fct
 						case DIST_IOU:
 							for(l = 0; l < 6; l++)
 								out_int[l] = copysignf(0.5f,l-2.5f)*c_prior_size[l%3];
-							dist_prior[id_in_cell*nb_box + k] = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
+							dist_prior[id_in_cell_offset + k] = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
 							break;
 						
 						default:
 						case DIST_SIZE:
-							dist_prior[id_in_cell*nb_box + k] = sqrt(
+							dist_prior[id_in_cell_offset + k] = sqrt(
 								 (targ_size[0]-c_prior_size[0])*(targ_size[0]-c_prior_size[0])
 								+(targ_size[1]-c_prior_size[1])*(targ_size[1]-c_prior_size[1])
 								+(targ_size[2]-c_prior_size[2])*(targ_size[2]-c_prior_size[2]));
@@ -1822,7 +1918,7 @@ void YOLO_deriv_error_fct
 									obj_in_offset[l+3] = logf(obj_in_offset[l+3]);
 							}
 							
-							dist_prior[id_in_cell*nb_box + k] = 
+							dist_prior[id_in_cell_offset + k] = 
 								 abs(obj_in_offset[3])
 								+abs(obj_in_offset[4])
 								+abs(obj_in_offset[5]);
@@ -1834,11 +1930,11 @@ void YOLO_deriv_error_fct
 				{
 					best_dist = 1000000.0f;
 					for(k = 0; k < nb_box; k++)
-						if(dist_prior[id_in_cell*nb_box+k] > 0.0 && dist_prior[id_in_cell*nb_box+k] < best_dist)
-							best_dist = dist_prior[id_in_cell*nb_box+k];
+						if(dist_prior[id_in_cell_offset+k] > 0.0 && dist_prior[id_in_cell_offset+k] < best_dist)
+							best_dist = dist_prior[id_in_cell_offset+k];
 					for(k = 0; k < nb_box; k++) /* Flag the closest theoritical prior (and identical ones if any) */
-						if(abs(dist_prior[id_in_cell*nb_box+k] - best_dist) < 0.001f )
-							dist_prior[id_in_cell*nb_box+k] = -2.0f;
+						if(abs(dist_prior[id_in_cell_offset+k] - best_dist) < 0.001f )
+							dist_prior[id_in_cell_offset+k] = -2.0f;
 				}
 			}
 		
@@ -1870,7 +1966,7 @@ void YOLO_deriv_error_fct
 					if(l == resp_targ + 1)
 						break;
 				}
-				l_t = j*(7+nb_param+diff_flag);
+				l_t = j*target_offset;
 			}
 			else
 			{
@@ -1900,7 +1996,8 @@ void YOLO_deriv_error_fct
 						break;
 				}
 				/* The appropriate j value is set after this early stop loop */
-				l_t = j*(7+nb_param+diff_flag);
+				l_t = j*target_offset;
+				resp_targ_offset = resp_targ*nb_box;
 				
 				for(l = 0; l < 6; l++)
 					targ_int[l] = target[l_t+1+l];
@@ -1931,9 +2028,9 @@ void YOLO_deriv_error_fct
 						if((prior_size[s_p_i*3+0] == c_prior_size[k+0]
 							&& prior_size[s_p_i*3+1] == c_prior_size[k+1]
 							&& prior_size[s_p_i*3+2] == c_prior_size[k+2])
-							&& IoU_table[resp_targ*nb_box+k] > max_IoU)
+							&& IoU_table[resp_targ_offset + k] > max_IoU)
 						{
-							max_IoU = IoU_table[resp_targ*nb_box+k];
+							max_IoU = IoU_table[resp_targ_offset + k];
 							resp_box = k;
 						}
 					}
@@ -1956,12 +2053,12 @@ void YOLO_deriv_error_fct
 							case DIST_IOU:
 								for(l = 0; l < 6; l++)
 									out_int[l] = copysignf(0.5f,l-2.5f)*c_prior_size[l%3];
-								dist_prior[resp_targ*nb_box + k] = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
+								dist_prior[resp_targ_offset + k] = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
 								break;
 							
 							default:
 							case DIST_SIZE:
-								dist_prior[resp_targ*nb_box + k] = sqrt(
+								dist_prior[resp_targ_offset + k] = sqrt(
 									 (targ_size[0]-c_prior_size[0])*(targ_size[0]-c_prior_size[0])
 									+(targ_size[1]-c_prior_size[1])*(targ_size[1]-c_prior_size[1])
 									+(targ_size[2]-c_prior_size[2])*(targ_size[2]-c_prior_size[2]));
@@ -1979,21 +2076,21 @@ void YOLO_deriv_error_fct
 										obj_in_offset[l+3] = logf(obj_in_offset[l+3]);
 								}
 								
-								dist_prior[resp_targ*nb_box + k] = 
+								dist_prior[resp_targ_offset + k] = 
 									 abs(obj_in_offset[3])
 									+abs(obj_in_offset[4])
 									+abs(obj_in_offset[5]);
 								break;
 						}
-						if(dist_prior[resp_targ*nb_box + k] < best_dist)
-							best_dist = dist_prior[resp_targ*nb_box + k];
+						if(dist_prior[resp_targ_offset + k] < best_dist)
+							best_dist = dist_prior[resp_targ_offset + k];
 					}
 					max_IoU = -2.0f;
 					for(k = 0; k < nb_box; k++)
 					{
-						if(fabsf(dist_prior[resp_targ*nb_box+k] - best_dist) < 0.001f && IoU_table[resp_targ*nb_box+k] > max_IoU)
+						if(fabsf(dist_prior[resp_targ_offset + k] - best_dist) < 0.001f && IoU_table[resp_targ_offset + k] > max_IoU)
 						{
-							max_IoU = IoU_table[resp_targ*nb_box+k];
+							max_IoU = IoU_table[resp_targ_offset + k];
 							resp_box = k;
 						}
 					}
@@ -2004,7 +2101,7 @@ void YOLO_deriv_error_fct
 		
 			/* Mark the target as already associated by removing its contributions to the IoU table */
 			for(k = 0; k < nb_box; k++)
-				IoU_table[resp_targ*nb_box + k] = -2.0f;
+				IoU_table[resp_targ_offset + k] = -2.0f;
 			
 			c_box_in_pix = box_in_pix + resp_box*6;
 			for(l = 0; l < 6; l++)
@@ -2021,7 +2118,7 @@ void YOLO_deriv_error_fct
 			if(class_only_IoU > -2.0f)
 				max_IoU = class_only_IoU; /*regardless of actual IoU because class only box is not precise*/
 			
-			l_o = resp_box*(8+nb_class+nb_param);
+			l_o = resp_box*output_offset;
 			c_prior_size = prior_size + 3*resp_box;
 			
 			/* Positive reinforcement */
@@ -2246,7 +2343,7 @@ void YOLO_deriv_error_fct
 		{
 			/* If no match only update Objectness toward 0 */
 			/* (here it means error compute)! (no coordinate nor class update) */
-			l_o = j*(8+nb_class+nb_param);
+			l_o = j*output_offset;
 			if(box_locked[j] != 2)
 			{
 				for(k = 0; k < 6; k++)
@@ -2323,13 +2420,16 @@ void YOLO_error_fct
 	float* t_target = (float*) i_target;
 	
 	/* Define many "shorts" for y_param content to enhance code redeability*/
-	int nb_box = y_param.nb_box, nb_class = y_param.nb_class, nb_param = y_param.nb_param; 
+	int nb_box                      = y_param.nb_box;
+	int nb_class                    = y_param.nb_class;
+	int nb_param                    = y_param.nb_param; 
 	int strict_box_size_association = y_param.strict_box_size_association;
-	float min_prior_forced_scaling = y_param.min_prior_forced_scaling;
-	int fit_dim = y_param.fit_dim;
-	int class_softmax = y_param.class_softmax, diff_flag = y_param.diff_flag;
-	int error_type = y_param.error_type;
-	int prior_dist_type = y_param.prior_dist_type;
+	float min_prior_forced_scaling  = y_param.min_prior_forced_scaling;
+	int fit_dim                     = y_param.fit_dim;
+	int class_softmax               = y_param.class_softmax;
+	int diff_flag                   = y_param.diff_flag;
+	int error_type                  = y_param.error_type;
+	int prior_dist_type             = y_param.prior_dist_type;
 
 	float coord_scale = y_param.scale_tab[0], size_scale  = y_param.scale_tab[1];
 	float prob_scale  = y_param.scale_tab[2], obj_scale   = y_param.scale_tab[3];
@@ -2367,8 +2467,9 @@ void YOLO_error_fct
 		int *target_cell_mask, *box_locked;
 		float *IoU_table, *dist_prior, *box_in_pix, *IoU_monitor;
 		int l_o, l_t, i, j, k, l;
-		int c_batch, f_offset, nb_obj_target, s_p_i = 0;
-		int nb_in_cell, id_in_cell, resp_box = -1, resp_targ = -1, targ_diff_flag = 0;
+		size_t f_offset, c_total_nb_area, c_total_nb_area_batch, total_cell_pos_nb_area, total_area_and_cell_offset;
+		int c_batch, output_offset, target_offset, nb_obj_target, s_p_i = 0;
+		int nb_in_cell, id_in_cell, id_in_cell_offset, resp_box = -1, resp_targ = -1, resp_targ_offset, targ_diff_flag = 0;
 		float best_dist, c_dist, max_IoU, current_IoU;
 		int cell_pos[3], c_nb_area[3], obj_c[3];
 		float *c_box_in_pix, *c_prior_size;
@@ -2379,32 +2480,27 @@ void YOLO_error_fct
 		c_batch = c_pix / flat_output_size;
 		target = t_target + flat_target_size * c_batch;
 		f_offset = size;
+		output_offset = 8+nb_class+nb_param;
+		target_offset = 7+nb_param+diff_flag;
 		
 		i = c_pix % flat_output_size;
 		cell_pos[2] = i / (c_nb_area[0]*c_nb_area[1]);
 		cell_pos[1] = (int)(i % (c_nb_area[0]*c_nb_area[1])) % c_nb_area[0];
 		cell_pos[0] = (int)(i % (c_nb_area[0]*c_nb_area[1])) / c_nb_area[0];
 		
-		output_error = i_output_error + (c_nb_area[0]*c_nb_area[1]*c_nb_area[2]) * c_batch + cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0];
-		output = t_output + (c_nb_area[0]*c_nb_area[1]*c_nb_area[2]) * c_batch + cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0];
+		c_total_nb_area_batch = c_total_nb_area * c_batch;
+		total_cell_pos_nb_area = cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0];
+		total_area_and_cell_offset = c_total_nb_area_batch + total_cell_pos_nb_area;
 		
-		IoU_monitor = t_IoU_monitor + 2 * nb_box * ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2]) * c_batch 
-			+ cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]);
+		output_error = i_output_error + total_area_and_cell_offset;
+		output = t_output + total_area_and_cell_offset;
 		
-		target_cell_mask = t_target_cell_mask + ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2])*c_batch * y_param.max_nb_obj_per_image);
-		target_cell_mask +=	(cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]) * y_param.max_nb_obj_per_image;
-		
-		IoU_table = t_IoU_table + ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2])*c_batch * y_param.max_nb_obj_per_image * nb_box);
-		IoU_table += (cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]) * y_param.max_nb_obj_per_image * nb_box;
-		
-		dist_prior = t_dist_prior + ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2])*c_batch * y_param.max_nb_obj_per_image * nb_box);
-		dist_prior += (cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]) * y_param.max_nb_obj_per_image * nb_box;
-		
-		box_locked = t_box_locked + ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2]) * c_batch * nb_box);
-		box_locked += (cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]) * nb_box;
-		
-		box_in_pix = t_box_in_pix + ((c_nb_area[0]*c_nb_area[1]*c_nb_area[2]) * c_batch * 6 * nb_box);
-		box_in_pix += (cell_pos[2]*c_nb_area[0]*c_nb_area[1] + cell_pos[1]*c_nb_area[0] + cell_pos[0]) * 6 * nb_box;
+		IoU_monitor = t_IoU_monitor + 2 * nb_box * total_area_and_cell_offset;
+		target_cell_mask = t_target_cell_mask + total_area_and_cell_offset * y_param.max_nb_obj_per_image;
+		IoU_table  = t_IoU_table  + total_area_and_cell_offset * y_param.max_nb_obj_per_image * nb_box;
+		dist_prior = t_dist_prior + total_area_and_cell_offset * y_param.max_nb_obj_per_image * nb_box;
+		box_locked = t_box_locked + total_area_and_cell_offset * c_batch * nb_box;
+		box_in_pix = t_box_in_pix + total_area_and_cell_offset * c_batch * 6 * nb_box;
 		
 		nb_obj_target = target[0];
 		target++;
@@ -2415,13 +2511,13 @@ void YOLO_error_fct
 			class_only_IoU = good_IoU_lim;
 		}
 		
-		best_dist = 100000000;
+		best_dist = 1000000000;
 		for(k = 0; k < nb_box; k++)
 		{
 			box_locked[k] = 0;
 			c_box_in_pix = box_in_pix + k*6;
 			c_prior_size = prior_size + k*3;
-			l_o = k*(8+nb_class+nb_param);
+			l_o = k*output_offset;
 			for(l = 0; l < 3; l++)
 				c_box_in_pix[l] = ((float)output[(l_o+l)*f_offset] + cell_pos[l]) * cell_size[l];
 			for(l = 0; l < 3; l++)
@@ -2443,7 +2539,7 @@ void YOLO_error_fct
 		nb_in_cell = 0;
 		for(j = 0; j < nb_obj_target; j++)
 		{
-			l_t = j*(7+nb_param+diff_flag);
+			l_t = j*target_offset;
 			for(l = 0; l < 6; l++)
 				targ_int[l] = target[l_t+1+l];
 			
@@ -2478,10 +2574,11 @@ void YOLO_error_fct
 		id_in_cell = 0;
 		for(j = 0; j < nb_obj_target; j++)
 		{
+			id_in_cell_offset = id_in_cell*nb_box;
 			if(target_cell_mask[j] == 0)
 				continue;
 			
-			l_t = j*(7+nb_param+diff_flag);
+			l_t = j*target_offset;
 			for(l = 0; l < 6; l++)
 				targ_int[l] = target[l_t+1+l];
 			for(l = 0; l < 3; l++)
@@ -2494,8 +2591,8 @@ void YOLO_error_fct
 					out_int[l] = c_box_in_pix[l%3] + copysignf(0.5f,l-2.5f)*c_box_in_pix[3+l%3];
 				
 				current_IoU = y_param.c_IoU_fct(out_int, targ_int);
-				IoU_table[id_in_cell*nb_box + k] = current_IoU;
-				dist_prior[id_in_cell*nb_box + k] = -2.0f;
+				IoU_table[id_in_cell_offset + k] = current_IoU;
+				dist_prior[id_in_cell_offset + k] = -2.0f;
 			}
 			
 			/* Restrict the association to the l best theoritical prior (times repetition of identical priors) */
@@ -2513,12 +2610,12 @@ void YOLO_error_fct
 						case DIST_IOU:
 							for(l = 0; l < 6; l++)
 								out_int[l] = copysignf(0.5f,l-2.5f)*c_prior_size[l%3];
-							dist_prior[id_in_cell*nb_box + k] = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
+							dist_prior[id_in_cell_offset + k] = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
 							break;
 						
 						default:
 						case DIST_SIZE:
-							dist_prior[id_in_cell*nb_box + k] = sqrt(
+							dist_prior[id_in_cell_offset + k] = sqrt(
 								 (targ_size[0]-c_prior_size[0])*(targ_size[0]-c_prior_size[0])
 								+(targ_size[1]-c_prior_size[1])*(targ_size[1]-c_prior_size[1])
 								+(targ_size[2]-c_prior_size[2])*(targ_size[2]-c_prior_size[2]));
@@ -2536,7 +2633,7 @@ void YOLO_error_fct
 									obj_in_offset[l+3] = logf(obj_in_offset[l+3]);
 							}
 							
-							dist_prior[id_in_cell*nb_box + k] = 
+							dist_prior[id_in_cell_offset + k] = 
 								 abs(obj_in_offset[3])
 								+abs(obj_in_offset[4])
 								+abs(obj_in_offset[5]);
@@ -2548,11 +2645,11 @@ void YOLO_error_fct
 				{
 					best_dist = 1000000.0f;
 					for(k = 0; k < nb_box; k++)
-						if(dist_prior[id_in_cell*nb_box+k] > 0.0 && dist_prior[id_in_cell*nb_box+k] < best_dist)
-							best_dist = dist_prior[id_in_cell*nb_box+k];
+						if(dist_prior[id_in_cell_offset+k] > 0.0 && dist_prior[id_in_cell_offset+k] < best_dist)
+							best_dist = dist_prior[id_in_cell_offset+k];
 					for(k = 0; k < nb_box; k++) /* Flag the closest theoritical prior (and identical ones if any) */
-						if(abs(dist_prior[id_in_cell*nb_box+k] - best_dist) < 0.001f )
-							dist_prior[id_in_cell*nb_box+k] = -2.0f;
+						if(abs(dist_prior[id_in_cell_offset+k] - best_dist) < 0.001f )
+							dist_prior[id_in_cell_offset+k] = -2.0f;
 				}
 			}
 			
@@ -2588,7 +2685,8 @@ void YOLO_error_fct
 					break;
 			}
 			/* The appropriate j is defined after this early stop loop*/
-			l_t = j*(7+nb_param+diff_flag);
+			l_t = j*target_offset;
+			resp_targ_offset = resp_targ*nb_box;
 			
 			if(error_type == ERR_COMPLETE)
 			{
@@ -2609,9 +2707,9 @@ void YOLO_error_fct
 						if((prior_size[s_p_i*3+0] == c_prior_size[k+0]
 							&& prior_size[s_p_i*3+1] == c_prior_size[k+1]
 							&& prior_size[s_p_i*3+2] == c_prior_size[k+2])
-							&& IoU_table[resp_targ*nb_box+k] > max_IoU)
+							&& IoU_table[resp_targ_offset+k] > max_IoU)
 						{
-							max_IoU = IoU_table[resp_targ*nb_box+k];
+							max_IoU = IoU_table[resp_targ_offset+k];
 							resp_box = k;
 						}
 					}
@@ -2633,12 +2731,12 @@ void YOLO_error_fct
 							case DIST_IOU:
 								for(l = 0; l < 6; l++)
 									out_int[l] = copysignf(0.5f,l-2.5f)*c_prior_size[l%3];
-								dist_prior[resp_targ*nb_box + k] = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
+								dist_prior[resp_targ_offset + k] = 1.0f - y_param.c_IoU_fct(out_int, targ_int);
 								break;
 							
 							default:
 							case DIST_SIZE:
-								dist_prior[resp_targ*nb_box + k] = sqrt(
+								dist_prior[resp_targ_offset + k] = sqrt(
 									 (targ_size[0]-c_prior_size[0])*(targ_size[0]-c_prior_size[0])
 									+(targ_size[1]-c_prior_size[1])*(targ_size[1]-c_prior_size[1])
 									+(targ_size[2]-c_prior_size[2])*(targ_size[2]-c_prior_size[2]));
@@ -2656,21 +2754,21 @@ void YOLO_error_fct
 										obj_in_offset[l+3] = logf(obj_in_offset[l+3]);
 								}
 								
-								dist_prior[resp_targ*nb_box + k] = 
+								dist_prior[resp_targ_offset + k] = 
 									 abs(obj_in_offset[3])
 									+abs(obj_in_offset[4])
 									+abs(obj_in_offset[5]);
 								break;
 						}
-						if(dist_prior[resp_targ*nb_box + k] < best_dist)
-							best_dist = dist_prior[resp_targ*nb_box + k];
+						if(dist_prior[resp_targ_offset + k] < best_dist)
+							best_dist = dist_prior[resp_targ_offset + k];
 					}
 					max_IoU = -2.0f;
 					for(k = 0; k < nb_box; k++)
 					{
-						if(fabsf(dist_prior[resp_targ*nb_box+k] - best_dist) < 0.001f && IoU_table[resp_targ*nb_box+k] > max_IoU)
+						if(fabsf(dist_prior[resp_targ_offset + k] - best_dist) < 0.001f && IoU_table[resp_targ_offset + k] > max_IoU)
 						{
-							max_IoU = IoU_table[resp_targ*nb_box+k];
+							max_IoU = IoU_table[resp_targ_offset + k];
 							resp_box = k;
 						}
 					}
@@ -2681,7 +2779,7 @@ void YOLO_error_fct
 			
 			/* Mark the target as already associated by removing its contributions to the IoU table */
 			for(k = 0; k < nb_box; k++)
-				IoU_table[resp_targ*nb_box + k] = -2.0f;
+				IoU_table[resp_targ_offset + k] = -2.0f;
 			
 			c_box_in_pix = box_in_pix + resp_box*6;
 			for(l = 0; l < 6; l++)
@@ -2698,7 +2796,7 @@ void YOLO_error_fct
 			if(class_only_IoU > -2.0f)
 				max_IoU = class_only_IoU; /*regardless of actual IoU because class only box is not precise*/
 			
-			l_o = resp_box*(8+nb_class+nb_param);
+			l_o = resp_box*output_offset;
 			c_prior_size = prior_size + 3*resp_box;
 			
 			/* Positive reinforcement */
@@ -2926,7 +3024,7 @@ void YOLO_error_fct
 		{
 			/*If no match only update Objectness toward 0 */
 			/*(here it means error compute)! (no coordinate nor class update)*/
-			l_o = j*(8+nb_class+nb_param);
+			l_o = j*output_offset;
 			if(box_locked[j] != 2)
 			{
 				for(k = 0; k < 6; k++)
@@ -2947,7 +3045,7 @@ void YOLO_error_fct
 								*((float)output[(l_o+6)*f_offset]-0.02f);
 							break;
 						case 0:
-							output_error[(j*(8+nb_class+nb_param)+6)*f_offset] = 0.5f*(lambda_noobj_prior[j])*prob_scale
+							output_error[(l_o+6)*f_offset] = 0.5f*(lambda_noobj_prior[j])*prob_scale
 								*((float)output[(l_o+6)*f_offset]-0.5f)
 								*((float)output[(l_o+6)*f_offset]-0.5f);
 							break;
@@ -2991,7 +3089,7 @@ void YOLO_activation(layer* current)
 	yolo_param *a_param = (yolo_param*)current->activ_param;
 	conv_param *c_param = (conv_param*)current->param;
 	
-	YOLO_activation_fct(current->output, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] 
+	YOLO_activation_fct(current->output, (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) 
 		* current->c_network->batch_size, a_param->biased_dim*current->c_network->length, *a_param, a_param->size, a_param->class_softmax);
 }
 
@@ -3009,8 +3107,8 @@ void YOLO_deriv_output_error(layer* current)
 	conv_param *c_param = (conv_param*)current->param;
 	
 	YOLO_deriv_error_fct(current->delta_o, current->output, current->c_network->target, current->c_network->output_dim, 
-		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
-		*a_param, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size,
+		(size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
+		*a_param, (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * current->c_network->batch_size,
 		current->c_network->iter * current->c_network->train.size);
 }
 
@@ -3021,8 +3119,8 @@ void YOLO_output_error(layer* current)
 	conv_param *c_param = (conv_param*)current->param;
 	
 	YOLO_error_fct((float*)current->c_network->output_error, current->output, current->c_network->target, current->c_network->output_dim, 
-		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
-		*a_param, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
+		(size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]), c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
+		*a_param, (size_t)(c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * current->c_network->batch_size);
 }
 
 

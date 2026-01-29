@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -192,6 +192,8 @@ struct cuda_lrn_fcts
 
 struct cuda_linear_activ_fcts
 {
+	void (*activ_fct)(void *i_tab, int dim, int biased_dim, int offset, int length, size_t size);
+	void (*deriv_fct)(void *i_deriv, int dim, int biased_dim, int offset, int length, size_t size);
 	void (*deriv_output_error_fct)(void *i_delta_o, void *i_output, void *i_target, int dim, 
 		int biased_dim, int offset, int length, size_t size, float TC_scale_factor);
 	void (*output_error_fct)(float *output_error, void *i_output, void *i_target, int dim, 
@@ -299,11 +301,11 @@ struct layer
 	float bias_value;
 	float dropout_rate;
 	
-	void (*forward)(layer *parent);
-	void (*backprop)(layer *parent);
+	void (*forward)(layer *current);
+	void (*backprop)(layer *current);
 	
-	void (*activation)(layer *parent);
-	void (*deriv_activation)(layer *parent);
+	void (*activation)(layer *current);
+	void (*deriv_activation)(layer *current);
 	void *activ_param;
 	
 	//utility
@@ -331,6 +333,7 @@ struct network
 	Dataset train_buf, test_buf, valid_buf;
 	
 	int in_dims[4];
+	int skip_in_dims[4];
 	size_t input_dim; // flat size
 	int output_dim; //Correspond to the "target size"
 	int out_size; //Correspond to the actual ouput size with paddings if needed
@@ -357,9 +360,9 @@ struct network
 	yolo_param *y_param;
 
 	// Parameters used for the YOLO formated dataset loading/saving
-	float *offset_input, *offset_output;
-	float *norm_input, *norm_output;
-	int dim_size_input, dim_size_output;
+	//float *offset_input, *offset_output;
+	//float *norm_input, *norm_output;
+	//int dim_size_input, dim_size_output;
 	
 	float TC_scale_factor;
 	#ifdef CUDA
@@ -549,7 +552,7 @@ struct yolo_param
 
 	//Association related parameters
 	int strict_box_size_association;
-	void *block_state;
+	void *block_state; //specific to CUDA
 	int rand_startup;
 	float rand_prob_best_box_assoc;
 	float rand_prob;

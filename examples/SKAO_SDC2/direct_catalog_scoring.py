@@ -11,7 +11,7 @@ if(not os.path.isfile("sky_full_truthcat_v2.txt")):
 	os.system("wget --content-disposition https://www.dropbox.com/scl/fo/ce4o2tqhy2ddkowwecs5z/ADaaQzoKGwkHRkdPLZURw1M/sky_full_truthcat_v2.txt?rlkey=ywcljxh6eq2q18r629prn5w0j")
 
 
-sub_cat_path = "../../catalogs/YOLO_CIANNA_catalog_SDC2_BT1_sc25453_MINERVA_Cornu2025.txt"
+sub_cat_path = "../../catalogs/YOLO_CIANNA_catalog_SDC2_BT1_sc25453_MINERVA_Cornu2026.txt"
 truth_cat_path = "sky_full_truthcat_v2.txt"
 
 scorer = Sdc2Scorer.from_txt(sub_cat_path, truth_cat_path, sub_skiprows=0, truth_skiprows=0)

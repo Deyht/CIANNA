@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -55,6 +55,10 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
 
 	if(!is_init)
 	{
+	//Set list of networks to NULL at the first init
+	for(int i = 0; i < MAX_NETWORKS_NB; i++)
+		networks[i] = NULL;
+	
 	signal(SIGINT, sig_handler);
 	
 	if(!no_logo)
@@ -81,7 +85,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-1.0.0.0 Release build (07/2024), by D.Cornu\n\
+CIANNA V-1.0.1.0 Release build (01/2026), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -93,7 +97,10 @@ CIANNA V-1.0.0.0 Release build (07/2024), by D.Cornu\n\
 	#endif
 	
 	network *net;
-
+	
+	if(networks[network_number] != NULL)
+		free_network(networks[network_number]);
+	
 	net = (network*) malloc(sizeof(network));
 	networks[network_number] = net;
 	
@@ -167,13 +174,11 @@ CIANNA V-1.0.0.0 Release build (07/2024), by D.Cornu\n\
 		init_cuda(networks[network_number]);
 	#endif
 	
-	nb_networks++;
-	
 	#ifndef CUDA
 	if(comp_int == C_CUDA)
 	{
-		printf("ERROR: compute method set to CUDA while CIANNA was not compiled for it.\n");
-		printf("Install Nvidia CUDA and recompile CIANNA with the appropriate option.\n\n");
+		printf("\n ERROR: compute method set to CUDA while CIANNA was not compiled for it.\n");
+		printf(" Install Nvidia CUDA and recompile CIANNA with the appropriate option.\n\n");
 		exit(EXIT_FAILURE);
 	}
 	#endif
@@ -181,14 +186,14 @@ CIANNA V-1.0.0.0 Release build (07/2024), by D.Cornu\n\
 	#ifndef BLAS
 	if(comp_int == C_BLAS)
 	{
-		printf(" ERROR: compute method set to BLAS while CIANNA was not compiled for it.\n");
+		printf("\n ERROR: compute method set to BLAS while CIANNA was not compiled for it.\n");
 		printf(" Install OpenBLAS and recompile CIANNA with the appropriate option.\n\n");
 		exit(EXIT_FAILURE);
 	}
 	#endif
 	if(comp_int == C_NAIV)
 	{
-		printf(" WARNING: compute method set to NAIV, which is not optimal.\n");
+		printf("\n WARNING: compute method set to NAIV, which is not optimal.\n");
 		printf(" We recommand the use of OpenBLAS for a better usage of CPU ressources.\n");
 		printf(" If NAIV with single CPU thread is your only option, we recommand the use of the SGD learning scheme, enabled by setting the batch size to 1.\n\n");
 	}
@@ -258,43 +263,70 @@ Inference only: %d\n\n",
 		printf("Dynamic load ENABLED\n\n");
 	#endif
 	
-	//YOLO null setting
-	net->y_param = (yolo_param*) malloc(sizeof(yolo_param));
-	net->y_param->nb_box = 0;
-	net->y_param->cell_size = NULL;
-	net->y_param->prior_size = NULL;
-	net->y_param->IoU_type = IOU;
-	net->y_param->strict_box_size_association = 0;
-	net->y_param->c_IoU_fct = NULL;
-	net->y_param->noobj_prob_prior = NULL;
-	net->y_param->scale_tab = NULL;
-	net->y_param->slopes_and_maxes_tab = NULL;
-	net->y_param->param_ind_scale = NULL;
-	net->y_param->IoU_limits = NULL;
-	net->y_param->fit_parts = NULL;
-	net->y_param->nb_class = 0;
-	net->y_param->nb_param = 0;
-	net->y_param->max_nb_obj_per_image = 0;
-	net->y_param->fit_dim = 0;
-	
-	net->y_param->strict_box_size_association = 0;
-	net->y_param->rand_startup = 0;
-	net->y_param->rand_prob_best_box_assoc = 0.0f;
-	net->y_param->min_prior_forced_scaling = -1.0f;
-	
-	net->y_param->class_softmax = 0;
-	net->y_param->diff_flag = 0;
-	net->y_param->no_override = 0;
-	net->y_param->raw_output = 0;
-	
-	net->y_param->IoU_monitor = NULL;
-	net->y_param->target_cell_mask = NULL;
-	net->y_param->IoU_table = NULL;
-	net->y_param->dist_prior = NULL;
-	net->y_param->box_locked = NULL;
-	net->y_param->box_in_pix = NULL;
+	net->y_param = NULL;
 
 }
+
+
+void free_layer(layer *current)
+{
+	/****** WARNING ******
+	This function is not meant to remove a layer in the middle of a network structure. 
+	No check is done to verify if the network would still work with	the layer removed.
+	Truncating a network backbone is done through partial loading from a save state in the load function.
+	*/
+	switch(current->type)
+	{
+		case DENSE:
+			free_dense(current);
+			break;
+		
+		case CONV:
+			free_conv(current);
+			break;
+		
+		case POOL:
+			free_pool(current);
+			break;
+		
+		case NORM:
+			free_norm(current);
+			break;
+		
+		case LRN:
+			free_lrn(current);
+			break;
+	
+		default:
+			printf("\n ERROR: Unknown layer type in free_layer.\n");
+			exit(EXIT_FAILURE);
+			break;
+	}
+}
+
+
+void free_network(network *net)
+{	
+	if(net == NULL)
+		return;
+		
+	free_dataset(&net->train);
+	free_dataset(&net->test);
+	free_dataset(&net->valid);
+	free_dataset(&net->train_buf);
+	free_dataset(&net->test_buf);
+	free_dataset(&net->valid_buf);
+
+	for(int k = 0; k < net->nb_layers; k++)
+		free_layer(net->net_layers[net->nb_layers-1-k]);
+
+	if(net->y_param != NULL)
+		free_yolo_params(net);
+	
+	free(net);
+	net = NULL;
+}
+
 
 void copy_to_host(float* in_tab, void* out_tab, int out_offset, size_t size)
 {
@@ -483,7 +515,7 @@ void save_network(network *net, const char *filename, int f_bin)
 		f = fopen(full_filename, "w+");
 	if(f == NULL)
 	{
-		printf("ERROR : cannot save %s file\n", full_filename);
+		printf(" ERROR : cannot save %s file\n", full_filename);
 		exit(EXIT_FAILURE);
 	}
 
@@ -522,12 +554,13 @@ void save_network(network *net, const char *filename, int f_bin)
 }
 
 
-void load_network(network *net, const char *filename, int iter, int nb_layers, int f_bin)
+void load_network(network *net, const char *filename, int iter, int nb_layers, int nb_skip_layers, int f_bin)
 {
 	FILE* f = NULL;
 	int temp_dim[4];
 	char layer_type = 'A';
 	int layer_count = 0;
+	int skip_layer = 0;
 	
 	net->iter = iter;
 	net->nb_layers = 0;
@@ -539,7 +572,7 @@ void load_network(network *net, const char *filename, int iter, int nb_layers, i
 	
 	if(f == NULL)
 	{
-		printf(" ERROR: cannot load/find %s file\n", filename);
+		printf("\n ERROR: cannot load/find %s file\n", filename);
 		exit(EXIT_FAILURE);
 	}
 	
@@ -548,20 +581,44 @@ void load_network(network *net, const char *filename, int iter, int nb_layers, i
 	else
 		fscanf(f, "%dx%dx%dx%d\n", &temp_dim[0], &temp_dim[1], &temp_dim[2], &temp_dim[3]);
 	
+	if(nb_skip_layers > 0)
+	{
+		for(int i = 0; i < 4; i++)
+			net->skip_in_dims[i] = net->in_dims[i];
+		printf("%d %d %d %d\n", net->in_dims[0], net->in_dims[1], net->in_dims[2], net->in_dims[3]);
+		skip_layer = 1;
+	}
 	
 	if(net->in_dims[0] != temp_dim[0] || net->in_dims[1] != temp_dim[1] || net->in_dims[2] != temp_dim[2] || net->in_dims[3] != temp_dim[3])
 	{
-		printf(" WARNING: change in image format !\nLoaded network was trained with : W = %d, H = %d, D = %d, C = %d\n", 
+		printf("\n WARNING: change in the input format !\n First layer expects W = %d, H = %d, D = %d, C = %d\n", 
 			 temp_dim[0], temp_dim[1], temp_dim[2], temp_dim[3]);
 		if(net->in_dims[3] != temp_dim[3])
 		{
-			printf(" ERROR: wrong number of input channel !\n");
+			printf("\n ERROR: wrong number of input channel !\n");
 			exit(EXIT_FAILURE);
 		}
 	}
 	
 	do
 	{
+		if(skip_layer && layer_count == nb_skip_layers)
+		{
+			for(int i = 0; i < 4; i++)
+				temp_dim[i] = net->skip_in_dims[i];
+			
+			if(net->in_dims[0] != net->skip_in_dims[0] ||
+			   net->in_dims[1] != net->skip_in_dims[1] ||
+			   net->in_dims[2] != net->skip_in_dims[2] ||
+			   net->in_dims[3] != net->skip_in_dims[3])
+			{
+				printf("\n ERROR: In skiped load, new first layer input dim is incompatible with network input dim!\n");
+				printf(" Expected dimensions are W = %d, H = %d, D = %d, C = %d\n", 
+					net->skip_in_dims[0], net->skip_in_dims[1], net->skip_in_dims[2], net->skip_in_dims[3]);
+			}
+			skip_layer = 0;
+		}
+	
 		if(f_bin)
 		{
 			if(fread(&layer_type, sizeof(char), 1, f) != 1)
@@ -576,36 +633,36 @@ void load_network(network *net, const char *filename, int iter, int nb_layers, i
 		switch(layer_type)
 		{
 			case 'C':
-				conv_load(net, f, f_bin);
+				conv_load(net, f, f_bin, skip_layer);
 				break;
 			
 			case 'P':
-				pool_load(net, f, f_bin);
+				pool_load(net, f, f_bin, skip_layer);
 				break;
 		
 			case 'N':
-				norm_load(net, f, f_bin);
+				norm_load(net, f, f_bin, skip_layer);
 				break;
 			
 			case 'L':
-				lrn_load(net, f, f_bin);
+				lrn_load(net, f, f_bin, skip_layer);
 				break;
 			
 			case 'D':
-				dense_load(net, f, f_bin);
+				dense_load(net, f, f_bin, skip_layer);
 				break;
 			case ' ':
 			case '\n':
 				layer_count--;
 				break;
 			default:
-				printf("ERROR: Layer type not recognized when loading the save model, likely file format error!\n");
+				printf("\n ERROR: Layer type not recognized when loading the model, likely file format error!\n");
 				exit(EXIT_FAILURE);
 				break;
 		}
 		layer_count++;
-		
-	}while(nb_layers <= 0 || layer_count < nb_layers);
+	
+	}while(nb_layers <= 0 || layer_count < nb_skip_layers + nb_layers);
 	
 	fclose(f);
 }
@@ -826,7 +883,7 @@ void perf_eval_display(network *net)
 		cumul_time[i] = fwd_time[i] + back_time[i];
 		total_cumul += cumul_time[i];
 		if(net->fwd_perf_n[i] == 0)
-			printf(" WARNING: some layers were not benchmarked\n");
+			printf("\n WARNING: some layers were not benchmarked\n");
 	}
 	
 	printf("\n     Layer  Type       Forward             Backprop             Cumulated\n");
@@ -1077,7 +1134,7 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 				if(l_param_count) fprintf(f_tex, "& %d ", c_l->nb_params);
 				break;
 			default:
-				printf("ERROR: Unrecognized layer type in architechture tex\n");
+				printf("\n ERROR: Unrecognized layer type in architechture tex\n");
 				exit(EXIT_FAILURE);
 				break;
 		}
@@ -1164,7 +1221,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			f_save = fopen(f_save_name, "wb+");
 		if(f_save == NULL)
 		{
-			printf("ERROR: can not oppen %s !\n", f_save_name);
+			printf("\n ERROR: can not oppen %s !\n", f_save_name);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -1517,7 +1574,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 			
 			if(isnan(total_error))
 			{
-				printf("\nERROR: Network divergence detected (Nan)!\n\n");
+				printf("\n ERROR: Network divergence detected (Nan)!\n\n");
 				exit(EXIT_FAILURE);
 			}
 			
@@ -1742,7 +1799,7 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 	
 	if(net->out_size != net->output_dim+1 && net->net_layers[net->nb_layers-1]->type == DENSE)
 	{
-		printf("\nERROR: last layer size does not match the expected output dimensions.\n");
+		printf("\n ERROR: last layer size does not match the expected output dimensions.\n");
 		exit(EXIT_FAILURE);
 	}
 	

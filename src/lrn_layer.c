@@ -52,12 +52,12 @@ void lrn_define_activation_param(layer *current, const char *activ)
 			offset = current->c_network->batch_size;
 			break;
 		case DENSE:
-			printf("\nERROR: normalization layer is not authorized after dense layers atm.\n");
+			printf("\n ERROR: normalization layer is not authorized after dense layers atm.\n");
 			exit(EXIT_FAILURE);
 			break;
 		case NORM:
 		case LRN:
-			printf("\nERROR: stacking two normalization layers is not allowed.\n");
+			printf("\n ERROR: stacking two normalization layers is not allowed.\n");
 			exit(EXIT_FAILURE);
 			break;
 	}
@@ -74,12 +74,12 @@ void lrn_define_activation_param(layer *current, const char *activ)
 			break;
 			
 		case SOFTMAX:
-			printf("\nERROR: softmax activation for normalization layer is not authorized\n");
+			printf("\n ERROR: softmax activation for normalization layer is not authorized\n");
 			exit(EXIT_FAILURE);
 			break;
 			
 		case YOLO:
-			printf("\nERROR: YOLO activation for normalization layer is not authorized\n");
+			printf("\n ERROR: YOLO activation for normalization layer is not authorized\n");
 			exit(EXIT_FAILURE);
 			break;
 			
@@ -92,7 +92,7 @@ void lrn_define_activation_param(layer *current, const char *activ)
 
 //public are in prototypes.h
 
-int lrn_create(network *net, layer *previous, const char *activation, int range, float k, float alpha, float beta, FILE *f_load, int f_bin)
+int lrn_create(network *net, layer *previous, const char *activation, int range, float k, float alpha, float beta)
 {
 	long long int mem_approx = 0;
 	layer *current;
@@ -119,7 +119,7 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 	
 	if(current->previous == NULL)
 	{
-		printf("\nERROR: normalization layer is not autorized as first layer.\n");
+		printf("\n ERROR: normalization layer is not autorized as first layer.\n");
 		exit(EXIT_FAILURE);
 	}
 	switch(current->previous->type)
@@ -142,7 +142,7 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 			n_param->output_dim = ((pool_param*)n_param->prev_param)->nb_maps * net->batch_size * n_param->dim_offset;
 			break;
 		case DENSE:
-			printf("\nERROR: normalization layer is not authorized after dense layers atm.\n");
+			printf("\n ERROR: normalization layer is not authorized after dense layers atm.\n");
 			n_param->data_format = DENSE;
 			n_param->n_dim = ((dense_param*)n_param->prev_param)->nb_neurons;
 			n_param->dim_offset = 1;
@@ -150,7 +150,7 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 			break;
 		case NORM:
 		case LRN:
-			printf("\nERROR: stacking two normalization layers is not allowed.\n");
+			printf("\n ERROR: stacking two normalization layers is not allowed.\n");
 			exit(EXIT_FAILURE);
 			break;
 	}
@@ -195,7 +195,7 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 			break;
 		case C_BLAS:
 		case C_NAIV:
-			printf("\nERROR: LRN layer is only available with CUDA compute method ATM.\n");
+			printf("\n ERROR: LRN layer is only available with CUDA compute method ATM.\n");
 			exit(EXIT_FAILURE);
 			break;
 		default:
@@ -239,14 +239,15 @@ void lrn_save(FILE *f, layer *current, int f_bin)
 	}
 }
 
-void lrn_load(network *net, FILE *f, int f_bin)
+void lrn_load(network *net, FILE *f, int f_bin, int skip_layer)
 {
 	int range;
 	float k, alpha, beta;
 	char activ_type[40];
 	layer *previous;
 	
-	printf("Loading Local Response Normalization layer, L:%d\n", net->nb_layers+1);
+	if(!skip_layer)
+		printf("Loading Local Response Normalization layer, L:%d\n", net->nb_layers+1);
 	
 	if(f_bin)
 	{
@@ -261,14 +262,45 @@ void lrn_load(network *net, FILE *f, int f_bin)
 		fscanf(f, " %d %f %f %f %s", &range, &k, &alpha, &beta, activ_type);
 	}
 
-	if(net->nb_layers <= 0)
-		previous = NULL;
+	if(!skip_layer)
+	{
+		if(net->nb_layers <= 0)
+			previous = NULL;
+		else
+			previous = net->net_layers[net->nb_layers-1];
+	
+		lrn_create(net, previous, activ_type, range, k, alpha, beta);
+	}
 	else
-		previous = net->net_layers[net->nb_layers-1];
+	{
+		//lrn layer has no impact on skip_input_dim
+	}
+}
+
+void free_lrn(layer *current)
+{
+	n_param = (lrn_param*) current->param;
 	
-	printf("%d %f %f %f \n",  range, k, alpha, beta);
+	#ifdef CUDA
+	if(current->c_network->compute_method == C_CUDA)
+	{
+		cuda_free_lrn(current);
+	}
+	else
+	#endif
+	{
+		free(current->output);
+		
+		if(!current->c_network->inference_only)
+		{
+			free(n_param->local_scale);
+			free(current->delta_o);
+		}
+	}
 	
-	lrn_create(net, previous, activ_type, range, k, alpha, beta, f, f_bin);
+	free(current->activ_param);
+	free(current->param);
+	free(current);
 }
 
 

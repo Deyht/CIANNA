@@ -1,5 +1,51 @@
 
 ********************************************
+===== V-1.0.1.0 =====
+ (interface V-1.0)
+
+Minor update with small bug fixing and code refactoring.
+Supported functionalities and interface are (almost) identical to V-1.0.0.
+This is an intermediate version preparing for the re-implementation of features from the experimental branch.
+
+====    Interface related    ====
+- Change the default behavior of init (see low-level for details)
+- Networks are now referenced by id only, with no required continuity.
+  All interface functions now have a default value of 0 for network_id 
+  (this might break some specific multi-network applications that were not relying on explicit id setting).
+- Add the capability to skip a given number of layers when using the load_network function (see low-level for details).
+- Add two new examples: One related to the publication of Cornu et al. 2026 
+  presenting the use of YOLO-CIANNA-3D on the SDC2 dataset.
+  Pre-trained models and dedicated codes will be hosted on Zenodo for long-term availability.
+  The second example illustrates the results of training a cascaded DDPM with the experimental 
+  version of CIANNA on images of galaxies from the SDSS.
+- Add new installation methods and update the Wiki accordingly
+  -> Add Dockerfile install for CIANNA CPU
+  -> Add apt packages (ubuntu 20,22,24) for CIANNA CPU
+  -> Add guix file install for CIANNA CPU
+  -> (Ongoing) Add new install from source procedure based on CMake and pip (or uv)
+     for all compute backends.
+- Minor fixes of the examples (links, paths, notebooks due to Colab update)
+
+
+==== Low-level modifications ====
+- Update compile.cp for compatibility with CUDA 13+ versions (add linking to -lstdc++ to overcome change in function header definitions)
+- Rename cuda_main.cu source file into cuda_auxil.cu to improve clarity (update compile.cp and python_module_setup.py accordingly).
+- Remove the nb_networks global variable. Networks are now referenced by id only, with no required continuity.
+- Change the default behavior of init. Instead of creating a new network with a new net_id, init now checks if a network
+  with the specified id (default 0) exists, and if yes free it in order to create a new network in its place. 
+  Having init without an id specified in a loop will no longer create more and more networks until it crashes. 
+  Instead, it will free and replace the previous network (better suits beginners' expectations, especially in notebooks).
+- Add missing destructors for various data structures (networks and all layers). This change (in combination with the previous one) should 
+  allow more intuitive use in notebooks or interactive environments, and make CIANNA better suited for building services (e.g., CIANNA-OTF).
+- Add the capability to skip a given number of layers when using the load_network function. All layer loading functions have been updated 
+  so they can still read the layer header from the save file, but skip the layer creation itself. Learnable parameters (weights) loading
+  is skipped. As the layer structure and number of parameters depend on the previous layer setup, we update a running input dimension vector
+  that is updated based on each skipped layer configuration. This running dimension is compared to the actual network input dimension setup
+  during init after the last layer is skipped. If both nb_skip_layers and nb_layers are provided, loading will stop after reaching
+  nb_skip_layers + nb_layers.
+
+
+********************************************
 ===== V-1.0.0.0 =====
  (interface V-1.0)
 
@@ -18,7 +64,7 @@ Minor update toward V-1.0 release
 
 /!\ Break compatibility with previous network saves containing dropout (prediction only, not save file format)
 
-- Add examples on the SKAO SDC1 following submission of the associated Cornu et al.2024 (scripts and Colab notebook)
+- Add examples on the SKAO SDC1 following submission of the associated Cornu et al. 2024 (scripts and Colab notebook)
 - Update examples, add PASCAL and COCO object detection examples in scripts and notebooks
 - Fix an error occurring when setting control_interv to <= 0; now it just properly do no control step.
 
@@ -48,6 +94,7 @@ Minor update toward V-1.0 release
   we observed no significant impact on the predictive performance with or without re-training.
 - Fix an issue where pooling layers' memory footprint was not properly included in the total network memory footprint.
 - Fix an error when loading a specific number of layers from a saved model file in text format.
+
 
 ********************************************
 ===== V-0.9.3.4 =====

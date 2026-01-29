@@ -1,7 +1,7 @@
 
-#	Athor and copyright (C) 2025 - David Cornu
-#   Code associated with the acrticle Cornu et al. 2025 (A&A)
-#   Released as part of the archived deposit zenodo/xxxxx
+#	Author and copyright (C) 2026 - David Cornu
+#	Code associated with the article Cornu et al. 2026 (A&A)
+#	Released as part of the archived deposit 10.5281/zenodo.18403011
 
 
 #####       IMPORTS        #####
@@ -26,7 +26,6 @@ pixel_size_freq = 3.00000000000E+04 #In Hz
 beam_size = 1.94444449153E-03 #In degree
 
 # Normalization variables
-do_norm = 0
 cont_removal_threshold = 0.5*6e-3 #in Jy
 prenorm_scaling = 0.3
 
@@ -52,3 +51,6 @@ orig_offset_freq = patch_shift_freq - ((int(map_pixel_freq_size/2) - int(freq_si
 
 nb_area_sky_ldev = int((map_pixel_size_ldev+2*orig_offset_sky_ldev)/patch_shift_sky)
 nb_area_freq = int((map_pixel_freq_size+2*orig_offset_freq)/patch_shift_freq)
+
+
+

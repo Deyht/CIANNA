@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -161,9 +161,10 @@ void forward_conv_layer(layer *current)
 {
 	int i, j, b;
 	double h;
-	int depth_padding;
-	int image_padding;
+	size_t depth_padding;
+	size_t image_padding;
 	int im2col_prev_bias;
+	size_t flat_prev_size, flat_nb_area;
 	
 	network* net = current->c_network;
 
@@ -171,13 +172,16 @@ void forward_conv_layer(layer *current)
 		return;
 	c_param = (conv_param*) current->param;
 	
+	flat_prev_size = c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2];
+	flat_nb_area = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2];
+	
 	if(current->previous == NULL || current->previous->type == DENSE)
 	{
 		//if previous layer is input layer then remove the added bias on the image
 		//and interpret it as continuous RGB images
 		//size in line format
-		depth_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2];
-		image_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * c_param->prev_depth;
+		depth_padding = flat_prev_size;
+		image_padding = flat_prev_size * c_param->prev_depth;
 		if(current->previous == NULL)
 			current->input = net->input;
 		else
@@ -188,15 +192,15 @@ void forward_conv_layer(layer *current)
 	{
 		//if previous layer is a CONV (or pool) then the format is all images in R, then alls images in B, ...
 		//it also not contain a bias directly in the image
-		depth_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2] * net->batch_size;
-		image_padding = c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2];
+		depth_padding = flat_prev_size * net->batch_size;
+		image_padding = flat_prev_size;
 		current->input = current->previous->output;
 		im2col_prev_bias = 0;
 	}
 	
 	//im2col conversion fct -> one of the most complex function, go see details above
-	im2col_fct(c_param->im2col_input, current->input, c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2], 
-		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * c_param->flat_f_size, 
+	im2col_fct(c_param->im2col_input, current->input, flat_prev_size, 
+		flat_nb_area * c_param->flat_f_size, 
 		c_param->stride[0], c_param->stride[1], c_param->stride[2],
 		c_param->padding[0], c_param->padding[1], c_param->padding[2],
 		c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2],
@@ -212,7 +216,7 @@ void forward_conv_layer(layer *current)
 	float *f_output = (float*) current->output;
 	
 	#pragma omp parallel for private(i, j, h) collapse(2) schedule(guided, 2)
-	for(b = 0; b < net->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]); b++)
+	for(b = 0; b < net->batch_size * flat_nb_area; b++)
 	{
 		for(i = 0; i <  c_param->nb_filters; i++)
 		{
@@ -222,7 +226,7 @@ void forward_conv_layer(layer *current)
 				h += f_im2col_input[b*(c_param->flat_f_size) + j]
 						* f_filters[i*(c_param->flat_f_size) + j];
 			}
-			f_output[i*(net->batch_size * (c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]))+b] = h;
+			f_output[i*(net->batch_size * flat_nb_area)+b] = h;
 		}
 	}
 	
@@ -232,13 +236,13 @@ void forward_conv_layer(layer *current)
 		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
 		{
 			dropout_select_conv(c_param->dropout_mask, c_param->nb_filters 
-				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);
+				* flat_nb_area * net->batch_size, current->dropout_rate);
 			dropout_apply_conv(current->output, c_param->dropout_mask, c_param->nb_filters 
-				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
+				* flat_nb_area * net->batch_size);
 		}
 		else
 			dropout_scale_conv(current->output, c_param->nb_filters 
-				* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size, current->dropout_rate);
+				* flat_nb_area * net->batch_size, current->dropout_rate);
 	}
 	
 	//Proceed to activation of the given maps regarding the activation parameter
@@ -249,20 +253,25 @@ void backward_conv_layer(layer *current)
 {
 	int i, j, k, b;
 	double h;
-	int depth_padding;
+	size_t depth_padding;
 	int back_padding[3];
-	int image_padding;
-	int flat_f_size;
+	size_t image_padding;
+	int flat_f_size, spatial_f_size;
+	size_t flat_prev_size, flat_nb_area;
 	float *c_prev_delta_o;
 	
 	network* net = current->c_network;
 	
 	c_param = (conv_param*) current->param;
 	
+	spatial_f_size = c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2];
+	flat_prev_size = c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2];
+	flat_nb_area = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2];
+	
 	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 	{
 		dropout_apply_conv(current->delta_o, c_param->dropout_mask, c_param->nb_filters 
-			* (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2]) * net->batch_size);
+			* flat_nb_area * net->batch_size);
 	}
 	
 	//######################## ERROR PROPAGATION ########################
@@ -272,7 +281,7 @@ void backward_conv_layer(layer *current)
 		//rotate the filters
 		//so the new matrix can be considered as flat_filter_size * net->batch_size rows against input_depth
 		rotate_filter_matrix_fct(c_param->filters, c_param->rotated_filters, 
-			c_param->flat_f_size, c_param->f_size[0]*c_param->f_size[1]*c_param->f_size[2], 
+			c_param->flat_f_size, spatial_f_size, 
 			c_param->nb_filters, c_param->nb_filters * c_param->flat_f_size);
 
 		//In the backward formalism we asume continuous images (the activation maps)
@@ -280,9 +289,9 @@ void backward_conv_layer(layer *current)
 		
 		//Warning : the convolution processed is reversed using full convolution with padding
 		//this mean that the meaning of nb_area and prev_size are reversed in the following operation
-		depth_padding = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * net->batch_size;
-		image_padding = c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2];
-		flat_f_size = c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2] * c_param->nb_filters;
+		depth_padding = flat_nb_area * net->batch_size;
+		image_padding = flat_nb_area;
+		flat_f_size = spatial_f_size * c_param->nb_filters;
 		//this flat size remove the bias != c_param->flat_f_size
 		
 		for(k = 0; k < 3; k++)
@@ -293,8 +302,7 @@ void backward_conv_layer(layer *current)
 		}
 		
 		im2col_fct(c_param->im2col_delta_o,
-			current->delta_o, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], 
-			(c_param->prev_size[0] * c_param->prev_size[1] * c_param->prev_size[2]) * flat_f_size, 
+			current->delta_o, flat_nb_area, flat_prev_size * flat_f_size, 
 			c_param->int_padding[0] + 1, c_param->int_padding[1] + 1, c_param->int_padding[2] + 1,
 			back_padding[0], back_padding[1], back_padding[2],
 			c_param->stride[0] - 1, c_param->stride[1] - 1, c_param->stride[2] - 1,
@@ -312,7 +320,7 @@ void backward_conv_layer(layer *current)
 		float *f_rotated_filters = (float*) c_param->rotated_filters;
 		
 		#pragma omp parallel for private(i, j, h) collapse(2) schedule(guided, 4)
-		for(b = 0; b < c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]*net->batch_size; b++)
+		for(b = 0; b < flat_prev_size*net->batch_size; b++)
 		{
 			for(i = 0; i < c_param->prev_depth; i++)
 			{
@@ -322,18 +330,15 @@ void backward_conv_layer(layer *current)
 					h += f_im2col_delta_o[b*(flat_f_size) + j]
 							* f_rotated_filters[i*(flat_f_size) + j];
 				}
-				c_prev_delta_o[i*(c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2]*net->batch_size)+b] = h;
+				c_prev_delta_o[i*(flat_prev_size*net->batch_size)+b] = h;
 			}
 		}
 		
 		if(current->previous->type == DENSE)
 		{	
-			flat_dense(c_param->temp_delta_o, current->previous->delta_o, 0, 
-				c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2],
-				c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] 
-				* c_param->prev_depth + 1, c_param->prev_depth, net->batch_size, 
-				(c_param->prev_size[0]*c_param->prev_size[1]*c_param->prev_size[2] 
-				* c_param->prev_depth + 1) * net->batch_size);
+			flat_dense(c_param->temp_delta_o, current->previous->delta_o, 0, flat_prev_size,
+				flat_prev_size * c_param->prev_depth + 1, c_param->prev_depth, net->batch_size, 
+				(flat_prev_size * c_param->prev_depth + 1) * net->batch_size);
 		}
 		
 		current->previous->deriv_activation(current->previous);
@@ -342,7 +347,7 @@ void backward_conv_layer(layer *current)
 	//########################  WEIGHTS UPDATE   ########################
 	if(!current->frozen)
 	{
-		int dim_batch = c_param->nb_area[0]*c_param->nb_area[1]*c_param->nb_area[2]*net->batch_size;
+		int dim_batch = flat_nb_area*net->batch_size;
 		
 		float *f_im2col_input = (float*) c_param->im2col_input;
 		float *f_delta_o = (float*) current->delta_o;

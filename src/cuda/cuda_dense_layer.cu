@@ -294,6 +294,30 @@ size_t cuda_convert_dense_layer(layer *current)
 	return vram_approx;
 }
 
+void cuda_free_dense(layer *current)
+{
+	d_param = (dense_param*) current->param;
+	
+	cudaFree(d_param->weights);
+	if(current->c_network->cu_inst.use_cuda_TC != FP32C_FP32A && current->c_network->cu_inst.use_cuda_TC != TF32C_FP32A)
+		cudaFree(d_param->FP32_weights);
+	cudaFree(current->output);
+	
+	if(current->dropout_rate > 0.01f)
+		cudaFree(d_param->dropout_mask);
+	
+	if(current->previous != NULL && current->previous->type != DENSE)
+		cudaFree(d_param->flat_input);
+	
+	if(!current->c_network->inference_only)
+	{
+		cudaFree(d_param->update);
+		cudaFree(current->delta_o);
+		if(current->previous != NULL && current->previous->type != DENSE)
+			cudaFree(d_param->flat_delta_o);
+	}
+}
+
 
 void cuda_forward_dense_layer(layer *current)
 {
@@ -502,7 +526,6 @@ void cuda_dense_define(layer *current)
 	current->forward = cuda_forward_dense_layer;
 	current->backprop = cuda_backward_dense_layer;
 }
-
 
 
 

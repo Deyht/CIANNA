@@ -1,7 +1,7 @@
 
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -132,7 +132,7 @@ void cuda_lrn_init(network* net)
 			net->cu_inst.cu_lrn_fcts.cu_lrn_conv_kernel = lrn_conv_kernel_FP16; 
 			net->cu_inst.cu_lrn_fcts.cu_lrn_conv_back_kernel = lrn_conv_back_kernel_FP16;
 			#else
-			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
+			printf("\n ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
 			exit(EXIT_FAILURE);
 			#endif
 			break;
@@ -142,7 +142,7 @@ void cuda_lrn_init(network* net)
 			net->cu_inst.cu_lrn_fcts.cu_lrn_conv_kernel = lrn_conv_kernel_BF16; 
 			net->cu_inst.cu_lrn_fcts.cu_lrn_conv_back_kernel = lrn_conv_back_kernel_BF16;
 			#else
-			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
+			printf("\n ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
 			exit(EXIT_FAILURE);
 			#endif
 			break;
@@ -166,6 +166,19 @@ size_t cuda_convert_lrn_layer(layer *current)
 	}
 	
 	return vram_approx;
+}
+
+void cuda_free_lrn(layer *current)
+{
+	n_param = (lrn_param*) current->param;
+	
+	cudaFree(current->output);
+	
+	if(!current->c_network->inference_only)
+	{
+		cudaFree(current->delta_o);
+		cudaFree(n_param->local_scale);
+	}
 }
 
 

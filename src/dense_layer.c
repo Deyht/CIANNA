@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -54,7 +54,7 @@ void dense_define_activation_param(layer *current, const char* activ)
 			break;
 			
 		case YOLO:
-			printf("\nERROR: YOLO activation is not compatible with a dense layer!\n");
+			printf("\n ERROR: YOLO activation is not compatible with a dense layer!\n");
 			exit(EXIT_FAILURE);
 			break;
 			
@@ -153,12 +153,12 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 						break;
 				}
 				if(!net->inference_only)
-					{
-						d_param->flat_delta_o = (float*) calloc(d_param-> in_size * net->batch_size, sizeof(float));
-						mem_approx += d_param-> in_size * net->batch_size * sizeof(float);
-					}
-					d_param->flat_input = (float*) calloc(d_param->in_size*net->batch_size,sizeof(float));
-					mem_approx += d_param->in_size*net->batch_size * sizeof(float);
+				{
+					d_param->flat_delta_o = (float*) calloc(d_param-> in_size * net->batch_size, sizeof(float));
+					mem_approx += d_param-> in_size * net->batch_size * sizeof(float);
+				}
+				d_param->flat_input = (float*) calloc(d_param->in_size*net->batch_size,sizeof(float));
+				mem_approx += d_param->in_size*net->batch_size * sizeof(float);
 				break;
 			
 			case DENSE:
@@ -234,22 +234,22 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 		{
 			default:
 			case N_XAVIER:
-				xavier_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				xavier_normal( d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
 				break;
 			case U_XAVIER:
 				xavier_uniform(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
 				break;
 			case N_LECUN:
-				lecun_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				lecun_normal(  d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
 				break;
 			case U_LECUN:
-				lecun_uniform(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				lecun_uniform( d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
 				break;
 			case N_RAND:
-				rand_normal(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				rand_normal(   d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
 				break;
 			case U_RAND:
-				rand_uniform(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
+				rand_uniform(  d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
 				break;
 		}
 	}
@@ -267,7 +267,7 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 				for(j = 0; j < (d_param->nb_neurons+1); j++)
 					fscanf(f_load, "%f", &(((float*)d_param->weights)[i*(d_param->nb_neurons+1) + j]));
 			}
-		}	
+		}
 	}
 	
 	switch(net->compute_method)
@@ -312,13 +312,13 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	{
 		if(d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
 				|| (d_param->nb_neurons+1) % 8 != 0)
-			printf("Warning : Forward gemm TC data misalignment due to layer size mismatch\n");
+			printf(" WARNING: Forward gemm TC data misalignment due to layer size mismatch\n");
 		if(current->previous != NULL && (d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
 				|| (d_param->nb_neurons+1) % 8 != 0))
-			printf("Warning : Backprop gemm TC data misalignment due to layer size mismatch\n");
+			printf(" WARNING: Backprop gemm TC data misalignment due to layer size mismatch\n");
 		if(d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
 				|| (d_param->nb_neurons+1) % 8 != 0)
-			printf("Warning : Weights update gemm TC data misalignment due to layer size mismatch\n");
+			printf(" WARNING: Weights update gemm TC data misalignment due to layer size mismatch\n");
 	}
 	#endif
 	
@@ -401,15 +401,16 @@ void dense_save(FILE *f, layer *current, int f_bin)
 		free(host_weights);
 }
 
-void dense_load(network *net, FILE* f, int f_bin)
+void dense_load(network *net, FILE* f, int f_bin, int skip_layer)
 {
 	int nb_neurons;
-	float dropout_rate;
-	float bias;
+	size_t in_size;
+	float dropout_rate, bias, temp_read;
 	char activ_type[40];
 	layer *previous;
 	
-	printf("Loading dense layer, L:%d\n", net->nb_layers+1);
+	if(!skip_layer)
+		printf("Loading dense layer, L:%d\n", net->nb_layers+1);
 	
 	if(f_bin)
 	{
@@ -420,16 +421,66 @@ void dense_load(network *net, FILE* f, int f_bin)
 	}
 	else
 		fscanf(f, "%dn%fd%fb%s\n", &nb_neurons, &dropout_rate, &bias, activ_type);
-	
-	if(net->nb_layers <= 0)
-		previous = NULL;
-	else
-		previous = net->net_layers[net->nb_layers-1];
 
-	dense_create(net, previous, nb_neurons, activ_type, &bias, dropout_rate, 1, NULL, -1.0, f, f_bin);
+	if(!skip_layer)
+	{
+		if(net->nb_layers <= 0)
+			previous = NULL;
+		else
+			previous = net->net_layers[net->nb_layers-1];
+		
+		dense_create(net, previous, nb_neurons, activ_type, &bias, dropout_rate, 1, NULL, -1.0, f, f_bin);
+	}
+	else
+	{
+		in_size = net->skip_in_dims[0]*net->skip_in_dims[1]*net->skip_in_dims[2]*net->skip_in_dims[3]+1;
+		
+		if(f_bin)
+			fseek(f, in_size*(nb_neurons+1), SEEK_CUR);
+		else
+			for(int i = 0; i < in_size*(nb_neurons+1); i++)
+				fscanf(f, "%f", &temp_read);
+		
+		net->skip_in_dims[0] = nb_neurons;
+		net->skip_in_dims[1] = 1;
+		net->skip_in_dims[2] = 1;
+		net->skip_in_dims[3] = 1;
+	}
 }
 
-
+void free_dense(layer *current)
+{
+	d_param = current->param;
+	
+	#ifdef CUDA
+	if(current->c_network->compute_method == C_CUDA)
+	{
+		cuda_free_dense(current);
+	}
+	else
+	#endif
+	{
+		free(d_param->weights);
+		free(current->output);
+		if(current->dropout_rate > 0.01f)
+			free(d_param->dropout_mask);
+		
+		if(current->previous != NULL && current->previous->type != DENSE)
+			free(d_param->flat_input);
+		
+		if(!current->c_network->inference_only)
+		{
+			free(d_param->update);
+			free(current->delta_o);
+			if(current->previous != NULL && current->previous->type != DENSE)
+				free(d_param->flat_delta_o);
+		}
+	}
+	
+	free(current->activ_param);
+	free(current->param);
+	free(current);
+}
 
 
 
