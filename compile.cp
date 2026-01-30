@@ -23,7 +23,7 @@
 #            COMPILER DEFINES STRUCTURES             #
 ######################################################
 
-defines_variables="-D MAX_LAYERS_NB=200 -D MAX_NETWORKS_NB=10 -D CUDA_THREADS_PER_BLOCKS=256"
+defines_variables="-D MAX_LAYERS_NB=400 -D MAX_NETWORKS_NB=10 -D CUDA_THREADS_PER_BLOCKS=256"
 
 ######################################################
 #                  LIBRARY LOCATIONS                 #

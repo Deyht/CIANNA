@@ -74,6 +74,7 @@ else:
 	cnn.dense(nb_neurons=128, activation="RELU", drop_rate=0.2)
 	cnn.dense(nb_neurons=10, strict_size=1, activation="SMAX")
 	
+	#cnn.load("net_save/net0_s%04d.dat"%(10), iteration=10, nb_skip_layers=3)
 
 #To create a latex table and associated pdf with the current architecture	
 #cnn.print_arch_tex("./arch/", "arch", activation=1)

@@ -1,3 +1,14 @@
+********************************************
+===== V-1.0.1.1 =====
+ (interface V-1.0)
+
+Minor hot-fix patch.
+
+- Fix an error in YOLO destructors.
+- Add missing verification checks in model load when skipping layers.
+- Loading a saved model no longer reset the existing network structure and can be used to append layers to an existing backbone.
+
+
 
 ********************************************
 ===== V-1.0.1.0 =====

@@ -28,6 +28,7 @@
 //##############################
 static norm_param *n_param;
 
+
 void norm_define_activation_param(layer *current, const char *activ)
 {
 	int size, dim, biased_dim, offset;
@@ -388,10 +389,45 @@ void norm_load(network *net, FILE *f, int f_bin, int skip_layer)
 		else
 			for(int i = 0; i < nb_group*2; i++)
 				fscanf(f, "%f", &temp_read);
-		
-		//norm layer has no impact on skip_input_dim
 	}
 }
+
+void get_norm_output_dim(layer *current, int *dim)
+{
+	int i;
+	pool_param *p_param;
+	conv_param *c_param;
+	
+	if(current->previous == NULL)
+	{
+		printf("\n ERROR: incompatible previous type in norm layer!\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	switch(current->previous->type)
+	{
+		case POOL:
+			p_param = (pool_param*) current->previous->param;
+			for (i = 0; i < 3; i++)
+				dim[i] = p_param->nb_area[i];
+			dim[3] = p_param->nb_maps;
+			break;
+		
+		case CONV:
+			c_param = (conv_param*) current->previous->param;
+			for (i = 0; i < 3; i++)
+				dim[i] = c_param->nb_area[i];
+			dim[3] = c_param->nb_filters;
+			break;
+		
+		default:
+			printf("\n ERROR: incompatible previous type in norm layer!\n");
+			exit(EXIT_FAILURE);
+			break;
+	}
+	//norm layer has no impact on skip_input_dim
+}
+
 
 void free_norm(layer *current)
 {

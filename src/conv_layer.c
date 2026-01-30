@@ -40,7 +40,6 @@ an integer number of conv/pool regions\n\
 	return (size + (size-1)*int_padding + padding*2 - f_size) / stride + 1;
 }
 
-
 void conv_define_activation_param(layer *current, const char *activ)
 {
 	int size, dim, biased_dim, offset;
@@ -146,7 +145,7 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 	}
 	else
 	{
-		//regular case	
+		//regular case
 		switch(previous->type)
 		{
 			case DENSE:
@@ -664,9 +663,22 @@ void conv_load(network *net, FILE *f, int f_bin, int skip_layer)
 			for(i = 0; i < nb_filters*flat_f_size; i++)
 				fscanf(f, "%f", &temp_read);
 		
-		for(i = 0; i < 4; i++)
-			net->skip_in_dims[i] = input_shape[i];
+		for(int i = 0; i < 3; i++)
+			net->skip_in_dims[i] = nb_area_comp(net->skip_in_dims[i], f_size[i], padding[i], int_padding[i], stride[i]);
+		
+		net->skip_in_dims[3] = nb_filters;
 	}
+}
+
+void get_conv_output_dim(layer *current, int *dim)
+{
+	int i;
+	c_param = (conv_param*) current->param;
+	
+	for (i = 0; i < 3; i++)
+		dim[i] = c_param->nb_area[i];
+	
+	dim[3] = c_param->nb_filters;
 }
 
 void free_conv(layer *current)
@@ -708,9 +720,7 @@ void free_conv(layer *current)
 	
 	if(current->activation_type == YOLO)
 	{
-		y_param = current->activ_param;
-		
-		free(y_param->cell_size);
+		y_param = (yolo_param*) current->activ_param;
 		
 		#ifdef CUDA
 		if(current->c_network->compute_method == C_CUDA)
@@ -720,6 +730,7 @@ void free_conv(layer *current)
 		else
 		#endif
 		{	
+			free(y_param->cell_size);
 			free(y_param->IoU_monitor);
 			free(y_param->target_cell_mask);
 			free(y_param->IoU_table);

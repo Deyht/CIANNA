@@ -1556,7 +1556,7 @@ int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int
 
 void free_yolo_params(network *net)
 {
-	yolo_param *y_param = net->y_param;
+	yolo_param *y_param = (yolo_param*) net->y_param;
 	
 	free(y_param->prior_size);
 	free(y_param->noobj_prob_prior);

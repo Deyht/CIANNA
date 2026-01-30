@@ -922,138 +922,133 @@ void init_auxil_cuda(network* net)
 void init_cuda(network* net)
 {
 	cublasStatus_t stat = CUBLAS_STATUS_SUCCESS;
-	if(!is_cuda_init)
+
+	stat = cublasCreate(&cu_handle);
+
+	if(stat != CUBLAS_STATUS_SUCCESS)
 	{
-		stat = cublasCreate(&cu_handle);
-	
-		if(stat != CUBLAS_STATUS_SUCCESS)
+		switch(stat)
 		{
-			switch(stat)
-			{
-				case CUBLAS_STATUS_SUCCESS:
-				    printf("CUBLAS_STATUS_SUCCESS");
-				    break;
-				case CUBLAS_STATUS_NOT_INITIALIZED:
-				    printf("CUBLAS_STATUS_NOT_INITIALIZED");
-					break;
-				case CUBLAS_STATUS_ALLOC_FAILED:
-				    printf("CUBLAS_STATUS_ALLOC_FAILED");
-					break;
-				case CUBLAS_STATUS_INVALID_VALUE:
-				    printf("CUBLAS_STATUS_INVALID_VALUE");
-					break;
-				case CUBLAS_STATUS_ARCH_MISMATCH:
-				    printf("CUBLAS_STATUS_ARCH_MISMATCH");
-					break;
-				case CUBLAS_STATUS_MAPPING_ERROR:
-				    printf("CUBLAS_STATUS_MAPPING_ERROR");
-					break;
-				case CUBLAS_STATUS_EXECUTION_FAILED:
-				    printf("CUBLAS_STATUS_EXECUTION_FAILED");
-					break;
-				case CUBLAS_STATUS_INTERNAL_ERROR:
-				    printf("CUBLAS_STATUS_INTERNAL_ERROR");
-					break;
-				default:
-					break;
-			}
-
-			printf("\nGPU handle create fail\n");
-			exit(EXIT_FAILURE);
-		}
-	
-		//CUDA version <= 11.0
-		#if defined(CUDA_OLD)
-		switch(net->cu_inst.use_cuda_TC)
-		{
+			case CUBLAS_STATUS_SUCCESS:
+			    printf("CUBLAS_STATUS_SUCCESS");
+			    break;
+			case CUBLAS_STATUS_NOT_INITIALIZED:
+			    printf("CUBLAS_STATUS_NOT_INITIALIZED");
+				break;
+			case CUBLAS_STATUS_ALLOC_FAILED:
+			    printf("CUBLAS_STATUS_ALLOC_FAILED");
+				break;
+			case CUBLAS_STATUS_INVALID_VALUE:
+			    printf("CUBLAS_STATUS_INVALID_VALUE");
+				break;
+			case CUBLAS_STATUS_ARCH_MISMATCH:
+			    printf("CUBLAS_STATUS_ARCH_MISMATCH");
+				break;
+			case CUBLAS_STATUS_MAPPING_ERROR:
+			    printf("CUBLAS_STATUS_MAPPING_ERROR");
+				break;
+			case CUBLAS_STATUS_EXECUTION_FAILED:
+			    printf("CUBLAS_STATUS_EXECUTION_FAILED");
+				break;
+			case CUBLAS_STATUS_INTERNAL_ERROR:
+			    printf("CUBLAS_STATUS_INTERNAL_ERROR");
+				break;
 			default:
-			case FP32C_FP32A:
-				cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
-				cuda_data_type = CUDA_R_32F;
-				cuda_compute_type = CUDA_R_32F;
-				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
 				break;
-			
-			#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
-			case FP16C_FP32A:
-				cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
-				cuda_data_type = CUDA_R_16F;
-				cuda_compute_type = CUDA_R_32F;
-				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-				break;
-				
-			case FP16C_FP16A:
-				cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
-				cuda_data_type = CUDA_R_16F;
-				cuda_compute_type = CUDA_R_16F;
-				cu_alpha = &cu_h_alpha; cu_beta = &cu_h_beta;
-				cu_learning_rate = &cu_h_learning_rate; cu_momentum = &cu_h_momentum;
-				break;
-			#endif
 		}
 
-		//CUDA version >= 11.1
-		#else
-		switch(net->cu_inst.use_cuda_TC)
-		{
-			default:
-			case FP32C_FP32A:
-				cublasSetMathMode(cu_handle, CUBLAS_PEDANTIC_MATH);
-				cuda_data_type = CUDA_R_32F;
-				cuda_compute_type = CUBLAS_COMPUTE_32F_PEDANTIC;
-				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-				break;
+		printf("\nGPU handle create fail\n");
+		exit(EXIT_FAILURE);
+	}
 
-			#if defined(GEN_AMPERE) 
-			case TF32C_FP32A:
-				cublasSetMathMode(cu_handle, CUBLAS_TF32_TENSOR_OP_MATH);
-				cuda_data_type = CUDA_R_32F;
-				cuda_compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
-				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-				break;
-			#endif
+	//CUDA version <= 11.0
+	#if defined(CUDA_OLD)
+	switch(net->cu_inst.use_cuda_TC)
+	{
+		default:
+		case FP32C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+			cuda_data_type = CUDA_R_32F;
+			cuda_compute_type = CUDA_R_32F;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+			break;
+		
+		#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
+		case FP16C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
+			cuda_data_type = CUDA_R_16F;
+			cuda_compute_type = CUDA_R_32F;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+			break;
 			
-			#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
-			case FP16C_FP32A:
-				cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
-				cuda_data_type = CUDA_R_16F;
-				cuda_compute_type = CUBLAS_COMPUTE_32F;
-				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-				break;
-				
-			case FP16C_FP16A:
-				cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
-				cuda_data_type = CUDA_R_16F;
-				cuda_compute_type = CUBLAS_COMPUTE_16F;
-				cu_alpha = &cu_h_alpha; cu_beta = &cu_h_beta;
-				cu_learning_rate = &cu_h_learning_rate; cu_momentum = &cu_h_momentum;
-				break;
-			#endif
-			
-			#if defined(GEN_AMPERE)
-			case BF16C_FP32A:
-				cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
-				cuda_data_type = CUDA_R_16BF;
-				cuda_compute_type = CUBLAS_COMPUTE_32F;
-				cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
-				cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
-				break;
-			#endif
-		}
+		case FP16C_FP16A:
+			cublasSetMathMode(cu_handle, CUBLAS_TENSOR_OP_MATH);
+			cuda_data_type = CUDA_R_16F;
+			cuda_compute_type = CUDA_R_16F;
+			cu_alpha = &cu_h_alpha; cu_beta = &cu_h_beta;
+			cu_learning_rate = &cu_h_learning_rate; cu_momentum = &cu_h_momentum;
+			break;
+		#endif
+	}
+
+	//CUDA version >= 11.1
+	#else
+	switch(net->cu_inst.use_cuda_TC)
+	{
+		default:
+		case FP32C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_PEDANTIC_MATH);
+			cuda_data_type = CUDA_R_32F;
+			cuda_compute_type = CUBLAS_COMPUTE_32F_PEDANTIC;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+			break;
+
+		#if defined(GEN_AMPERE) 
+		case TF32C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_TF32_TENSOR_OP_MATH);
+			cuda_data_type = CUDA_R_32F;
+			cuda_compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+			break;
 		#endif
 		
-		//set typed function according to USE_CUDA_TC
-		curandCreateGenerator(&cu_gen, CURAND_RNG_PSEUDO_DEFAULT);
-		curandSetPseudoRandomGeneratorSeed(cu_gen, time(NULL));
+		#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
+		case FP16C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+			cuda_data_type = CUDA_R_16F;
+			cuda_compute_type = CUBLAS_COMPUTE_32F;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+			break;
+			
+		case FP16C_FP16A:
+			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+			cuda_data_type = CUDA_R_16F;
+			cuda_compute_type = CUBLAS_COMPUTE_16F;
+			cu_alpha = &cu_h_alpha; cu_beta = &cu_h_beta;
+			cu_learning_rate = &cu_h_learning_rate; cu_momentum = &cu_h_momentum;
+			break;
+		#endif
+		
+		#if defined(GEN_AMPERE)
+		case BF16C_FP32A:
+			cublasSetMathMode(cu_handle, CUBLAS_DEFAULT_MATH);
+			cuda_data_type = CUDA_R_16BF;
+			cuda_compute_type = CUBLAS_COMPUTE_32F;
+			cu_alpha = &cu_f_alpha; cu_beta = &cu_f_beta;
+			cu_learning_rate = &cu_f_learning_rate; cu_momentum = &cu_f_momentum;
+			break;
+		#endif
 	}
+	#endif
 	
-	is_cuda_init = 1;
-	
+	//set typed function according to USE_CUDA_TC
+	curandCreateGenerator(&cu_gen, CURAND_RNG_PSEUDO_DEFAULT);
+	curandSetPseudoRandomGeneratorSeed(cu_gen, time(NULL));
 
 	init_auxil_cuda(net);
 	init_typed_cuda_activ(net);
@@ -1062,8 +1057,12 @@ void init_cuda(network* net)
 	cuda_pool_init(net);
 	cuda_norm_init(net);
 	cuda_lrn_init(net);
-	
-	//place holder for device selection
+}
+
+void free_cuda_network(void)
+{
+	cublasDestroy(cu_handle);
+	curandDestroyGenerator(cu_gen);
 }
 
 

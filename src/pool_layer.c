@@ -357,7 +357,6 @@ void pool_load(network *net, FILE *f, int f_bin, int skip_layer)
 	}
 	else
 	{
-		//skip_in_dims[3] unchanged by pool
 		for(int i = 0; i < 3; i++)
 			net->skip_in_dims[i] = nb_area_comp(net->skip_in_dims[i], p_size[i], padding[i], 0, stride[i]);
 		
@@ -368,6 +367,17 @@ void pool_load(network *net, FILE *f, int f_bin, int skip_layer)
 			net->skip_in_dims[2] = 1;
 		}
 	}
+}
+
+void get_pool_output_dim(layer *current, int *dim)
+{
+	int i;
+	p_param = (pool_param*) current->param;
+	
+	for (i = 0; i < 3; i++)
+		dim[i] = p_param->nb_area[i];
+	
+	dim[3] = p_param->nb_maps;
 }
 
 void free_pool(layer *current)
@@ -404,6 +414,7 @@ void free_pool(layer *current)
 	free(current->param);
 	free(current);
 }
+
 
 
 

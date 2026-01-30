@@ -2499,8 +2499,6 @@ void cuda_YOLO_activ_init(layer *current)
 	cuda_convert_table_FP32((void**)&(a_param->noobj_prob_prior), a_param->nb_box, 1);
 	cuda_convert_table_FP32((void**)&(a_param->scale_tab), 6, 1);
 	
-	cuda_convert_table_int(&(a_param->cell_size), 3, 1);
-	
 	temp_tab = a_param->slopes_and_maxes_tab[0];
 	cudaMalloc(&temp_tab2, 6 * 3 * sizeof(float));
 	cudaMemcpy(temp_tab2, temp_tab, 6 * 3 * sizeof(float), cudaMemcpyHostToDevice);
@@ -2521,6 +2519,7 @@ void cuda_YOLO_activ_init(layer *current)
 	init_block_state<<< cu_blocks, cu_threads>>>(time(NULL),(curandState_t*)(a_param->block_state), 
 		((conv_param*)current->param)->nb_filters * nb_area_flat * current->c_network->batch_size);
 	
+	cuda_convert_table_int(&(a_param->cell_size), 3, 0);
 	cuda_convert_table_FP32((void**)&(a_param->IoU_monitor),
 		2 *a_param->nb_box * current->c_network->batch_size * nb_area_flat, 0);
 	cuda_convert_table_int(&(a_param->target_cell_mask),
@@ -2545,9 +2544,8 @@ void cuda_free_yolo_activ_param(layer *current)
 	
 	cudaFree(a_param->prior_size);
 	cudaFree(a_param->noobj_prob_prior);
-	cudaFree(a_param->cell_size);
 	cudaFree(a_param->scale_tab);
-
+	
 	temp_tab = (float**) malloc(6*sizeof(float*));
 	cudaMemcpy(temp_tab, a_param->slopes_and_maxes_tab, 6 * sizeof(float*), cudaMemcpyDeviceToHost);
 	cudaFree(temp_tab[0]);
@@ -2559,6 +2557,7 @@ void cuda_free_yolo_activ_param(layer *current)
 	cudaFree(a_param->fit_parts);
 	cudaFree(a_param->block_state);
 	
+	cudaFree(a_param->cell_size);
 	cudaFree(a_param->IoU_monitor);
 	cudaFree(a_param->target_cell_mask);
 	cudaFree(a_param->IoU_table);

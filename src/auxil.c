@@ -85,7 +85,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-1.0.1.0 Release build (01/2026), by D.Cornu\n\
+CIANNA V-1.0.1.1 stable build (01/2026), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -323,6 +323,8 @@ void free_network(network *net)
 	if(net->y_param != NULL)
 		free_yolo_params(net);
 	
+	free_cuda_network();
+	
 	free(net);
 	net = NULL;
 }
@@ -553,17 +555,41 @@ void save_network(network *net, const char *filename, int f_bin)
 	fclose(f);
 }
 
+void get_layer_output_dim(layer *current, int *dim)
+{
+	switch(current->type)
+	{
+		case DENSE:
+			get_dense_output_dim(current, dim);
+			break;
+		case CONV:
+			get_conv_output_dim(current, dim);
+			break;
+		case POOL:
+			get_pool_output_dim(current, dim);
+			break;
+		case NORM:
+			get_norm_output_dim(current, dim);
+			break;
+		case LRN:
+			get_lrn_output_dim(current, dim);
+			break;
+		default:
+			break;
+	}	
+}
 
 void load_network(network *net, const char *filename, int iter, int nb_layers, int nb_skip_layers, int f_bin)
 {
+	int i;
 	FILE* f = NULL;
 	int temp_dim[4];
+	int dim_prod[2];
 	char layer_type = 'A';
 	int layer_count = 0;
-	int skip_layer = 0;
+	int skip_layer;
 	
 	net->iter = iter;
-	net->nb_layers = 0;
 	
 	if(f_bin)
 		f = fopen(filename, "rb+");
@@ -581,44 +607,15 @@ void load_network(network *net, const char *filename, int iter, int nb_layers, i
 	else
 		fscanf(f, "%dx%dx%dx%d\n", &temp_dim[0], &temp_dim[1], &temp_dim[2], &temp_dim[3]);
 	
-	if(nb_skip_layers > 0)
-	{
-		for(int i = 0; i < 4; i++)
-			net->skip_in_dims[i] = net->in_dims[i];
-		printf("%d %d %d %d\n", net->in_dims[0], net->in_dims[1], net->in_dims[2], net->in_dims[3]);
-		skip_layer = 1;
-	}
+	if(nb_skip_layers < 0)
+		nb_skip_layers = 0;
 	
-	if(net->in_dims[0] != temp_dim[0] || net->in_dims[1] != temp_dim[1] || net->in_dims[2] != temp_dim[2] || net->in_dims[3] != temp_dim[3])
-	{
-		printf("\n WARNING: change in the input format !\n First layer expects W = %d, H = %d, D = %d, C = %d\n", 
-			 temp_dim[0], temp_dim[1], temp_dim[2], temp_dim[3]);
-		if(net->in_dims[3] != temp_dim[3])
-		{
-			printf("\n ERROR: wrong number of input channel !\n");
-			exit(EXIT_FAILURE);
-		}
-	}
+	for(i = 0; i < 4; i++)
+		net->skip_in_dims[i] = temp_dim[i];
+	skip_layer = 1;
 	
 	do
 	{
-		if(skip_layer && layer_count == nb_skip_layers)
-		{
-			for(int i = 0; i < 4; i++)
-				temp_dim[i] = net->skip_in_dims[i];
-			
-			if(net->in_dims[0] != net->skip_in_dims[0] ||
-			   net->in_dims[1] != net->skip_in_dims[1] ||
-			   net->in_dims[2] != net->skip_in_dims[2] ||
-			   net->in_dims[3] != net->skip_in_dims[3])
-			{
-				printf("\n ERROR: In skiped load, new first layer input dim is incompatible with network input dim!\n");
-				printf(" Expected dimensions are W = %d, H = %d, D = %d, C = %d\n", 
-					net->skip_in_dims[0], net->skip_in_dims[1], net->skip_in_dims[2], net->skip_in_dims[3]);
-			}
-			skip_layer = 0;
-		}
-	
 		if(f_bin)
 		{
 			if(fread(&layer_type, sizeof(char), 1, f) != 1)
@@ -629,6 +626,48 @@ void load_network(network *net, const char *filename, int iter, int nb_layers, i
 			if(fscanf(f, "%c", &layer_type) == EOF)
 				break;
 		}
+	
+		if(layer_count == nb_skip_layers)
+		{
+			skip_layer = 0;
+			if(net->nb_layers == 0)
+				for(i = 0; i < 4; i++)
+					temp_dim[i] = net->in_dims[i];
+			else
+				get_layer_output_dim(net->net_layers[net->nb_layers-1], temp_dim);
+			
+			switch(layer_type)
+			{
+				case 'C':
+				case 'P':
+				case 'N':
+				case 'L':
+					if(net->skip_in_dims[3] != temp_dim[3])
+					{
+						printf("\n ERROR: Incompatible input dimension (depth) when loading conv formated layer!\n");
+						exit(EXIT_FAILURE);
+					}
+					break;
+				case 'D':
+					dim_prod[0] = 1; dim_prod[1] = 1;
+					for(i = 0; i < 4; i++)
+					{
+						dim_prod[0] *= net->skip_in_dims[i];
+						dim_prod[1] *= temp_dim[i]; 
+					}
+					if(dim_prod[0] != dim_prod[1])
+					{
+						printf("\n ERROR: Incompatible input dimension when loading dense formated layer!\n");
+						exit(EXIT_FAILURE);
+					}
+					break;
+				case ' ':
+				case '\n':
+				default:
+					break;
+			}
+		}
+		
 		
 		switch(layer_type)
 		{

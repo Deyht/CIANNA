@@ -440,12 +440,23 @@ void dense_load(network *net, FILE* f, int f_bin, int skip_layer)
 		else
 			for(int i = 0; i < in_size*(nb_neurons+1); i++)
 				fscanf(f, "%f", &temp_read);
-		
+	
 		net->skip_in_dims[0] = nb_neurons;
-		net->skip_in_dims[1] = 1;
-		net->skip_in_dims[2] = 1;
-		net->skip_in_dims[3] = 1;
+		
+		for(int i = 1; i < 4; i++)
+			net->skip_in_dims[i] = 1;
 	}
+}
+
+void get_dense_output_dim(layer *current, int *dim)
+{
+	int i;
+	d_param = (dense_param*) current->param;
+	
+	dim[0] = d_param->nb_neurons;
+	
+	for(i = 1; i < 4; i++)
+		dim[i] = 1;
 }
 
 void free_dense(layer *current)

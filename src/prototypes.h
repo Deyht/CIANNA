@@ -97,6 +97,7 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	float drop_rate, int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int f_bin);
 void dense_save(FILE *f, layer *current, int f_bin);
 void dense_load(network *net, FILE* f, int f_bin, int skip_layer);
+void get_dense_output_dim(layer *current, int *dim);
 void free_dense(layer *current);
 
 //conv_layer.c
@@ -106,6 +107,7 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 	float drop_rate, const char *init_fct, float init_scaling, FILE *f_load, int f_bin);
 void conv_save(FILE *f, layer *current, int f_bin);
 void conv_load(network *net, FILE *f, int f_bin, int skip_layer);
+void get_conv_output_dim(layer *current, int *dim);
 void free_conv();
 
 //pool_layer.c
@@ -113,18 +115,21 @@ int pool_create(network *net, layer *previous, int *pool_size, int* stride, int 
 	const char *char_pool_type, const char *activation, int global, float drop_rate);
 void pool_save(FILE *f, layer *current, int f_bin);
 void pool_load(network *net, FILE *f, int f_bin, int skip_layer);
+void get_pool_output_dim(layer *current, int *dim);
 void free_pool(layer *current);
 
 //norm_layer.c
 int norm_create(network *net, layer *previous, const char *norm_type, const char *activation, int group_size, int set_off, FILE *f_load, int f_bin);
 void norm_save(FILE *f, layer *current, int f_bin);
 void norm_load(network *net, FILE *f, int f_bin, int skip_layer);
+void get_norm_output_dim(layer *current, int *dim);
 void free_norm(layer *current);
 
 //lrn_layer.c
 int lrn_create(network *net, layer *previous, const char *activation, int range, float k, float alpha, float beta);
 void lrn_save(FILE *f, layer *current, int f_bin);
 void lrn_load(network *net, FILE *f, int f_bin, int skip_layer);
+void get_lrn_output_dim(layer *current, int *dim);
 void free_lrn(layer *current);
 
 //initializers.c
@@ -221,6 +226,7 @@ __global__ void init_block_state(unsigned int seed,  curandState_t* states, size
 #endif
 
 void init_cuda(network* net);
+void free_cuda_network(void);
 void cuda_set_TC_scale_factor(network* net, float val);
 void cuda_sync(void);
 void cuda_free_table(void* tab);
