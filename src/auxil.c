@@ -244,6 +244,10 @@ CIANNA V-1.0.1.1 stable build (01/2026), by D.Cornu\n\
 	if(adv_size <= 0)
 		net->adv_size = 30;
 	
+	net->train.localization = NO_LOC;
+	net->test.localization = NO_LOC;
+	net->valid.localization = NO_LOC;
+	
 	net->train_buf.localization = NO_LOC;
 	net->test_buf.localization = NO_LOC;
 	net->valid_buf.localization = NO_LOC;
@@ -264,7 +268,6 @@ Inference only: %d\n\n",
 	#endif
 	
 	net->y_param = NULL;
-
 }
 
 
@@ -322,8 +325,10 @@ void free_network(network *net)
 
 	if(net->y_param != NULL)
 		free_yolo_params(net);
-	
-	free_cuda_network();
+	#ifdef CUDA
+	if(net->compute_method == C_CUDA)
+		free_cuda_network();
+	#endif
 	
 	free(net);
 	net = NULL;

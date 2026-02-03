@@ -4,6 +4,10 @@
 
 Minor hot-fix patch.
 
+- Fix crash when trying to load a YOLO layer prior to a call to set_yolo_params().
+  In such a case, set_yolo_params is now automaticaly called with default parmeters when loading the YOLO layer.
+  A warning is isued as this is not necessarly considered a good practice, even though it might help create lighter inference-only codes.
+- Fix a missing guarding clause preventing compilation without CUDA.
 - Fix an error in YOLO destructors.
 - Add missing verification checks in model load when skipping layers.
 - Loading a saved model no longer reset the existing network structure and can be used to append layers to an existing backbone.

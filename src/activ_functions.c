@@ -1056,9 +1056,9 @@ void set_yolo_activ(layer *current)
 	param->slopes_and_maxes_tab = (float**) malloc(6*sizeof(float*));
 	param->prior_size = (float*) calloc(nb_box*3, sizeof(float));
 	
-	/*Having prior relative to image size is a good idea in principle, but it hides the fact that the network has a given receptive field related to its architecture.
+	/* Having prior relative to image size is a good idea in principle, but it hides the fact that the network has a given receptive field related to its architecture.
 	Therefore, increasing the input resolution will end up to cases where object sizes are too large.
-	For now we prefer to have prior as a fixed pixel size, so it is easy to scale input for probleme where the size of object is constant in pixel regardless of the image size.*/
+	For now we prefer to have priors as fixed pixel sizes, allowing to processing cutout of different sizes from a given input image (without rescale).*/
 	for(i = 0; i < nb_box; i++)
 		for(j = 0; j < 3; j++)
 			param->prior_size[i*3+j] = fmax(1.0f, global_param->prior_size[i*3+j]);
@@ -1201,6 +1201,12 @@ int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int
 	char display_class_type[60];
 	char display_difficult[40];
 	
+	if(net->y_param != NULL && net->y_param->fit_dim > 0)
+	{
+		printf("\n ERROR: Trying to update existing YOLO layer setup is not supported yet\n");
+		exit(EXIT_FAILURE);
+	}
+	
 	// Default setting
 	net->y_param = (yolo_param*) malloc(sizeof(yolo_param));
 	net->y_param->nb_box = 0;
@@ -1224,12 +1230,6 @@ int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int
 	
 	net->y_param->no_override = no_override;
 	net->y_param->raw_output = raw_output;
-	
-	if(net->y_param->fit_dim > 0)
-	{
-		printf("\n ERROR: Trying to update existing YOLO layer setup is not supported yet\n");
-		exit(EXIT_FAILURE);
-	}
 	
 	if(max_nb_obj_per_image > 0 && (1+max_nb_obj_per_image*(7+nb_param+diff_flag)) != net->output_dim)
 	{
@@ -1568,6 +1568,7 @@ void free_yolo_params(network *net)
 	free(y_param->fit_parts);
 	
 	free(y_param);
+	net->y_param = NULL;
 }
 
 

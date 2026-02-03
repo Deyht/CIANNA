@@ -543,6 +543,7 @@ void conv_load(network *net, FILE *f, int f_bin, int skip_layer)
 	char display_class_type[60];
 	layer *previous;
 	yolo_param* y_param = NULL;
+	const char *IoU_type_char = "empty", *prior_dist_type_char = "empty", *error_type = "empty";
 	
 	if(!skip_layer)
 		printf("Loading conv layer, L:%d\n", net->nb_layers+1);
@@ -593,49 +594,65 @@ void conv_load(network *net, FILE *f, int f_bin, int skip_layer)
 		}
 	}
 	
-	if(strncmp(activ_type, "YOLO", 4) == 0 && net->y_param->no_override != 1)
+	if(strncmp(activ_type, "YOLO", 4) == 0)
 	{
-		y_param = (yolo_param*)net->y_param;
-		y_param->nb_box = nb_box;
-		y_param->nb_class = nb_class;
-		y_param->nb_param = nb_param;
-		y_param->fit_dim = fit_dim;
-		y_param->class_softmax = class_softmax;
+		if(net->y_param == NULL)
+		{
+			printf(" WARNING: Loading a YOLO layer with no prior call to the set_yolo_params function.\n");
+			printf(" Loading will proceed with available parameters from the saved model (not suited for further training).\n");
+			
+			/*To compare with python_module.c*/
+			set_yolo_params(net, 0/*nb_box*/, 0/*nb_class*/, 0/*nb_param*/, /*max_nb_obj_per_image*/0, 
+				IoU_type_char, prior_dist_type_char, NULL/*C_prior_size*/, NULL/*C_prior_noobj_prob*/, 0/*fit_dim*/, 0/*strict_box_size_association*/, 
+				0/*rand_startup*/, 0.0f/*rand_prob_best_box_assoc*/, 0.0f/*rand_prob*/, 0.0f/*min_prior_forced_scaling*/, NULL/*error_scales*/, NULL/*slopes_and_maxes*/, 
+				NULL/*param_ind_scales*/, NULL/*IoU_limits*/, NULL/*fit_parts*/, 0/*class_softmax*/, 0/*diff_flag*/, error_type, 0/*no_override*/, 0/*raw_output*/);
+			
+		}
 		
-		free(y_param->prior_size);
-		y_param->prior_size = prior_size;
-		
-		for(i = 0; i < 6; i++)
-			for(j = 0; j < 3; j++)
-				y_param->slopes_and_maxes_tab[i][j] = slopes_and_maxes[i][j];
-		
-		if(net->y_param->class_softmax == 0)
-			sprintf(display_class_type,"sigmoid-MSE");
-		else
-			sprintf(display_class_type,"softmax-CrossEntropy");
-		
-		printf(" WARNING: Overriding the following YOLO parameters from save file:\n");
-		printf(" Nboxes = %d, Nclasses = %d, Nparams = %d\n",
-		y_param->nb_box, y_param->nb_class, y_param->nb_param);
-		printf(" Classification type: %s\n", display_class_type);
-		printf(" Nb dim fitted : %d\n\n", y_param->fit_dim);
-		printf(" W priors = [");
-		for(i = 0; i < net->y_param->nb_box; i++)
-			printf("%4.4f ", net->y_param->prior_size[i*3+0]);
-		printf("]\n H priors = [");
-		for(i = 0; i < net->y_param->nb_box; i++)
-			printf("%4.4f ", net->y_param->prior_size[i*3+1]);
-		printf("]\n D priors = [");
-		for(i = 0; i < net->y_param->nb_box; i++)
-			printf("%4.4f ", net->y_param->prior_size[i*3+2]);
-		printf("]\n");
-		printf("\n Activation slopes and limits: \n   = ");
-		for(i = 0; i < 6; i++)
-			printf("[%6.2f %6.2f %6.2f]\n     ", 
-			net->y_param->slopes_and_maxes_tab[i][0],
-			net->y_param->slopes_and_maxes_tab[i][1],
-			net->y_param->slopes_and_maxes_tab[i][2]);
-		printf("\n");
+		if(net->y_param->no_override != 1)
+		{
+			y_param = (yolo_param*)net->y_param;
+			y_param->nb_box = nb_box;
+			y_param->nb_class = nb_class;
+			y_param->nb_param = nb_param;
+			y_param->fit_dim = fit_dim;
+			y_param->class_softmax = class_softmax;
+			
+			free(y_param->prior_size);
+			y_param->prior_size = prior_size;
+			
+			for(i = 0; i < 6; i++)
+				for(j = 0; j < 3; j++)
+					y_param->slopes_and_maxes_tab[i][j] = slopes_and_maxes[i][j];
+			
+			if(net->y_param->class_softmax == 0)
+				sprintf(display_class_type,"sigmoid-MSE");
+			else
+				sprintf(display_class_type,"softmax-CrossEntropy");
+			
+			printf(" WARNING: Overriding the following YOLO parameters from save file:\n");
+			printf(" Nboxes = %d, Nclasses = %d, Nparams = %d\n",
+			y_param->nb_box, y_param->nb_class, y_param->nb_param);
+			printf(" Classification type: %s\n", display_class_type);
+			printf(" Nb dim fitted : %d\n\n", y_param->fit_dim);
+			printf(" W priors = [");
+			for(i = 0; i < net->y_param->nb_box; i++)
+				printf("%4.4f ", net->y_param->prior_size[i*3+0]);
+			printf("]\n H priors = [");
+			for(i = 0; i < net->y_param->nb_box; i++)
+				printf("%4.4f ", net->y_param->prior_size[i*3+1]);
+			printf("]\n D priors = [");
+			for(i = 0; i < net->y_param->nb_box; i++)
+				printf("%4.4f ", net->y_param->prior_size[i*3+2]);
+			printf("]\n");
+			printf("\n Activation slopes and limits: \n   = ");
+			for(i = 0; i < 6; i++)
+				printf("[%6.2f %6.2f %6.2f]\n     ", 
+				net->y_param->slopes_and_maxes_tab[i][0],
+				net->y_param->slopes_and_maxes_tab[i][1],
+				net->y_param->slopes_and_maxes_tab[i][2]);
+			printf("\n");
+		}
 	}
 	else
 	{
@@ -729,7 +746,10 @@ void free_conv(layer *current)
 		}
 		else
 		#endif
-		{	
+		{
+			free(y_param->slopes_and_maxes_tab[0]);
+			free(y_param->slopes_and_maxes_tab);
+			free(y_param->prior_size);
 			free(y_param->cell_size);
 			free(y_param->IoU_monitor);
 			free(y_param->target_cell_mask);
