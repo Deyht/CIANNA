@@ -18,7 +18,6 @@
 	limitations under the License.
 */
 
-
 #define NPY_NO_DEPRECATED_API 0
 
 #define PY_SSIZE_T_CLEAN
@@ -892,7 +891,7 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 			fit_parts[i] = *(int *)(py_fit_parts->data + i*py_fit_parts->strides[0]);
 	}
 	
-	return PyLong_FromLong(set_yolo_params(networks[network_id], nb_box, nb_class, nb_param, max_nb_obj_per_image, 
+	return PyLong_FromLong(set_yolo_config(networks[network_id], nb_box, nb_class, nb_param, max_nb_obj_per_image, 
 		IoU_type_char, prior_dist_type_char, C_prior_size, C_prior_noobj_prob, fit_dim, strict_box_size_association, 
 		rand_startup, rand_prob_best_box_assoc, rand_prob, min_prior_forced_scaling, error_scales, slopes_and_maxes, 
 		param_ind_scales, IoU_limits, fit_parts, class_softmax, diff_flag, error_type, no_override, raw_output));

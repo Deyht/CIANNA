@@ -40,8 +40,9 @@ if(os.environ.get('USE_OPENMP') != None):
 setup(name = 'CIANNA', 
 	version = '1.0.1.1', 
 	ext_modules = [Extension('CIANNA', ['python_module.c'], 
-	extra_objects=['conv_layer.o', 'dense_layer.o', 'pool_layer.o', 'norm_layer.o', 'lrn_layer.o', 'activ_functions.o', 'initializers.o', 'vars.o', 'auxil.o', 'naiv/naiv_dense_layer.o', 'naiv/naiv_conv_layer.o', 'naiv/naiv_pool_layer.o', 'naiv/naiv_norm_layer.o'] + cuda_obj + blas_obj,
+	extra_objects=['conv_layer.o', 'dense_layer.o', 'pool_layer.o', 'norm_layer.o', 'lrn_layer.o', 'activ_functions.o', 'weights_initializers.o', 'vars.o', 'auxil.o','network.o','dataset.o', 'naiv/naiv_dense_layer.o', 'naiv/naiv_conv_layer.o', 'naiv/naiv_pool_layer.o', 'naiv/naiv_norm_layer.o'] + cuda_obj + blas_obj,
 	include_dirs= cuda_include + blas_include + [numpy.get_include()],
-	extra_link_args=['-O3 -std=c99 --disable-gil'] + cuda_extra + blas_extra + open_mp_extra,
+	extra_compile_args=['-O3', '-std=c99'],
+	extra_link_args = cuda_extra + blas_extra + open_mp_extra,
 	define_macros=[('MAX_LAYERS_NB', '400'), ('MAX_NETWORKS_NB','10')] + cuda_macro + blas_macro)])
 

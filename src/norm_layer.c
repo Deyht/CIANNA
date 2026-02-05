@@ -67,11 +67,11 @@ void norm_define_activation_param(layer *current, const char *activ)
 	switch(current->activation_type)
 	{
 		case RELU:
-			set_relu_activ(current, size, dim, biased_dim, offset, activ);
+			set_relu_param(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case LOGISTIC:
-			set_logistic_activ(current, size, dim, biased_dim, offset, activ);
+			set_logistic_param(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case SOFTMAX:
@@ -86,7 +86,7 @@ void norm_define_activation_param(layer *current, const char *activ)
 			
 		case LINEAR:
 		default:
-			set_linear_activ(current, size, dim, biased_dim, offset);
+			set_linear_param(current, size, dim, biased_dim, offset);
 			break;
 	}
 }
@@ -192,7 +192,7 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 			break;
 	}
 	
-	load_activ_param(current, activation);
+	load_activation_type(current, activation);
 	
 	if(n_param->group_size > n_param->n_dim)
 	{
@@ -289,7 +289,7 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	}
 	
 	char activ[40];
-	print_string_activ_param(current, activ);
+	fill_string_activ_param(current, activ,0);
 	
 	printf("      Group size: %d, Nb. groups: %d, Set-off: %d\n\
       Activation: %s\n\

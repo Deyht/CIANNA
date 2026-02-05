@@ -53,24 +53,24 @@ void conv_define_activation_param(layer *current, const char *activ)
 	switch(current->activation_type)
 	{
 		case RELU:
-			set_relu_activ(current, size, dim, biased_dim, offset, activ);
+			set_relu_param(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case LOGISTIC:
-			set_logistic_activ(current, size, dim, biased_dim, offset, activ);
+			set_logistic_param(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case SOFTMAX:
-			set_softmax_activ(current, size, dim, biased_dim, offset);
+			set_softmax_param(current, size, dim, biased_dim, offset);
 			break;
 			
 		case YOLO:
-			set_yolo_activ(current);
+			set_yolo_param(current);
 			break;
 			
 		case LINEAR:
 		default:
-			set_linear_activ(current, size, dim, biased_dim, offset);
+			set_linear_param(current, size, dim, biased_dim, offset);
 			break;
 	}
 }
@@ -101,7 +101,7 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 	
 	//define the parameters values
 	current->type = CONV;
-	load_activ_param(current, activation);
+	load_activation_type(current, activation);
 	
 	current->frozen = 0;
 	c_param->nb_area = (int*) calloc(3, sizeof(int));
@@ -365,7 +365,7 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 	}
 	
 	char activ[40];
-	print_string_activ_param(current, activ);
+	fill_string_activ_param(current, activ,0);
 	printf("      Input: %dx%dx%dx%d, Filters: %df %dx%dx%dx%d, Output: %dx%dx%dx%d \n\
       Stride: %d:%d:%d, padding: %d:%d:%d, int_padding: %d:%d:%d,  \n\
       Activation: %s, Bias: %0.2f, dropout rate: %0.2f\n\
@@ -598,11 +598,11 @@ void conv_load(network *net, FILE *f, int f_bin, int skip_layer)
 	{
 		if(net->y_param == NULL)
 		{
-			printf(" WARNING: Loading a YOLO layer with no prior call to the set_yolo_params function.\n");
+			printf(" WARNING: Loading a YOLO layer with no prior call to the set_yolo_config function.\n");
 			printf(" Loading will proceed with available parameters from the saved model (not suited for further training).\n");
 			
 			/*To compare with python_module.c*/
-			set_yolo_params(net, 0/*nb_box*/, 0/*nb_class*/, 0/*nb_param*/, /*max_nb_obj_per_image*/0, 
+			set_yolo_config(net, 0/*nb_box*/, 0/*nb_class*/, 0/*nb_param*/, /*max_nb_obj_per_image*/0, 
 				IoU_type_char, prior_dist_type_char, NULL/*C_prior_size*/, NULL/*C_prior_noobj_prob*/, 0/*fit_dim*/, 0/*strict_box_size_association*/, 
 				0/*rand_startup*/, 0.0f/*rand_prob_best_box_assoc*/, 0.0f/*rand_prob*/, 0.0f/*min_prior_forced_scaling*/, NULL/*error_scales*/, NULL/*slopes_and_maxes*/, 
 				NULL/*param_ind_scales*/, NULL/*IoU_limits*/, NULL/*fit_parts*/, 0/*class_softmax*/, 0/*diff_flag*/, error_type, 0/*no_override*/, 0/*raw_output*/);
@@ -758,7 +758,7 @@ void free_conv(layer *current)
 			free(y_param->box_locked);
 			free(y_param->box_in_pix);
 		}
-		//Global YOLO parameters attached to net (from set_yolo_params) are freed by a specific destructor
+		//Global YOLO parameters attached to net (from set_yolo_config) are freed by a specific destructor
 	}
 	
 	free(current->activ_param);

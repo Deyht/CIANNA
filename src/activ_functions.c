@@ -29,13 +29,13 @@ void linear_deriv(layer *previous);
 void linear_deriv_output_error(layer* current);
 void linear_output_error(layer* current);
 
-void print_relu_activ_param(layer *current, char *activ);
+void fill_string_relu_activ_param(layer *current, char *activ);
 void ReLU_activation(layer *current);
 void ReLU_deriv(layer *previous);
 void ReLU_deriv_output_error(layer* current);
 void ReLU_output_error(layer* current);
 
-void print_logistic_activ_param(layer *current, char *activ);
+void fill_string_logistic_activ_param(layer *current, char *activ);
 void logistic_activation(layer *current);
 void logistic_deriv(layer *previous);
 void logistic_deriv_output_error(layer* current);
@@ -205,12 +205,15 @@ void output_error(layer* current)
 }
 
 
-void print_string_activ_param(layer *current, char* activ)
+void fill_string_activ_param(layer *current, char* activ, int no_param)
 {
 	switch(current->activation_type)
 	{
 		case LOGISTIC:
-			print_logistic_activ_param(current, activ);
+			if(no_param)
+				sprintf(activ,"LOGI");
+			else
+				fill_string_logistic_activ_param(current, activ);
 			break;
 		case SOFTMAX:
 			sprintf(activ,"SMAX");
@@ -219,7 +222,10 @@ void print_string_activ_param(layer *current, char* activ)
 			sprintf(activ,"YOLO");
 			break;
 		case RELU:
-			print_relu_activ_param(current, activ);
+			if(no_param)
+				sprintf(activ,"RELU");
+			else
+				fill_string_relu_activ_param(current, activ);
 			break;
 		case LINEAR:
 		default:
@@ -227,37 +233,12 @@ void print_string_activ_param(layer *current, char* activ)
 			break;
 	}
 }
-
-
-void print_string_activ(layer *current, char* activ)
-{
-	switch(current->activation_type)
-	{
-		case LOGISTIC:
-			sprintf(activ,"LOGI");
-			break;
-		case SOFTMAX:
-			sprintf(activ,"SMAX");
-			break;
-		case YOLO:
-			sprintf(activ,"YOLO");
-			break;
-		case RELU:
-			sprintf(activ,"RELU");
-			break;
-		case LINEAR:
-		default:
-			sprintf(activ,"LIN");
-			break;
-	}
-}
-
 
 void print_activ_param(FILE *f, layer *current, int f_bin)
 {
 	char temp_string[40];
 
-	print_string_activ_param(current, temp_string);
+	fill_string_activ_param(current, temp_string, 0);
 	
 	if(f_bin)
 		fwrite(temp_string, sizeof(char), 40, f);
@@ -266,7 +247,7 @@ void print_activ_param(FILE *f, layer *current, int f_bin)
 }
 
 
-void load_activ_param(layer *current, const char *activ)
+void load_activation_type(layer *current, const char *activ)
 {
 	if(activ == NULL)
 	{
@@ -293,7 +274,7 @@ void load_activ_param(layer *current, const char *activ)
 //		 Linear activation related functions
 //#####################################################
 
-void set_linear_activ(layer *current, int size, int dim, int biased_dim, int offset)
+void set_linear_param(layer *current, int size, int dim, int biased_dim, int offset)
 {
 	current->activ_param = (linear_param*) malloc(sizeof(linear_param));
 	linear_param *param = (linear_param*)current->activ_param;	
@@ -388,7 +369,7 @@ void linear_output_error(layer *current)
 //		 ReLU activation related functions
 //#####################################################
 
-void set_relu_activ(layer *current, int size, int dim, int biased_dim, int offset, const char *activ)
+void set_relu_param(layer *current, int size, int dim, int biased_dim, int offset, const char *activ)
 {
 	char *temp = NULL;
 
@@ -413,7 +394,7 @@ void set_relu_activ(layer *current, int size, int dim, int biased_dim, int offse
 }
 
 
-void print_relu_activ_param(layer *current, char *activ)
+void fill_string_relu_activ_param(layer *current, char *activ)
 {
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	sprintf(activ,"RELU_S%0.2f_L%0.2f", param->saturation, param->leaking_factor);
@@ -627,7 +608,7 @@ void quadratic_output_error(void *output_error, void *output, void *target, int 
 //#####################################################
 
 
-void set_logistic_activ(layer *current, int size, int dim, int biased_dim, int offset, const char *activ)
+void set_logistic_param(layer *current, int size, int dim, int biased_dim, int offset, const char *activ)
 {
 	char *temp = NULL;
 
@@ -652,7 +633,7 @@ void set_logistic_activ(layer *current, int size, int dim, int biased_dim, int o
 }
 
 
-void print_logistic_activ_param(layer *current, char *activ)
+void fill_string_logistic_activ_param(layer *current, char *activ)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
 	sprintf(activ,"LOGI_S%0.2f_B%0.2f", param->saturation, param->beta);
@@ -768,7 +749,7 @@ void logistic_output_error(layer* current)
 //#####################################################
 
 
-void set_softmax_activ(layer *current, int size, int dim, int biased_dim, int offset)
+void set_softmax_param(layer *current, int size, int dim, int biased_dim, int offset)
 {
 	current->activ_param = (softmax_param*) malloc(sizeof(softmax_param));
 	softmax_param *param = (softmax_param*)current->activ_param;	
@@ -1019,7 +1000,7 @@ void softmax_output_error(layer *current)
 //		 YOLO activation related functions
 //#####################################################
 
-void set_yolo_activ(layer *current)
+void set_yolo_param(layer *current)
 {
 	int i, j;
 	float* temp = NULL;
@@ -1183,7 +1164,7 @@ float DIoU2_fct(float* output, float* target)
 }
 
 
-int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, const char *IoU_type_char, 
+int set_yolo_config(network *net, size_t nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, const char *IoU_type_char, 
 	const char *prior_dist_type_char, float *prior_size, float *yolo_noobj_prob_prior, int fit_dim, 
 	int strict_box_size, int rand_startup, float rand_prob_best_box_assoc, float rand_prob, float min_prior_forced_scaling, float *scale_tab, 
 	float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts, int class_softmax, 
@@ -1577,7 +1558,7 @@ void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_par
 	float* tab = (float*) i_tab;
 	
 	int nb_class = y_param.nb_class, nb_param = y_param.nb_param;
-	/*Default values are in activ_function.c (set_yolo_params)*/
+	/*Default values are in activ_function.c (set_yolo_config)*/
 	float **sm_tab = y_param.slopes_and_maxes_tab;
 	int fit_dim = y_param.fit_dim;	
 	size_t i, col, in_col;

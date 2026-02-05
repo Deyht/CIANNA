@@ -60,7 +60,6 @@
 #endif
 
 static const double two_pi = 2.0*3.14159265358979323846;
-
 #endif //DEFS_H
 
 

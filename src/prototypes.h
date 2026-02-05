@@ -43,49 +43,58 @@ extern int verbose;
 //auxil.c
 void init_timing(struct timeval* tstart);
 float ellapsed_time(struct timeval tstart);
-void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, const char* compute_method_string, int u_dynamic_load, 
-	const char* cuda_TC_string, int inference_only, int no_logo, int adv_size);
-void free_network(network *net);
-Dataset create_dataset(network *net, int nb_elem);
-void free_dataset(Dataset *data);
 float clip(float n, float lower, float upper);
 void print_table(float* tab, int column_size, int nb_column);
-void write_formated_dataset(network *net, const char *filename, Dataset *data, int input_data_type, int output_data_type);
-Dataset load_formated_dataset(network *net, const char *filename, int input_data_type, int output_data_type);
-void set_normalize_dataset_parameters(network *net, float *offset_input, float *norm_input, int dim_size_input, float *offset_output, float *norm_output, int dim_size_output);
-void normalize_dataset(network *net, Dataset c_data);
-void update_weights(void *weights, void* update, float weight_decay, int is_pivot, int size);
 void perf_eval_display(network *net);
 void print_architecture_tex(network *net, const char *path, const char *file_name,
 	int l_size, int l_in_size, int l_f_size, int l_out_size, int l_stride, int l_padding, 
 	int l_in_padding, int l_activation, int l_bias, int l_dropout, int l_param_count);
+void eval_init(network *net);
+void epoch_eval_in(network *net);
+void batch_eval_in(network *net);
+void perf_eval_in(network *net);
+float epoch_eval_out(network *net);
+float batch_eval_out(network *net);
+void perf_eval_out(network *net, int layer_id, float *vect, int *n_vect);
+void sig_handler(int signo);
+void print_iter_advance(network *net, int c_batch, int nb_batch, float loss, float c_perf, int is_training);
+int conv_argmax(float *tab, int offset, int size);
+int argmax(float *tab, int size);
+
+//dataset.c
+Dataset create_dataset(network *net, int nb_elem);
+void free_dataset(Dataset *data);
+void normalize_dataset(network *net, Dataset c_data);
+void host_only_shuffle(network *net, Dataset data);
+
+//network.c
+void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, const char* compute_method_string, int u_dynamic_load, 
+	const char* cuda_TC_string, int inference_only, int no_logo, int adv_size);
+void forward_testset(network *net, int saving, int repeat, int drop_mode, int silent);
+void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
+	float u_decay, float u_weight_decay, int show_confmat, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor, int silent);
 void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat, int silent);
 void save_network(network *net, const char *filename, int f_bin);
 void load_network(network *net, const char *filename, int iter, int nb_layers, int nb_skip_layers, int f_bin);
 void set_frozen_layers(network *net, int* tab, int dim);
-void train_network(network* net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, float u_momentum, 
-	float u_decay, float u_weight_decay, int show_confmat, int save_net, int save_bin, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor, int silent);
-void forward_testset(network *net, int saving, int repeat, int drop_mode, int silent);
+void update_weights(void *weights, void* update, float weight_decay, int is_pivot, int size);
+void free_network(network *net);
 
-
-//activations.c
+//activ_functions.c
 void define_activation(layer *current);
 void output_error(layer* current);
 void output_deriv_error(layer* current);
 void print_activ_param(FILE *f, layer *current, int f_bin);
-void print_norm_param(FILE *f, layer *current, int f_bin);
-void print_string_activ_param(layer *current, char* activ);
-void print_string_activ(layer *current, char* activ);
-void print_string_norm_param(layer *current, char* norm);
-void load_activ_param(layer *current, const char *activ);
+void fill_string_activ_param(layer *current, char* activ, int no_param);
+void load_activation_type(layer *current, const char *activ);
 void load_norm_param(layer *current, const char *norm);
 
-void set_linear_activ(layer *current, int size, int dim, int biased_dim, int offset);
-void set_relu_activ(layer *current, int size, int dim, int biased_dim, int offset, const char *activ);
-void set_logistic_activ(layer *current, int size, int dim, int biased_dim, int offset, const char *activ);
-void set_softmax_activ(layer *current, int size, int dim, int biased_dim, int offset);
-void set_yolo_activ(layer *current);
-int set_yolo_params(network *net, size_t nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, const char *IoU_type_char, 
+void set_linear_param(layer *current, int size, int dim, int biased_dim, int offset);
+void set_relu_param(layer *current, int size, int dim, int biased_dim, int offset, const char *activ);
+void set_logistic_param(layer *current, int size, int dim, int biased_dim, int offset, const char *activ);
+void set_softmax_param(layer *current, int size, int dim, int biased_dim, int offset);
+void set_yolo_param(layer *current);
+int set_yolo_config(network *net, size_t nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, const char *IoU_type_char, 
 	const char *prior_dist_type_char, float *prior_size, float *yolo_noobj_prob_prior, int fit_dim, 
 	int strict_box_size, int rand_startup, float rand_prob_best_box_assoc, float rand_prob, float min_prior_forced_scaling, float *scale_tab, 
 	float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts, int class_softmax, 
@@ -132,7 +141,7 @@ void lrn_load(network *net, FILE *f, int f_bin, int skip_layer);
 void get_lrn_output_dim(layer *current, int *dim);
 void free_lrn(layer *current);
 
-//initializers.c
+//weights_initializers.c
 int get_init_type(const char *s_init);
 double random_uniform(void);
 double random_normal(void);

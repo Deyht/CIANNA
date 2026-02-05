@@ -112,12 +112,12 @@ cd ..
 
 #compiling all the program
 $gcc_compile_dir $compile_opt -std=c99 -c \
-defs.h prototypes.h structs.h main.c conv_layer.c dense_layer.c pool_layer.c norm_layer.c lrn_layer.c activ_functions.c initializers.c vars.c auxil.c -lm $arg $defines_variables
+defs.h prototypes.h structs.h main.c conv_layer.c dense_layer.c pool_layer.c norm_layer.c lrn_layer.c activ_functions.c weights_initializers.c vars.c auxil.c dataset.c network.c -lm $arg $defines_variables
 echo "#####  End of main program compilation  #####"
 
 #linking the main program (with cuda if needed)
 $gcc_compile_dir $compile_opt -std=c99 -o \
-../main main.o $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o norm_layer.o lrn_layer.o activ_functions.o initializers.o vars.o auxil.o naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o naiv/naiv_norm_layer.o -lm $arg $defines_variables
+../main main.o $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o norm_layer.o lrn_layer.o activ_functions.o weights_initializers.o vars.o auxil.o dataset.o network.o naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o naiv/naiv_norm_layer.o -lm $arg $defines_variables
 echo "#####  End of link edition and executable creation  #####"
 
 

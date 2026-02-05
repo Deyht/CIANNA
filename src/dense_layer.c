@@ -42,15 +42,15 @@ void dense_define_activation_param(layer *current, const char* activ)
 	switch(current->activation_type)
 	{
 		case RELU:
-			set_relu_activ(current, size, dim, biased_dim, offset, activ);
+			set_relu_param(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case LOGISTIC:
-			set_logistic_activ(current, size, dim, biased_dim, offset, activ);
+			set_logistic_param(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case SOFTMAX:
-			set_softmax_activ(current, size, dim, biased_dim, offset);
+			set_softmax_param(current, size, dim, biased_dim, offset);
 			break;
 			
 		case YOLO:
@@ -60,7 +60,7 @@ void dense_define_activation_param(layer *current, const char* activ)
 			
 		case LINEAR:
 		default:
-			set_linear_activ(current, size, dim, biased_dim, 1);
+			set_linear_param(current, size, dim, biased_dim, 1);
 			break;
 	}
 }
@@ -89,7 +89,7 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	d_param = (dense_param*) malloc(sizeof(dense_param));
 	
 	current->type = DENSE;
-	load_activ_param(current, activation);
+	load_activation_type(current, activation);
 	
 	current->frozen = 0;
 	d_param->nb_neurons = nb_neurons;
@@ -297,7 +297,7 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	}
 	
 	char activ[40];
-	print_string_activ_param(current, activ);
+	fill_string_activ_param(current, activ,0);
 	printf("      Input: %d, Nb. Neurons: %d\n\
       Activation: %s, Bias: %0.2f, dropout rate: %0.2f\n\
       Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",

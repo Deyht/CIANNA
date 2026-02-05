@@ -66,11 +66,11 @@ void lrn_define_activation_param(layer *current, const char *activ)
 	switch(current->activation_type)
 	{
 		case RELU:
-			set_relu_activ(current, size, dim, biased_dim, offset, activ);
+			set_relu_param(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case LOGISTIC:
-			set_logistic_activ(current, size, dim, biased_dim, offset, activ);
+			set_logistic_param(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case SOFTMAX:
@@ -85,7 +85,7 @@ void lrn_define_activation_param(layer *current, const char *activ)
 			
 		case LINEAR:
 		default:
-			set_linear_activ(current, size, dim, biased_dim, offset);
+			set_linear_param(current, size, dim, biased_dim, offset);
 			break;
 	}
 }
@@ -155,7 +155,7 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 			break;
 	}
 	
-	load_activ_param(current, activation);
+	load_activation_type(current, activation);
 	
 	n_param->range = range;
 	n_param->k = k;
@@ -203,7 +203,7 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 	}
 	
 	char activ[40];
-	print_string_activ_param(current, activ);
+	fill_string_activ_param(current, activ,0);
 	
 	printf("      Range: %d, k: %f, Alpha: %f, Beta: %f, Activation: %s\n\
       Approx layer RAM/VRAM requirement: %d MB\n",

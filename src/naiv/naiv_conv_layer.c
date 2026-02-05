@@ -157,7 +157,7 @@ void dropout_scale_conv(void *i_table, size_t size, float drop_rate)
 }
 
 
-void forward_conv_layer(layer *current)
+void naiv_forward_conv_layer(layer *current)
 {
 	int i, j, b;
 	double h;
@@ -249,7 +249,7 @@ void forward_conv_layer(layer *current)
 	current->activation(current);
 }
 
-void backward_conv_layer(layer *current)
+void naiv_backward_conv_layer(layer *current)
 {
 	int i, j, k, b;
 	double h;
@@ -377,8 +377,8 @@ void backward_conv_layer(layer *current)
 
 void naiv_conv_define(layer *current)
 {
-	current->forward = forward_conv_layer;
-	current->backprop = backward_conv_layer;
+	current->forward = naiv_forward_conv_layer;
+	current->backprop = naiv_backward_conv_layer;
 }
 
 

@@ -86,24 +86,24 @@ void pool_define_activation_param(layer *current, const char *activ)
 	switch(current->activation_type)
 	{
 		case RELU:
-			set_relu_activ(current, size, dim, biased_dim, offset, activ);
+			set_relu_param(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case LOGISTIC:
-			set_logistic_activ(current, size, dim, biased_dim, offset, activ);
+			set_logistic_param(current, size, dim, biased_dim, offset, activ);
 			break;
 			
 		case SOFTMAX:
-			set_softmax_activ(current, size, dim, biased_dim, offset);
+			set_softmax_param(current, size, dim, biased_dim, offset);
 			break;
 			
 		case YOLO:
-			set_yolo_activ(current);
+			set_yolo_param(current);
 			break;
 			
 		case LINEAR:
 		default:
-			set_linear_activ(current, size, dim, biased_dim, offset);
+			set_linear_param(current, size, dim, biased_dim, offset);
 			break;
 	}
 }
@@ -125,7 +125,7 @@ int pool_create(network *net, layer *previous, int *pool_size, int* stride, int 
 
 	current->type = POOL;
 	//activation type not used for now but could be add for optimization
-	load_activ_param(current, activation);
+	load_activation_type(current, activation);
 	current->previous = previous;
 	current->dropout_rate = drop_rate;
 	
@@ -271,7 +271,7 @@ int pool_create(network *net, layer *previous, int *pool_size, int* stride, int 
 	char s_pool_type[10];
 	get_string_pool_type(s_pool_type, p_param->pool_type);
 	char activ[40];
-	print_string_activ_param(current, activ);
+	fill_string_activ_param(current, activ,0);
 	printf("      Input: %dx%dx%dx%d, Output: %dx%dx%dx%d\n\
       P. size: %dx%dx%d, Stride: %dx%dx%d, padding: %dx%dx%d \n\
       Pool type: %s, Global: %d, Activation: %s, dropout rate: %0.2f\n\
