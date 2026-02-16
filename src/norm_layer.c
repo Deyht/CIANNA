@@ -19,14 +19,16 @@
 */
 
 
-
 #include "prototypes.h"
 
-
-//##############################
-//       Local variables
-//##############################
+// Local variables
 static norm_param *n_param;
+
+// Public are in prototypes.h
+
+// Private prototypes
+void norm_define_activation_param(layer *current, const char *activ);
+void print_norm_type(FILE *f, layer *current, int f_bin);
 
 
 void norm_define_activation_param(layer *current, const char *activ)

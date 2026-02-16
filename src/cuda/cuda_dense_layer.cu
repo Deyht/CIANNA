@@ -1,7 +1,6 @@
 
-
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -20,13 +19,20 @@
 */
 
 
-
 #include "../prototypes.h"
 
+// Local variables
 static int cu_blocks;
 static dense_param *d_param;
 
-//public are in prototypes.h
+// Public are in "prototypes.h"
+
+// Private prototypes
+void cuda_forward_dense_layer(layer *current);
+void cuda_backward_dense_layer(layer* current);
+
+// Functions that result from templates are not listed here but at the end of the file instead
+
 
 //used to reshape output of Conv layer that has the result of filter 1 continuous for the batch
 //convert into all filters continuous for image 1, then image 2, ...

@@ -1,6 +1,6 @@
 	
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -21,14 +21,39 @@
 
 #include "../prototypes.h"
 
-
+// Local variables
 static int cu_blocks;
 
-//public are in "prototypes.h"
+// Public are in "prototypes.h"
 
-//#####################################################
-//		  Linear activation related templates
-//#####################################################
+// Private prototypes
+__device__ float gpu_IoU_fct(float *output, float *target);
+__device__ float gpu_GIoU_fct(float *output, float *target);
+__device__ float gpu_DIoU_fct(float *output, float *target);
+__device__ float gpu_DIoU2_fct(float *output, float *target);
+void cuda_linear_activation(layer *current);
+void cuda_linear_deriv(layer *previous);
+void cuda_linear_deriv_output_error(layer *current);
+void cuda_linear_output_error(layer *current);
+void cuda_ReLU_activation(layer *current);
+void cuda_ReLU_deriv(layer *previous);
+void cuda_ReLU_deriv_output_error(layer* current);
+void cuda_ReLU_output_error(layer* current);
+void cuda_logistic_activation(layer *current);
+void cuda_logistic_deriv(layer *previous);
+void cuda_logistic_deriv_output_error(layer* current);
+void cuda_logistic_output_error(layer* current);
+void cuda_softmax_activation(layer *current);
+void cuda_softmax_deriv(layer *previous);
+void cuda_softmax_deriv_output_error(layer *current);
+void cuda_softmax_output_error(layer *current);
+void cuda_YOLO_activation(layer *current);
+void cuda_YOLO_deriv(layer *previous);
+void cuda_YOLO_deriv_output_error(layer *current);
+void cuda_YOLO_output_error(layer *current);
+void cuda_YOLO_activ_init(layer *current);
+
+// Functions that result from templates are not listed here but at the end of the file instead
 
 
 //Is in fact a leaky ReLU, to obtain true ReLU set leaking_factor to 0

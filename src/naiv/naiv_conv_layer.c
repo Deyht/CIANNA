@@ -1,5 +1,4 @@
 
-
 /*
 	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
@@ -20,12 +19,16 @@
 */
 
 
-
 #include "../prototypes.h"
 
+// Local variables
 static conv_param *c_param;
 
-//public are in prototypes.h
+// Public are in "prototypes.h"
+
+// Private prototypes
+void naiv_forward_conv_layer(layer *current);
+void naiv_backward_conv_layer(layer *current);
 
 
 //One of the most important function, aims to convert an image into a table that contains all the
@@ -96,6 +99,7 @@ void im2col_fct
 	}
 }
 
+
 void rotate_filter_matrix_fct(void *i_in, void *i_out, int nb_rows, int depth_size, int nb_filters_in, int len)
 {
 	int i, x, y, depth_id;
@@ -116,6 +120,7 @@ void rotate_filter_matrix_fct(void *i_in, void *i_out, int nb_rows, int depth_si
 		}
 	}
 }
+
 
 void dropout_select_conv(float *mask, size_t size, float drop_rate)
 {
@@ -248,6 +253,7 @@ void naiv_forward_conv_layer(layer *current)
 	//Proceed to activation of the given maps regarding the activation parameter
 	current->activation(current);
 }
+
 
 void naiv_backward_conv_layer(layer *current)
 {

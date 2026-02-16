@@ -1,13 +1,16 @@
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
+
 	Licensed under the Apache License, Version 2.0 (the "License");
 	you may not use this file except in compliance with the License.
 	You may obtain a copy of the License at
+
 		http://www.apache.org/licenses/LICENSE-2.0
+
 	Unless required by applicable law or agreed to in writing, software
 	distributed under the License is distributed on an "AS IS" BASIS,
 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,14 +19,18 @@
 */
 
 
-
 #include "prototypes.h"
 
-
-//##############################
-//       Local variables
-//##############################
+// Local variables
 static pool_param *p_param;
+
+// Public are in prototypes.h
+
+// Private prototypes
+void print_pool_type(FILE *f, int type, int f_bin);
+void get_string_pool_type(char* str, int type);
+int load_pool_type(const char *type);
+void pool_define_activation_param(layer *current, const char *activ);
 
 
 void print_pool_type(FILE *f, int type, int f_bin)

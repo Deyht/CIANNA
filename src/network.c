@@ -1,3 +1,4 @@
+
 /*
 	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
@@ -17,11 +18,15 @@
 	limitations under the License.
 */
 
+
 #include "prototypes.h"
-//############################ private prototypes ############################
+
+// Public are in "prototypes.h"
+
+// Private prototypes
 void free_layer(layer *current);
 void get_layer_output_dim(layer *current, int *dim);
-//############################################################################
+
 
 void init_network(int network_number, int u_input_dim[4], int u_output_dim, float in_bias, int u_batch_size, 
 	const char* compute_method_string, int u_dynamic_load, const char* cuda_TC_string, int inference_only, int no_logo, int adv_size)

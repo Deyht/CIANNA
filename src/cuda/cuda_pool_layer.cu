@@ -1,7 +1,6 @@
 
-
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -20,13 +19,20 @@
 */
 
 
-
 #include "../prototypes.h"
 
+// Local variables
 static int cu_blocks;
 static pool_param *p_param;
 
-//public are in prototypes.h
+// Public are in "prototypes.h"
+
+// Private prototypes
+void cuda_forward_pool_layer(layer *current);
+void cuda_backward_pool_layer(layer* current);
+
+// Functions that result from templates are not listed here but at the end of the file instead
+
 
 #define max_pooling_kernel(name, type)																											\
 __global__ void max_pooling_kernel_##name																										\

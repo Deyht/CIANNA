@@ -21,13 +21,14 @@
 
 #include "prototypes.h"
 
-
-//##############################
-//       Local variables
-//##############################
+// Local variables
 static dense_param *d_param;
 
-//public are in "prototypes.h"
+// Public are in "prototypes.h"
+
+// Private prototypes
+void dense_define_activation_param(layer *current, const char* activ);
+
 
 void dense_define_activation_param(layer *current, const char* activ)
 {

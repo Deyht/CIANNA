@@ -1,3 +1,4 @@
+
 /*
 	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
@@ -20,10 +21,12 @@
 
 #include "prototypes.h"
 
-//############################ private prototypes ############################
+// Public are in "prototypes.h"
+
+// Private prototypes
 Dataset create_dataset_host(network *net, int nb_elem);
 void copy_to_host(float* in_tab, void* out_tab, int out_offset, size_t size);
-//############################################################################
+
 
 Dataset create_dataset(network *net, int nb_elem)
 {

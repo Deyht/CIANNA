@@ -21,12 +21,14 @@
 
 #include "prototypes.h"
 
-//##############################
-//       Local variables
-//##############################
+// Local variables
 static conv_param *c_param;
 
-//public are in prototypes.h
+// Public are in prototypes.h
+
+// Private prototypes
+void conv_define_activation_param(layer *current, const char *activ);
+
 
 //compute the number of area to convolve regarding the filters parameters
 int nb_area_comp(int size, int f_size, int padding, int int_padding, int stride)

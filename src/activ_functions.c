@@ -21,56 +21,60 @@
 
 #include "prototypes.h"
 
-//public are in "prototypes.h"
+// Public are in "prototypes.h"
 
-//private prototypes
+// Private prototypes
+void deriv_output_error(layer *current);
+void output_error_fct(layer *current);
+
 void linear_activation(layer *current);
 void linear_deriv(layer *previous);
-void linear_deriv_output_error(layer* current);
-void linear_output_error(layer* current);
+void linear_deriv_output_error(layer *current);
+void linear_output_error(layer *current);
 
 void fill_string_relu_activ_param(layer *current, char *activ);
 void ReLU_activation(layer *current);
 void ReLU_deriv(layer *previous);
-void ReLU_deriv_output_error(layer* current);
-void ReLU_output_error(layer* current);
+void ReLU_deriv_output_error(layer *current);
+void ReLU_output_error(layer *current);
 
 void fill_string_logistic_activ_param(layer *current, char *activ);
 void logistic_activation(layer *current);
 void logistic_deriv(layer *previous);
-void logistic_deriv_output_error(layer* current);
-void logistic_output_error(layer* current);
+void logistic_deriv_output_error(layer *current);
+void logistic_output_error(layer *current);
 
 void softmax_activation(layer *current);
 void softmax_deriv(layer *previous);
 void softmax_deriv_output_error(layer *current);
 void softmax_output_error(layer *current);
 
+float IoU_fct(float *output, float *target);
+float GIoU_fct(float *output, float *target);
+float DIoU_fct(float *output, float *target);
+float DIoU2_fct(float *output, float *target);
+
 void YOLO_activation(layer *current);
 void YOLO_deriv(layer *previous);
 void YOLO_deriv_output_error(layer *current);
 void YOLO_output_error(layer *current);
 
-void ReLU_activation_fct(void *tab, int dim, int biased_dim, int offset, 
-	float saturation, float leaking_factor, int length, size_t size);
-void ReLU_deriv_fct(void *deriv, void *value, int dim, int biased_dim,	int offset,	
-	 float saturation, float leaking_factor, int length, size_t size);
-void quadratic_deriv_output_error(void *delta_o, void *output, void *target, int dim, 
-	int biased_dim, int offset, int length, size_t size);
-void quadratic_output_error(void *output_error, void *output, void *target, int dim, 
-	int biased_dim, int offset, int length, size_t size);
-void logistic_activation_fct(void *tab, float beta, float saturation, int dim,
-	int biased_dim, int offset, int length, size_t size);
-void logistic_deriv_fct(void *deriv, void* value, float beta, int dim,
-	int biased_dim, int offset, int length, size_t size);
-void softmax_activation_fct(void *tab, int dim, int biased_dim,
-	int offset, int length, int batch_size, size_t size);
-void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, 
-	int dim, int biased_dim, int offset, int length, size_t size);
-void cross_entropy_output_error(void *output_error, void *output, void *target, 
-	int dim, int biased_dim, int offset, int length, size_t size);
-
-//#####################################################
+void linear_activation_fct(void *tab, int dim, int biased_dim, int offset, int length, size_t size);
+void linear_deriv_fct(void *deriv, int dim, int biased_dim, int offset, int length, size_t size);
+void ReLU_activation_fct(void *tab, int dim, int biased_dim, int offset, float saturation, float leaking_factor, int length, size_t size);
+void ReLU_deriv_fct(void *deriv, void *value, int dim, int biased_dim,	int offset, float saturation, float leaking_factor, int length, size_t size);
+void quadratic_deriv_output_error(void *delta_o, void *output, void *target, int dim, int biased_dim, int offset, int length, size_t size);
+void quadratic_output_error(void *output_error, void *output, void *target, int dim, int biased_dim, int offset, int length, size_t size);
+void logistic_activation_fct(void *tab, float beta, float saturation, int dim, int biased_dim, int offset, int length, size_t size);
+void logistic_deriv_fct(void *deriv, void *value, float beta, int dim, int biased_dim, int offset, int length, size_t size);
+void softmax_activation_fct(void *tab, int dim, int biased_dim, int offset, int length, int batch_size, size_t size);
+void cross_entropy_deriv_output_error(void *delta_o, void *output, void *target, int dim, int biased_dim, int offset, int length, size_t size);
+void cross_entropy_output_error(void *output_error, void *output, void *target, int dim, int biased_dim, int offset, int length, size_t size);
+void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_param, size_t size, int class_softmax);
+void YOLO_deriv_error_fct(void *i_delta_o, void *i_output, void *i_target, int flat_target_size, int flat_output_size,
+	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, int size, int nb_im_iter);
+void YOLO_error_fct(float *i_output_error, void *i_output, void *i_target, int flat_target_size, int flat_output_size,
+	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, int size);
 
 
 void define_activation(layer *current)
@@ -136,7 +140,7 @@ void deriv_output_error(layer *current)
 }
 
 
-void output_error_fct(layer* current)
+void output_error_fct(layer *current)
 {
 	switch(current->activation_type)
 	{
@@ -164,7 +168,26 @@ void output_error_fct(layer* current)
 }
 
 
-void output_deriv_error(layer* current)
+void output_error(layer *current)
+{
+	switch(current->c_network->compute_method)
+	{
+		case C_CUDA:
+			#ifdef CUDA
+			cuda_output_error_fct(current);
+			#endif
+			break;
+		
+		case C_NAIV:
+		case C_BLAS:
+		default:
+			output_error_fct(current);
+			break;
+	}	
+}
+
+
+void output_deriv_error(layer *current)
 {
 	switch(current->c_network->compute_method)
 	{
@@ -186,26 +209,7 @@ void output_deriv_error(layer* current)
 }
 
 
-void output_error(layer* current)
-{
-	switch(current->c_network->compute_method)
-	{
-		case C_CUDA:
-			#ifdef CUDA
-			cuda_output_error_fct(current);
-			#endif
-			break;
-		
-		case C_NAIV:
-		case C_BLAS:
-		default:
-			output_error_fct(current);
-			break;
-	}	
-}
-
-
-void fill_string_activ_param(layer *current, char* activ, int no_param)
+void fill_string_activ_param(layer *current, char *activ, int no_param)
 {
 	switch(current->activation_type)
 	{
@@ -233,6 +237,7 @@ void fill_string_activ_param(layer *current, char* activ, int no_param)
 			break;
 	}
 }
+
 
 void print_activ_param(FILE *f, layer *current, int f_bin)
 {
@@ -493,7 +498,7 @@ void ReLU_deriv(layer *previous)
 }
 
 
-void ReLU_deriv_output_error(layer* current)
+void ReLU_deriv_output_error(layer *current)
 {
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	
@@ -504,7 +509,7 @@ void ReLU_deriv_output_error(layer* current)
 }
 
 
-void ReLU_output_error(layer* current)
+void ReLU_output_error(layer *current)
 {
 	ReLU_param *param = (ReLU_param*)current->activ_param;
 	
@@ -694,7 +699,7 @@ void logistic_deriv(layer *previous)
 }
 
 
-void logistic_deriv_fct(void *deriv, void* value, float beta, int dim,
+void logistic_deriv_fct(void *deriv, void *value, float beta, int dim,
 	int biased_dim, int offset, int length, size_t size)
 {
 	size_t i;
@@ -723,7 +728,7 @@ void logistic_deriv_fct(void *deriv, void* value, float beta, int dim,
 }
 
 
-void logistic_deriv_output_error(layer* current)
+void logistic_deriv_output_error(layer *current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
 	quadratic_deriv_output_error(current->delta_o, current->output, current->c_network->target, param->dim, 
@@ -733,7 +738,7 @@ void logistic_deriv_output_error(layer* current)
 }
 
 
-void logistic_output_error(layer* current)
+void logistic_output_error(layer *current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
 	quadratic_output_error(current->c_network->output_error, current->output, current->c_network->target,
@@ -1003,7 +1008,7 @@ void softmax_output_error(layer *current)
 void set_yolo_param(layer *current)
 {
 	int i, j;
-	float* temp = NULL;
+	float *temp = NULL;
 	
 	current->activ_param = (yolo_param*) malloc(sizeof(yolo_param));
 	yolo_param *param = (yolo_param*)current->activ_param;
@@ -1070,7 +1075,7 @@ void set_yolo_param(layer *current)
 }
 
 
-float IoU_fct(float* output, float* target)
+float IoU_fct(float *output, float *target)
 {
 	float inter_w, inter_h, inter_d, inter_3d, uni_3d;
 	
@@ -1087,7 +1092,7 @@ float IoU_fct(float* output, float* target)
 }
 
 
-float GIoU_fct(float* output, float* target)
+float GIoU_fct(float *output, float *target)
 {
 	float inter_w, inter_h, inter_d, inter_3d, uni_3d, enclose_3d, enclose_w, enclose_h, enclose_d;
 	
@@ -1109,7 +1114,7 @@ float GIoU_fct(float* output, float* target)
 
 
 //order: xmin, ymin, zmin, xmax, ymax, zmax
-float DIoU_fct(float* output, float* target)
+float DIoU_fct(float *output, float *target)
 {
 	float inter_w, inter_h, inter_d, inter_3d, uni_3d, enclose_w, enclose_h, enclose_d;
 	float cx_a, cx_b, cy_a, cy_b, cz_a, cz_b, dist_cent, diag_enclose;
@@ -1137,7 +1142,7 @@ float DIoU_fct(float* output, float* target)
 
 
 //order: xmin, ymin, zmin, xmax, ymax, zmax
-float DIoU2_fct(float* output, float* target)
+float DIoU2_fct(float *output, float *target)
 {
 	float inter_w, inter_h, inter_d, inter_3d, uni_3d, enclose_w, enclose_h, enclose_d;
 	float cx_a, cx_b, cy_a, cy_b, cz_a, cz_b, dist_cent, diag_enclose;
@@ -1168,7 +1173,7 @@ int set_yolo_config(network *net, size_t nb_box, int nb_class, int nb_param, int
 	const char *prior_dist_type_char, float *prior_size, float *yolo_noobj_prob_prior, int fit_dim, 
 	int strict_box_size, int rand_startup, float rand_prob_best_box_assoc, float rand_prob, float min_prior_forced_scaling, float *scale_tab, 
 	float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts, int class_softmax, 
-	int diff_flag, const char* error_type, int no_override, int raw_output)
+	int diff_flag, const char *error_type, int no_override, int raw_output)
 {
 	int i;
 	float *temp;
@@ -1555,7 +1560,7 @@ void free_yolo_params(network *net)
 
 void YOLO_activation_fct(void *i_tab, int flat_offset, int len, yolo_param y_param, size_t size, int class_softmax)
 {	
-	float* tab = (float*) i_tab;
+	float *tab = (float*) i_tab;
 	
 	int nb_class = y_param.nb_class, nb_param = y_param.nb_param;
 	/*Default values are in activ_function.c (set_yolo_config)*/
@@ -1680,9 +1685,9 @@ void YOLO_deriv_error_fct
 	(void *i_delta_o, void *i_output, void *i_target, int flat_target_size, int flat_output_size,
 	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, int size, int nb_im_iter)
 {
-	float* t_delta_o = (float*) i_delta_o;
-	float* t_output = (float*) i_output;
-	float* t_target = (float*) i_target;
+	float *t_delta_o = (float*) i_delta_o;
+	float *t_output = (float*) i_output;
+	float *t_target = (float*) i_target;
 
 	/* Define many "shorts" for y_param content to enhance code redeability*/
 	int nb_box                      = y_param.nb_box; 
@@ -2398,8 +2403,8 @@ void YOLO_error_fct
 	(float *i_output_error, void *i_output, void *i_target, int flat_target_size, int flat_output_size,
 	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, int size)
 {		
-	float* t_output = (float*) i_output;
-	float* t_target = (float*) i_target;
+	float *t_output = (float*) i_output;
+	float *t_target = (float*) i_target;
 	
 	/* Define many "shorts" for y_param content to enhance code redeability*/
 	int nb_box                      = y_param.nb_box;
@@ -3066,7 +3071,7 @@ void YOLO_error_fct
 }
 
 
-void YOLO_activation(layer* current)
+void YOLO_activation(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
 	conv_param *c_param = (conv_param*)current->param;
@@ -3083,7 +3088,7 @@ void YOLO_deriv(layer *previous)
 }
 
 
-void YOLO_deriv_output_error(layer* current)
+void YOLO_deriv_output_error(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
 	conv_param *c_param = (conv_param*)current->param;
@@ -3095,7 +3100,7 @@ void YOLO_deriv_output_error(layer* current)
 }
 
 
-void YOLO_output_error(layer* current)
+void YOLO_output_error(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
 	conv_param *c_param = (conv_param*)current->param;

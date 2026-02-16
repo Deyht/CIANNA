@@ -27,10 +27,6 @@
 #include "prototypes.h"
 
 
-// Structures or object related
-//############################################################
-
-
 // Network paramaremeter and data management functions
 //############################################################
 
@@ -559,7 +555,7 @@ static PyObject* py_norm(PyObject* self, PyObject *args, PyObject *kwargs)
 	return PyLong_FromLong(current_layer_id);
 }
 
-/*EXPERIMENTAL, NOT FULLY TESTED*/
+
 static PyObject* py_lrn(PyObject* self, PyObject *args, PyObject *kwargs)
 {	
 	setlocale(LC_ALL, "C");

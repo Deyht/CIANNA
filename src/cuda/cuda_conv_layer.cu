@@ -1,5 +1,4 @@
 
-
 /*
 	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
@@ -20,13 +19,19 @@
 */
 
 
-
 #include "../prototypes.h"
 
+// Local variables
 static int cu_blocks;
 static conv_param *c_param;
 
-//public are in prototypes.h
+// Public are in "prototypes.h"
+
+// Private prototypes
+void cuda_forward_conv_layer(layer *current);
+void cuda_backward_conv_layer(layer *current);
+
+// Functions that result from templates are not listed here but at the end of the file instead
 
 
 //One of the most important function, aims to convert an image into a table that contains all the

@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -20,6 +20,9 @@
 
 
 #include "prototypes.h"
+
+// Public are in prototypes.h
+
 
 int get_init_type(const char *s_init)
 {

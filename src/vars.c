@@ -21,10 +21,6 @@
 
 #include "structs.h"
 
-//USER DEFINED VARIABLES
-
-//SHARED VARIABLEs
-
 network *networks[MAX_NETWORKS_NB];
 int is_init = 0, is_cuda_init = 0;
 int output_layers_forward_results = 0;

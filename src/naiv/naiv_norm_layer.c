@@ -1,7 +1,6 @@
 
-
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -20,16 +19,26 @@
 */
 
 
-
 #include "../prototypes.h"
 
+// Local variables
 static norm_param *n_param;
 
-//public are in prototypes.h
+// Public are in "prototypes.h"
 
-//#####################################################
-//       Layer normalization related templates
-//#####################################################
+// Private prototypes
+int id_to_conv_fmt(int id, int block_id, int group_size, int nb_group, int flat_a_size, int batch_size);
+void reduce_group_mean_conv_fct(float *input, float *group_mean,
+	int group_size, int nb_group, int flat_a_size, int batch_size, int sum_div);
+void reduce_group_var_conv_fct(float *input, float *group_var, float *group_mean,
+	int group_size, int nb_group, int flat_a_size, int batch_size, int sum_div);
+void reduce_group_dgamma_conv_fct(float *input, float *delta_output, float *d_gamma,
+	float *group_var, float *group_mean, int group_size, int nb_group, int flat_a_size, int batch_size);
+void group_normalization_conv_fct(float *output, float *input, float *gamma, float *beta, float *group_mean, float *group_var,
+	int b_length, int b_size, int group_size, int nb_group, int nb_filters, int flat_a_size, int set_off);
+void group_normalization_conv_back_fct(float *input, float *delta_output, float *delta_input, float *gamma, float *beta, 
+	float *d_gamma, float * d_beta, float *group_mean, float *group_var, int b_length, int b_size, int group_size,
+	int nb_group, int nb_filters, int flat_a_size, int set_off);
 
 
 int id_to_conv_fmt(int id, int block_id, int group_size, int nb_group, int flat_a_size, int batch_size)
@@ -61,6 +70,7 @@ void reduce_group_mean_conv_fct(float *input, float *group_mean,
 		group_mean[i] = sum/(sum_div);
 	}
 }
+
 
 void reduce_group_var_conv_fct(float *input, float *group_var, float *group_mean,
 	int group_size, int nb_group, int flat_a_size, int batch_size, int sum_div)
@@ -194,6 +204,7 @@ void group_normalization_conv_back_fct(
 	}
 }
 
+
 void naiv_forward_norm_layer(layer *current)
 {
 	n_param = (norm_param*)current->param;
@@ -217,6 +228,7 @@ void naiv_forward_norm_layer(layer *current)
 			net->length, net->batch_size, n_param->group_size, n_param->nb_group, n_param->n_dim, n_param->dim_offset, n_param->set_off);
 	}
 }
+
 
 void naiv_backward_norm_layer(layer *current)
 {
@@ -265,6 +277,7 @@ void naiv_backward_norm_layer(layer *current)
 	
 	current->previous->deriv_activation(current->previous);
 }
+
 
 void naiv_norm_define(layer *current)
 {

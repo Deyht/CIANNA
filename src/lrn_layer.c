@@ -1,6 +1,6 @@
 
 /*
-	Copyright (C) 2024 David Cornu
+	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
 	Neural Networks by/for Astrophysicists (CIANNA) Code
 	(https://github.com/Deyht/CIANNA)
@@ -21,11 +21,14 @@
 
 #include "prototypes.h"
 
-
-//##############################
-//       Local variables
-//##############################
+// Local variables
 static lrn_param *n_param;
+
+// Public are in prototypes.h
+
+// Private prototypes
+void lrn_define_activation_param(layer *current, const char *activ);
+
 
 void lrn_define_activation_param(layer *current, const char *activ)
 {

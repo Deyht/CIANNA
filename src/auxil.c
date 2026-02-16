@@ -19,17 +19,20 @@
 */
 
 
-
-
 #include "prototypes.h"
 
+// Local variables
 struct timeval t_perf_eval;
 struct timeval t_batch_eval, t_epoch_eval;
+
+// Public are in "prototypes.h"
+
 
 void init_timing(struct timeval* tstart)
 {
     gettimeofday(tstart, NULL);
 }
+
 
 float ellapsed_time(struct timeval tstart)
 {
@@ -40,6 +43,7 @@ float ellapsed_time(struct timeval tstart)
     diff += (tmp.tv_sec - tstart.tv_sec)*1000000;
     return ((float)diff); //return in micro sec
 }
+
 
 void sig_handler(int signo)
 {
@@ -65,6 +69,7 @@ void print_table(float* tab, int column_size, int nb_column)
 	printf("\n");
 }
 
+
 void print_iter_advance(network *net, int c_batch, int nb_batch, float loss, float c_perf, int is_training)
 {
 	int i;
@@ -85,6 +90,7 @@ void print_iter_advance(network *net, int c_batch, int nb_batch, float loss, flo
 	printf("\e[?25h");
 }
 
+
 int argmax(float *tab, int size)
 {
 	int i;
@@ -104,6 +110,7 @@ int argmax(float *tab, int size)
 	}
 	return imax;
 }
+
 
 int conv_argmax(float *tab, int offset, int size)
 {
@@ -127,10 +134,12 @@ int conv_argmax(float *tab, int offset, int size)
 	return imax;
 }
 
+
 float clip(float n, float lower, float upper) 
 {
 	return fmax(lower, fmin(n, upper));
 }
+
 
 //Warning : the following *eval* functions are used during network training and must not be used anywhere else in the code (would lead to incorrect training metrics)
 void eval_init(network *net)
@@ -192,6 +201,7 @@ void batch_eval_in(network *net)
 	}
 }
 
+
 void epoch_eval_in(network *net)
 {
 	if(net->compute_method == C_CUDA)
@@ -205,7 +215,6 @@ void epoch_eval_in(network *net)
 		init_timing(&t_epoch_eval);
 	}
 }
-
 
 
 void perf_eval_out(network *net, int layer_id, float *vect, int *n_vect)
@@ -247,6 +256,7 @@ float batch_eval_out(network *net)
 	}
 	return time;
 }
+
 
 float epoch_eval_out(network *net)
 {

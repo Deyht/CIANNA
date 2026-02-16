@@ -1,5 +1,4 @@
 
-
 /*
 	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
@@ -20,12 +19,16 @@
 */
 
 
-
 #include "../prototypes.h"
 
+// Local variables
 static conv_param *c_param;
 
-//public are in prototypes.h
+// Public are in "prototypes.h"
+
+// Private prototypes
+void blas_forward_conv_layer(layer *current);
+void blas_backward_conv_layer(layer *current);
 
 
 void blas_forward_conv_layer(layer *current)

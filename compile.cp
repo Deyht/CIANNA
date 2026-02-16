@@ -1,7 +1,7 @@
 #!/bin/sh
-#	Copyright (C) 2020 David Cornu
+#		Copyright (C) 2026-... David Cornu
 #	for the Convolutional Interactive Artificial 
-#	Neural Network by/for Astrophysicists (CIANNA) Code
+#	Neural Networks by/for Astrophysicists (CIANNA) Code
 #	(https://github.com/Deyht/CIANNA)
 #
 #	Licensed under the Apache License, Version 2.0 (the "License");
@@ -129,6 +129,7 @@ python3 python_module_setup.py build
 echo "#####  End of Python3 interface build  #####"
 fi
 cd ..
+
 
 
 

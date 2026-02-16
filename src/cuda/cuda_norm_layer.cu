@@ -1,5 +1,4 @@
 
-
 /*
 	Copyright (C) 2026-... David Cornu
 	for the Convolutional Interactive Artificial 
@@ -20,18 +19,21 @@
 */
 
 
-
 #include "../prototypes.h"
 
+// Local variables
 static int cu_blocks;
 static norm_param *n_param;
 
-//public are in prototypes.h
+// Public are in "prototypes.h"
 
+// Private prototypes
+__device__ int cuda_id_to_conv_fmt(int id, int block_id, int group_size, int nb_group, int flat_a_size, int batch_size);
+__device__ void warpReduce(volatile float *sdata, int blockSize, unsigned int tid);
+void cuda_forward_norm_layer(layer *current);
+void cuda_backward_norm_layer(layer *current);
 
-//#####################################################
-//       Layer normalization related templates
-//#####################################################
+// Functions that result from templates are not listed here but at the end of the file instead
 
 
 __device__ int cuda_id_to_conv_fmt(int id, int block_id, int group_size, int nb_group, int flat_a_size, int batch_size)
@@ -44,6 +46,7 @@ __device__ int cuda_id_to_conv_fmt(int id, int block_id, int group_size, int nb_
 	
 	return batch_id*flat_a_size + (group_id*group_size + in_group_id)*flat_a_size*batch_size + map_pos_id;
 }
+
 
 __device__ void warpReduce(volatile float *sdata, int blockSize, unsigned int tid) 
 {
@@ -97,6 +100,7 @@ __global__ void reduce_group_mean_conv_kernel_##name(void *idata, float *group_m
 	if (tid == 0) 																																\
 		group_mean[block_id] = sdata[0]/(sum_div);																								\
 }
+
 
 #define reduce_group_var_conv_kernel(name, type) 																								\
 __global__ void reduce_group_var_conv_kernel_##name(void *idata, float *group_var, float *group_mean, 											\
@@ -176,6 +180,7 @@ __global__ void reduce_group_dgamma_conv_kernel_##name(void *idata, void *d_outp
 	if (tid == 0) 																																\
 		d_gamma[block_id] = sdata[0]*(1.0f/sqrt(group_var[block_id]+eps));																		\
 }
+
 
 #define group_normalization_conv_kernel(name, type) 																							\
 __global__ void group_normalization_conv_kernel_##name(void *i_output, void *i_input, float *gamma, float *beta, float *group_mean,				\
@@ -263,6 +268,7 @@ __global__ void group_normalization_conv_back_kernel_##name(																				
 			delta_input[conv_id] = (type) 0.0f;																									\
 	}																																			\
 }
+
 
 reduce_group_mean_conv_kernel(FP32, float);
 reduce_group_var_conv_kernel(FP32, float);
@@ -357,6 +363,7 @@ size_t cuda_convert_norm_layer(layer *current)
 	return vram_approx;
 }
 
+
 void cuda_free_norm(layer *current)
 {
 	n_param = (norm_param*)current->param;
@@ -417,6 +424,7 @@ void cuda_forward_norm_layer(layer *current)
 	
 	current->activation(current);
 }
+
 
 void cuda_backward_norm_layer(layer *current)
 {
@@ -481,6 +489,7 @@ void cuda_backward_norm_layer(layer *current)
 	
 	current->previous->deriv_activation(current->previous);
 }
+
 
 void cuda_norm_define(layer *current)
 {
