@@ -291,6 +291,7 @@ void set_linear_param(layer *current, int size, int dim, int biased_dim, int off
 	current->bias_value = 0.5f;
 }
 
+
 void linear_activation_fct(void *tab, int dim, int biased_dim, int offset, int length, size_t size)
 {
 	size_t i;
@@ -334,6 +335,7 @@ void linear_deriv_fct(void *deriv, int dim, int biased_dim, int offset, int leng
 	}
 }
 
+
 void linear_activation(layer *current)
 {
 	linear_param *param = (linear_param*)current->activ_param;
@@ -355,6 +357,8 @@ void linear_deriv_output_error(layer *current)
 	linear_param *param = (linear_param*)current->activ_param;
 	quadratic_deriv_output_error(current->delta_o, current->output, current->c_network->target,
 		param->dim, param->biased_dim, param->offset, current->c_network->length, param->size);
+	linear_deriv_fct(current->delta_o, current->output, param->dim, param->biased_dim,
+		param->offset, param->saturation, param->leaking_factor, current->c_network->length, param->size);
 }
 
 

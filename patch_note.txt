@@ -12,6 +12,7 @@ Minor hot-fix patch.
 - Add missing verification checks in model load when skipping layers.
 - Loading a saved model no longer reset the existing network structure and can be used to append layers to an existing backbone.
 - Light code refactoring (split auxil.c, rename initializers.c and rename functions for consistency)
+- Add missing call to linear_deriv_function to fully fix linear behavior regarding delta_o propagation also on the last layer.
 
 
 
