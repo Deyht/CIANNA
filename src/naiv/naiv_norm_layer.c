@@ -227,6 +227,8 @@ void naiv_forward_norm_layer(layer *current)
 		group_normalization_conv_fct(current->output, current->input, n_param->gamma, n_param->beta, n_param->mean, n_param->var, 
 			net->length, net->batch_size, n_param->group_size, n_param->nb_group, n_param->n_dim, n_param->dim_offset, n_param->set_off);
 	}
+	
+	current->activation(current);
 }
 
 
