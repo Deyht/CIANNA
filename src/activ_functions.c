@@ -357,8 +357,8 @@ void linear_deriv_output_error(layer *current)
 	linear_param *param = (linear_param*)current->activ_param;
 	quadratic_deriv_output_error(current->delta_o, current->output, current->c_network->target,
 		param->dim, param->biased_dim, param->offset, current->c_network->length, param->size);
-	linear_deriv_fct(current->delta_o, current->output, param->dim, param->biased_dim,
-		param->offset, param->saturation, param->leaking_factor, current->c_network->length, param->size);
+	linear_deriv_fct(current->delta_o, param->dim, param->biased_dim,
+		param->offset, current->c_network->length, param->size);
 }
 
 
