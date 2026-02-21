@@ -14,7 +14,7 @@ Minor hot-fix patch.
 - Light code refactoring (split auxil.c, rename initializers.c and rename functions for consistency)
 - Add missing call to linear_deriv_function to fully fix linear behavior regarding delta_o propagation also on the last layer.
 - Fix missing call to layer activation for norm layers with CPU backend (was properly activated in GPU).
-
+- Fix a cuda kernel boundary when initializing random state (used for droppout), unlikely to have any negative effect.
 
 ********************************************
 ===== V-1.0.1.0 =====

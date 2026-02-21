@@ -2443,7 +2443,7 @@ void cuda_YOLO_activation(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
 	conv_param *c_param = (conv_param*)current->param;
-	cu_blocks = (current->c_network->out_size *
+	cu_blocks = ((size_t)current->c_network->out_size *
 			current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_YOLO_activ_fcts.activ_fct<<< cu_blocks, cu_threads >>>
@@ -2463,7 +2463,7 @@ void cuda_YOLO_deriv_output_error(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
 	conv_param *c_param = (conv_param*)current->param;
-	cu_blocks = (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] *
+	cu_blocks = ((size_t)c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] *
 			current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_YOLO_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
@@ -2478,7 +2478,7 @@ void cuda_YOLO_output_error(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
 	conv_param *c_param = (conv_param*)current->param;
-	cu_blocks = (c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] *
+	cu_blocks = ((size_t)c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] *
 			current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_YOLO_activ_fcts.output_error_fct<<< cu_blocks, cu_threads >>>
@@ -2539,8 +2539,8 @@ void cuda_YOLO_activ_init(layer *current)
 	
 	cudaMalloc((void**)(&(a_param->block_state)), ((conv_param*)current->param)->nb_filters 
 			* nb_area_flat * current->c_network->batch_size * sizeof(curandState_t));
-	cu_blocks = ((conv_param*)current->param)->nb_filters * current->c_network->batch_size 
-		* (size_t)(nb_area_flat  + cu_threads - 1) / cu_threads;
+	cu_blocks = ((((conv_param*)current->param)->nb_filters * current->c_network->batch_size 
+		* (size_t)(nb_area_flat))  + cu_threads - 1) / cu_threads;
 	init_block_state<<< cu_blocks, cu_threads>>>(time(NULL),(curandState_t*)(a_param->block_state), 
 		((conv_param*)current->param)->nb_filters * nb_area_flat * current->c_network->batch_size);
 	
