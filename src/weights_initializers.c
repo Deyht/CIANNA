@@ -23,6 +23,14 @@
 
 // Public are in prototypes.h
 
+// Private prototypes
+void xavier_normal( void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void lecun_normal(  void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void lecun_uniform( void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void rand_normal(   void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void rand_uniform(  void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+
 
 int get_init_type(const char *s_init)
 {
@@ -42,23 +50,33 @@ int get_init_type(const char *s_init)
 		return N_XAVIER;
 }
 
-//return a random Real value between 0 <= x < 1
-double random_uniform(void)
+void initialize_weights(const char *init_fct, void *weights, int dim_in, int dim_out, 
+	int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling)
 {
-	return  rand()/(double)RAND_MAX;
+	switch(get_init_type(init_fct))
+	{
+		default:
+		case N_XAVIER:
+			xavier_normal( weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			break;
+		case U_XAVIER:
+			xavier_uniform(weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			break;
+		case N_LECUN:
+			lecun_normal(  weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			break;
+		case U_LECUN:
+			lecun_uniform( weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			break;
+		case N_RAND:
+			rand_normal(   weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			break;
+		case U_RAND:
+			rand_uniform(  weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			break;
+	}
 }
 
-//return a real value following normal distribution with 0 mean and 1 standard deviation
-double random_normal(void)
-{
-	// non optimized box muller normal distribution generator
-	double U1, U2;
-	
-	U1 = rand()*(1.0/RAND_MAX);
-	U2 = rand()*(1.0/RAND_MAX);
-	
-	return sqrt(-2.0*log(U1))*cos(two_pi*U2);
-}
 
 //Indices computation is identical, could be merged into a single function with only a function pointer to the appropriate numerical init
 
@@ -91,8 +109,8 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 		}
 	}
 	
-	// depreciated the pivot value is now set back by the following layer in dense
-	// in other layer the bias is set during input transformation by the running layer 
+	// Depreciated, the pivot value is now set back by the following layer in dense
+	// in other layers the bias is set during input transformation by the running layer 
 	if(bias_padding) 
 		f_tab[size-1] = bias_padding_value;
 

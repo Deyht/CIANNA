@@ -27,51 +27,14 @@ static dense_param *d_param;
 // Public are in "prototypes.h"
 
 // Private prototypes
-void dense_define_activation_param(layer *current, const char* activ);
-
-
-void dense_define_activation_param(layer *current, const char* activ)
-{
-	int size, dim, biased_dim, offset;
-	d_param = (dense_param*) current->param;
-	
-	size = (d_param->nb_neurons + 1) * current->c_network->batch_size;
-	dim = d_param->nb_neurons;
-	biased_dim = d_param->nb_neurons+1;
-	offset = 1;
-	
-	switch(current->activation_type)
-	{
-		case RELU:
-			set_relu_param(current, size, dim, biased_dim, offset, activ);
-			break;
-			
-		case LOGISTIC:
-			set_logistic_param(current, size, dim, biased_dim, offset, activ);
-			break;
-			
-		case SOFTMAX:
-			set_softmax_param(current, size, dim, biased_dim, offset);
-			break;
-			
-		case YOLO:
-			printf("\n ERROR: YOLO activation is not compatible with a dense layer!\n");
-			exit(EXIT_FAILURE);
-			break;
-			
-		case LINEAR:
-		default:
-			set_linear_param(current, size, dim, biased_dim, 1);
-			break;
-	}
-}
 
 
 int dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias,
-	float drop_rate, int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int f_bin)
+	float drop_rate, int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin)
 {
 	int i, j;
-	long long int mem_approx = 0;
+	size_t flat_in_size = 1, prev_weight_matrix_size = 1;
+	size_t mem_approx = 0;
 	layer* current;
 	
 	#ifdef CUDA
@@ -87,210 +50,159 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	
 	printf("L:%d - CREATING DENSE LAYER ...\n", net->nb_layers);
 	
-	d_param = (dense_param*) malloc(sizeof(dense_param));
-	
 	current->type = DENSE;
-	load_activation_type(current, activation);
-	
+	current->output_type = FLAT;
 	current->frozen = 0;
-	d_param->nb_neurons = nb_neurons;
+	current->wema_replace_signal = 0;
 	current->dropout_rate = drop_rate;
-	
 	current->previous = previous;
+	
+	current->output_dim = (int*) calloc(4, sizeof(int));
+	for(i = 0; i < 3; i++)
+		current->output_dim[i] = 1;
+	current->output_dim[3] = nb_neurons;
+	
+	d_param = (dense_param*) malloc(sizeof(dense_param));
+	current->param = d_param;
 	
 	if(previous == NULL)
 	{
-		d_param->in_size = net->in_dims[0]*net->in_dims[1]*net->in_dims[2]*net->in_dims[3]+1;
+		current->prev_dim = net->in_dims;
 		current->input = net->input;
 	}
 	else
 	{
-		switch(previous->type)
-		{
-			case CONV:
-				d_param->in_size = ((conv_param*)previous->param)->nb_area[0]
-					* ((conv_param*)previous->param)->nb_area[1] 
-					* ((conv_param*)previous->param)->nb_area[2]
-					* ((conv_param*)previous->param)->nb_filters + 1;
-				if(!net->inference_only)
-				{
-					d_param->flat_delta_o = (float*) calloc(d_param-> in_size * net->batch_size, sizeof(float));
-					mem_approx += d_param-> in_size * net->batch_size * sizeof(float);
-				}
-				d_param->flat_input = (float*) calloc(d_param->in_size*net->batch_size,sizeof(float));
-				mem_approx += d_param->in_size*net->batch_size * sizeof(float);
-				break;
-			
-			case POOL:
-				d_param->in_size = ((pool_param*)previous->param)->nb_area[0] 
-					* ((pool_param*)previous->param)->nb_area[1]
-					* ((pool_param*)previous->param)->nb_area[2]
-					* ((pool_param*)previous->param)->nb_maps + 1;
-				if(!net->inference_only)
-				{
-					d_param->flat_delta_o = (float*) calloc(d_param->in_size * net->batch_size, sizeof(float));
-					mem_approx += d_param-> in_size * net->batch_size * sizeof(float);
-				}
-				d_param->flat_input = (float*) calloc(d_param->in_size*net->batch_size,sizeof(float));
-				mem_approx += d_param->in_size*net->batch_size * sizeof(float);
-				break;
-			
-			case NORM:
-			case LRN:
-				switch(previous->previous->type)
-				{
-					default:
-					case CONV:
-						d_param->in_size = ((conv_param*)previous->previous->param)->nb_area[0]
-							* ((conv_param*)previous->previous->param)->nb_area[1] 
-							* ((conv_param*)previous->previous->param)->nb_area[2]
-							* ((conv_param*)previous->previous->param)->nb_filters + 1;
-						break;
-					case POOL:
-						d_param->in_size = ((pool_param*)previous->previous->param)->nb_area[0]
-							* ((pool_param*)previous->previous->param)->nb_area[1] 
-							* ((pool_param*)previous->previous->param)->nb_area[2]
-							* ((pool_param*)previous->previous->param)->nb_maps + 1;
-						break;
-				}
-				if(!net->inference_only)
-				{
-					d_param->flat_delta_o = (float*) calloc(d_param-> in_size * net->batch_size, sizeof(float));
-					mem_approx += d_param-> in_size * net->batch_size * sizeof(float);
-				}
-				d_param->flat_input = (float*) calloc(d_param->in_size*net->batch_size,sizeof(float));
-				mem_approx += d_param->in_size*net->batch_size * sizeof(float);
-				break;
-			
-			case DENSE:
-			default:
-				d_param->in_size = ((dense_param*)previous->param)->nb_neurons+1;
-				d_param->flat_delta_o = previous->delta_o;
-				break;
-		}
+		current->prev_dim = previous->output_dim;
 		current->input = previous->output;
 	}
+	
+	for(i = 0; i < 4; i++)
+		flat_in_size *= current->prev_dim[i];
+	flat_in_size += 1;
+	
+	if(previous != NULL && previous->output_type == SPATIAL)
+	{
+		if(!net->inference_only)
+		{
+			d_param->flat_delta_o = (float*) calloc(flat_in_size * net->batch_size, sizeof(float));
+			mem_approx += flat_in_size * net->batch_size * sizeof(float);
+		}
+		d_param->flat_input = (float*) calloc(flat_in_size * net->batch_size,sizeof(float));
+		mem_approx += flat_in_size*net->batch_size * sizeof(float);
+	}
+	
+	if(previous != NULL && previous->output_type == FLAT)
+		d_param->flat_delta_o = previous->delta_o;
 
-	d_param->weights = (float*) malloc(d_param->in_size*(nb_neurons+1)*sizeof(float));
-	mem_approx += d_param->in_size*(nb_neurons+1)*sizeof(float);
+	current->weights = (float*) malloc(flat_in_size * (nb_neurons+1)*sizeof(float));
+	current->FP32_weights = current->weights;
+	mem_approx += flat_in_size * (nb_neurons+1) * sizeof(float);
 	
 	if(drop_rate > 0.01f)
 	{
-		d_param->dropout_mask = (float*) calloc((nb_neurons+1)*net->batch_size, sizeof(float));
+		current->dropout_mask = (float*) calloc((nb_neurons+1) * net->batch_size, sizeof(float));
 		mem_approx += (nb_neurons+1) * net->batch_size * sizeof(float);
 	}
 	
-	current->output = (float*) calloc((nb_neurons+1)*net->batch_size, sizeof(float));
-	mem_approx += (nb_neurons+1)*net->batch_size * sizeof(float);
+	current->output = (float*) calloc((nb_neurons+1) * net->batch_size, sizeof(float));
+	mem_approx += (nb_neurons+1) * net->batch_size * sizeof(float);
 	
 	if(!net->inference_only)
 	{
-		d_param->update = (float*) calloc(d_param->in_size*(nb_neurons+1), sizeof(float));
-		mem_approx += d_param->in_size*(nb_neurons+1)*sizeof(float);
+		if(net->use_wema)
+		{
+			current->ema_weights = (float*) malloc(flat_in_size * (nb_neurons+1)*sizeof(float));
+			mem_approx += flat_in_size * (nb_neurons+1) * sizeof(float);
+		}
+	
+		current->gradient = (float*) calloc(flat_in_size * (nb_neurons+1), sizeof(float));
+		mem_approx += flat_in_size * (nb_neurons+1) * sizeof(float);
 		
-		current->delta_o = (float*) calloc((nb_neurons+1)*net->batch_size, sizeof(float));
-		mem_approx += (nb_neurons+1)*net->batch_size * sizeof(float);
+		current->delta_o = (float*) calloc((nb_neurons+1) * net->batch_size, sizeof(float));
+		mem_approx += (nb_neurons+1) * net->batch_size * sizeof(float);
+		
+		mem_approx += define_optimizer_var(current, flat_in_size * (nb_neurons+1));
 	}
 	
-	current->nb_params = d_param->in_size*(nb_neurons+1);
+	current->nb_params = flat_in_size * (nb_neurons+1);
 	
-	//must be before the activation association function
-	current->param = d_param;
-	dense_define_activation_param(current, activation);
-	d_param = (dense_param*)current->param;	
+	if(f_load == NULL)
+	{
+		if(init_scaling < 0)
+			init_scaling = 1.0f;
+		
+		initialize_weights(init_fct, current->weights, nb_neurons, flat_in_size, 1, 0.0f, 0, init_scaling);
+	}
+	else
+		load_layer_weights(f_load, current, flat_in_size * (nb_neurons+1), nb_neurons+1, 0, load_optim_state, f_bin);
+	
+	if(net->use_wema && !net->inference_only && (f_load == NULL || !load_optim_state))
+	{
+		for(i = 0; i < flat_in_size * (nb_neurons+1); i++)
+			current->ema_weights[i] = ((float*)current->weights)[i];
+	}
+	
+	
+	current->a_size       = (nb_neurons + 1) * net->batch_size;
+	current->a_dim        =  nb_neurons;
+	current->a_biased_dim =  nb_neurons + 1;
+	current->a_offset     =  1;
+	
+	define_activation_param(current, activation);
 	
 	if(bias != NULL)
 		current->bias_value = *bias;
 	
-	if(current->previous == NULL)
-		current->bias_value = net->input_bias;
-	
-	if(f_load == NULL)
+	//Set pivot value in previous layer weight matrix to generate current layer input bias automatically
+	if(current->previous != NULL && previous->output_type == FLAT)
 	{
-		if(current->previous != NULL)
-		{
-			if(previous->type == DENSE)
-			{
-				if(net->compute_method == C_CUDA)
-				{
-					#ifdef CUDA
-					cuda_set_mem_value((void*)((float*)((dense_param*)previous->param)->weights + ((((dense_param*)previous->param)->nb_neurons+1)
-						*((dense_param*)previous->param)->in_size - 1)),
-						(float) current->bias_value/current->previous->bias_value, sizeof(float));
-					#endif
-				}
-				else
-				{
-					*((float*)((dense_param*)previous->param)->weights + ((((dense_param*)previous->param)->nb_neurons+1)
-						*((dense_param*)previous->param)->in_size - 1)) = 
-						(float) current->bias_value/current->previous->bias_value;
-				}
-			}
-			//For other previous layer types, the bias is added by the flatten (or similar) function
-		}
-		if(init_scaling < 0)
-			init_scaling = 1.0f;
+		for(i = 0; i < 4; i++)
+			prev_weight_matrix_size *= previous->prev_dim[i];
+		prev_weight_matrix_size += 1;
+		prev_weight_matrix_size *= (previous->output_dim[3]+1);
 		
-		switch(get_init_type(init_fct))
+		if(net->compute_method == C_CUDA)
 		{
-			default:
-			case N_XAVIER:
-				xavier_normal( d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
-				break;
-			case U_XAVIER:
-				xavier_uniform(d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
-				break;
-			case N_LECUN:
-				lecun_normal(  d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
-				break;
-			case U_LECUN:
-				lecun_uniform( d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
-				break;
-			case N_RAND:
-				rand_normal(   d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
-				break;
-			case U_RAND:
-				rand_uniform(  d_param->weights, d_param->nb_neurons, d_param->in_size, 1, 0.0f, 0, init_scaling);
-				break;
-		}
-	}
-	else
-	{
-		if(f_bin)
-		{
-			for(i = 0; i < d_param->in_size; i++)
-				fread(&(((float*)d_param->weights)[i*(d_param->nb_neurons+1)]), sizeof(float), (d_param->nb_neurons+1), f_load);
+			//Previous layer weights have already been moved to GPU, need a cuda kernel to update the pivot.
+			#ifdef CUDA
+			cuda_float_memset(((float*)previous->FP32_weights + prev_weight_matrix_size - 1),
+				(float)current->bias_value/current->previous->bias_value, 1);
+			if(!net->inference_only && net->use_wema)
+				cuda_float_memset(((float*)previous->ema_weights + prev_weight_matrix_size - 1),
+					(float)current->bias_value/current->previous->bias_value, 1);
+			#endif
 		}
 		else
 		{
-			for(i = 0; i < d_param->in_size; i++)
-			{
-				for(j = 0; j < (d_param->nb_neurons+1); j++)
-					fscanf(f_load, "%f", &(((float*)d_param->weights)[i*(d_param->nb_neurons+1) + j]));
-			}
+			*((float*)previous->weights + prev_weight_matrix_size - 1) = 
+				(float) current->bias_value/current->previous->bias_value;
+			if(!net->inference_only && net->use_wema)
+				*((float*)previous->ema_weights + prev_weight_matrix_size - 1) = 
+					(float) current->bias_value/current->previous->bias_value;
 		}
-	}
+	} //For spatial layers, the bias is added at flattening time, no need for the pivot trick
+	
 	
 	switch(net->compute_method)
 	{
 		case C_CUDA:
 			#ifdef CUDA
 			cuda_dense_define(current);
-			cuda_define_activation(current);
 			mem_approx = cuda_convert_dense_layer(current);
+			cuda_define_activation_fct(current);
 			#endif
 			break;
 			
 		case C_BLAS:
 			#ifdef BLAS
 			blas_dense_define(current);
-			define_activation(current);
+			define_activation_fct(current);
 			#endif
 			break;
 			
 		case C_NAIV:
 			naiv_dense_define(current);
-			define_activation(current);
+			define_activation_fct(current);
 			break;
 			
 		default:
@@ -299,26 +211,25 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	
 	char activ[40];
 	fill_string_activ_param(current, activ,0);
-	printf("      Input: %d, Nb. Neurons: %d\n\
+	printf("      Input: %ld, Nb. Neurons: %d\n\
       Activation: %s, Bias: %0.2f, dropout rate: %0.2f\n\
-      Nb. weights: %d, Approx layer RAM/VRAM requirement: %d MB\n",
-		d_param->in_size,  d_param->nb_neurons, 
-		activ, current->bias_value, current->dropout_rate,
-		(d_param->nb_neurons+1)*d_param->in_size, (int)(mem_approx/1000000));
-	net->total_nb_param += (d_param->nb_neurons+1)*d_param->in_size;
+      Nb. weights: %ld, Approx layer RAM/VRAM requirement: %d MB\n",
+		flat_in_size,  nb_neurons, activ, current->bias_value, current->dropout_rate,
+		(nb_neurons+1)*flat_in_size, (int)(mem_approx/1000000));
+	net->total_nb_param += (nb_neurons+1)*flat_in_size;
 	net->memory_footprint += mem_approx;
 	
 	#ifdef CUDA
 	if(net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC)
 	{
-		if(d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
-				|| (d_param->nb_neurons+1) % 8 != 0)
+		if(flat_in_size % 8 != 0 || net->batch_size % 8 != 0 
+				|| (nb_neurons+1) % 8 != 0)
 			printf(" WARNING: Forward gemm TC data misalignment due to layer size mismatch\n");
-		if(current->previous != NULL && (d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
-				|| (d_param->nb_neurons+1) % 8 != 0))
+		if(current->previous != NULL && (flat_in_size % 8 != 0 || net->batch_size % 8 != 0 
+				|| (nb_neurons+1) % 8 != 0))
 			printf(" WARNING: Backprop gemm TC data misalignment due to layer size mismatch\n");
-		if(d_param->in_size % 8 != 0 || current->c_network->batch_size % 8 != 0 
-				|| (d_param->nb_neurons+1) % 8 != 0)
+		if(flat_in_size % 8 != 0 || net->batch_size % 8 != 0 
+				|| (nb_neurons+1) % 8 != 0)
 			printf(" WARNING: Weights update gemm TC data misalignment due to layer size mismatch\n");
 	}
 	#endif
@@ -327,18 +238,23 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 }
 
 
-void dense_save(FILE *f, layer *current, int f_bin)
+void dense_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 {
 	int i, j;
 	float* host_weights = NULL;
 	char layer_type = 'D';
-
-	d_param = (dense_param*)current->param;	
+	int nb_neurons;
+	size_t flat_in_size = 1;
+	
+	nb_neurons = current->output_dim[3];
+	for(i = 0; i < 4; i++)
+		flat_in_size *= current->prev_dim[i];
+	flat_in_size += 1;
 	
 	if(f_bin)
 	{
 		fwrite(&layer_type, sizeof(char), 1, f);
-		fwrite(&d_param->nb_neurons, sizeof(int), 1, f);
+		fwrite(&nb_neurons, sizeof(int), 1, f);
 		fwrite(&current->dropout_rate, sizeof(float), 1, f);
 		fwrite(&current->bias_value, sizeof(float), 1, f);
 		print_activ_param(f, current, f_bin);
@@ -346,63 +262,15 @@ void dense_save(FILE *f, layer *current, int f_bin)
 	else
 	{	
 		fprintf(f,"D");
-		fprintf(f, "%dn%fd%fb", d_param->nb_neurons, current->dropout_rate, current->bias_value);
+		fprintf(f, "%dn%fd%fb", nb_neurons, current->dropout_rate, current->bias_value);
 		print_activ_param(f, current, f_bin);
 		fprintf(f,"\n");
 	}
 	
-	if(current->c_network->compute_method == C_CUDA)
-	{
-		#ifdef CUDA
-		host_weights = (float*) malloc(d_param->in_size * (d_param->nb_neurons+1) * sizeof(float));
-		switch(current->c_network->cu_inst.use_cuda_TC)
-		{
-			default:
-			case FP32C_FP32A:
-			case TF32C_FP32A:
-				cuda_get_table_FP32((float*)d_param->weights, (float*)host_weights,
-					d_param->in_size * (d_param->nb_neurons+1));
-				break;
-			
-			case FP16C_FP32A:
-			case FP16C_FP16A:
-				cuda_get_table_FP32((float*)d_param->FP32_weights, (float*)host_weights,
-					d_param->in_size * (d_param->nb_neurons+1));
-				break;
-				
-			case BF16C_FP32A:
-				cuda_get_table_FP32((float*)d_param->FP32_weights, (float*)host_weights,
-					d_param->in_size * (d_param->nb_neurons+1));
-				break;
-		}
-		#endif
-	}
-	else
-	{
-		host_weights = d_param->weights;
-	}
-	
-	if(f_bin)
-	{
-		for(i = 0; i < d_param->in_size; i++)
-			fwrite(&host_weights[i*(d_param->nb_neurons+1)], sizeof(float), (d_param->nb_neurons+1), f);
-	}	
-	else
-	{
-		for(i = 0; i < d_param->in_size; i++)
-		{
-			for(j = 0; j < (d_param->nb_neurons+1); j++)
-				fprintf(f, "%g ", host_weights[i*(d_param->nb_neurons+1) + j]);
-			fprintf(f, "\n");
-		}
-		fprintf(f, "\n");
-	}
-	
-	if(current->c_network->compute_method == C_CUDA)
-		free(host_weights);
+	save_layer_weights(f, current, flat_in_size * (nb_neurons+1), nb_neurons+1, 0, 0, save_optim_state, f_bin);
 }
 
-void dense_load(network *net, FILE* f, int f_bin, int skip_layer)
+void dense_load(network *net, FILE* f, int load_optim_state, int f_bin, int skip_layer)
 {
 	int nb_neurons;
 	size_t in_size;
@@ -430,7 +298,7 @@ void dense_load(network *net, FILE* f, int f_bin, int skip_layer)
 		else
 			previous = net->net_layers[net->nb_layers-1];
 		
-		dense_create(net, previous, nb_neurons, activ_type, &bias, dropout_rate, 1, NULL, -1.0, f, f_bin);
+		dense_create(net, previous, nb_neurons, activ_type, &bias, dropout_rate, 1, NULL, -1.0, f, load_optim_state, f_bin);
 	}
 	else
 	{
@@ -449,16 +317,6 @@ void dense_load(network *net, FILE* f, int f_bin, int skip_layer)
 	}
 }
 
-void get_dense_output_dim(layer *current, int *dim)
-{
-	int i;
-	d_param = (dense_param*) current->param;
-	
-	dim[0] = d_param->nb_neurons;
-	
-	for(i = 1; i < 4; i++)
-		dim[i] = 1;
-}
 
 void free_dense(layer *current)
 {
@@ -472,20 +330,24 @@ void free_dense(layer *current)
 	else
 	#endif
 	{
-		free(d_param->weights);
+		free(current->weights);
 		free(current->output);
 		if(current->dropout_rate > 0.01f)
-			free(d_param->dropout_mask);
+			free(current->dropout_mask);
 		
-		if(current->previous != NULL && current->previous->type != DENSE)
+		if(current->previous != NULL && current->previous->output_type != FLAT)
 			free(d_param->flat_input);
 		
 		if(!current->c_network->inference_only)
 		{
-			free(d_param->update);
+			if(current->c_network->use_wema)
+				free(current->ema_weights);
+			free(current->gradient);
 			free(current->delta_o);
-			if(current->previous != NULL && current->previous->type != DENSE)
+			if(current->previous != NULL && current->previous->output_type != FLAT)
 				free(d_param->flat_delta_o);
+			
+			free_optimizer_var(current);
 		}
 	}
 	

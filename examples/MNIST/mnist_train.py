@@ -45,46 +45,55 @@ print ("Done !", flush=True)
 ############################################################################
 ##               CIANNA network construction and use
 ############################################################################
-#Details about the functions and parameters are given in the GitHub Wiki
 
-cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10,
-		bias=0.1, b_size=16, comp_meth="C_CUDA", #Change to C_BLAS or C_NAIV
-		dynamic_load=1, mixed_precision="FP16C_FP32A", no_logo=1) 
+cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10, b_size=16,
+		optimizer=cnn.adam(beta1=0.95), wema=1,
+		comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP32C_FP32A")
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)
 cnn.create_dataset("TEST" , size=10000, input=data_test, target=target_test)
 
-#Python side datasets are not required anymore, they can be released to save RAM
-#del (data_train, target_train, data_valid, target_valid, data_test, target_test)
+
+a_relu = cnn.relu(leaking=0.1, saturation=640000.0)
+
+def conv_res_block(nb_filters):
+	cnn.norm(group_size=4, activation=a_relu)
+	cnn.conv(f_size=i_ar([3,3]), nb_filters=nb_filters, nb_groups=4, stride=i_ar([1,1]), padding=i_ar([1,1]), activation="LIN")
+	cnn.norm(group_size=4, activation=a_relu)
+	cnn.conv(f_size=i_ar([3,3]), nb_filters=nb_filters, stride=i_ar([1,1]), padding=i_ar([1,1]), activation="LIN")
+	l_layer = cnn.merge(-1, -5, "ADD")
+	return l_layer
+
 
 #Used to load a saved network at a given iteration
 load_step = 0
 if(load_step > 0):
-	cnn.load("net_save/net0_s%04d.dat"%(load_step), load_step)
+	cnn.load("net_save/net0_s%04d.dat"%(load_step), load_step, bin=1)
 else:
-	cnn.conv(f_size=i_ar([5,5]), nb_filters=8 , padding=i_ar([2,2]), activation="LIN")
+	cnn.conv(f_size=i_ar([5,5]), nb_filters=16 , padding=i_ar([2,2]), activation="LIN")
+	conv_res_block(16)
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.norm(group_size=2, activation="RELU")
-	cnn.conv(f_size=i_ar([5,5]), nb_filters=16, padding=i_ar([2,2]), activation="LIN")
-	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.norm(group_size=4, activation="RELU")
-	cnn.dense(nb_neurons=256, activation="RELU", drop_rate=0.5)
-	cnn.dense(nb_neurons=128, activation="RELU", drop_rate=0.2)
-	cnn.dense(nb_neurons=10, strict_size=1, activation="SMAX")
+	cnn.norm(group_size=4, activation=a_relu)
 	
-	#cnn.load("net_save/net0_s%04d.dat"%(10), iteration=10, nb_skip_layers=3)
+	cnn.conv(f_size=i_ar([5,5]), nb_filters=32, padding=i_ar([2,2]), activation="LIN")
+	conv_res_block(32)
+	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
+	cnn.norm(group_size=4, activation=a_relu)
+	
+	cnn.dense(nb_neurons=256, activation=a_relu, drop_rate=0.5)
+	cnn.dense(nb_neurons=128, activation=a_relu, drop_rate=0.2)
+	cnn.dense(nb_neurons=10 , strict_size=1, activation="SMAX")
 
 #To create a latex table and associated pdf with the current architecture	
 #cnn.print_arch_tex("./arch/", "arch", activation=1)
 
-cnn.train(nb_iter=20, learning_rate=0.004, momentum=0.8, confmat=1, save_every=10)
-cnn.perf_eval()
 
+cnn.train(nb_iter=10, learning_rate=0.0002, weight_decay=0.0001, decoupled_wdecay=1, wema_rate=0.999, confmat=1, save_every=10, save_optim_every=0, save_bin=1)
+#cnn.perf_eval()
 
-#Uncomment to save network prediction
-#cnn.forward(repeat=1, drop_mode="AVG_MODEL")
-
+pred = cnn.forward(drop_mode="AVG_MODEL", no_error=0, saving=1, return_output=1)
+print (pred)
 
 
 

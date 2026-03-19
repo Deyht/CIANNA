@@ -97,7 +97,7 @@ void reduce_group_dgamma_conv_fct(float *input, float *delta_output, float *d_ga
 	float *group_var, float *group_mean, int group_size, int nb_group, int flat_a_size, int batch_size)
 {	
 	int i, j;
-	float eps = 0.001f;
+	float eps = 0.000001f;
 	double sum;
 	
 	#pragma omp parallel for private(j, sum) schedule(guided,2)
@@ -119,7 +119,7 @@ void group_normalization_conv_fct(float *output, float *input, float *gamma, flo
 {
 	/* Could be optimized with advanced multi-thread reduction */
 	int i, j;
-	float l_val, eps = 0.001f;
+	float l_val, eps = 0.000001f;
 	float mean = 0.0f, var = 0.0f;
 	int filter_offset = flat_a_size*b_size;
 	int group_id, batch_id;
@@ -163,7 +163,7 @@ void group_normalization_conv_back_fct(
 {
 	int i, j;
 
-	float eps = 0.001f;
+	float eps = 0.000001f;
 	float mean = 0.0f, var = 0.0f;
 	float l_d_gamma, l_d_beta;
 	int filter_offset = flat_a_size*b_size;
@@ -192,99 +192,124 @@ void group_normalization_conv_back_fct(
 				l_d_beta  = d_beta[batch_id*nb_group + group_id];
 				
 				if(group_id < nb_group - set_off)
-					delta_input[conv_id] = ((1.0f/(group_size*flat_a_size)) * gamma[group_id] * (1.0f/sqrt(var + eps))
+					delta_input[conv_id] += ((1.0f/(group_size*flat_a_size)) * gamma[group_id] * (1.0f/sqrt(var + eps))
 						* (group_size*flat_a_size*delta_output[conv_id] - l_d_beta
 						- (input[conv_id] - mean) * (1.0f/sqrt(var + eps))*l_d_gamma));
 				else
-					delta_input[conv_id] = delta_output[conv_id];
+					delta_input[conv_id] += delta_output[conv_id];
 			}
 			else
-				delta_input[conv_id] = 0.0f;
+				delta_input[conv_id] += 0.0f;
 		}
 	}
 }
 
 
-void naiv_forward_norm_layer(layer *current)
+void forward_norm_layer(layer *current)
 {
-	n_param = (norm_param*)current->param;
+	int i;
+	size_t dim_offset = 1, flat_output_dim = 1;
+	float *l_gamma, *l_beta;
+	
 	network* net = current->c_network;
-	
+	n_param = (norm_param*)current->param;
+	//Previous verification should ensure that it is not the first layer
 	current->input = current->previous->output;
-	
-	if(current->previous->type == DENSE)
+
+	if(current->output_type == SPATIAL)
 	{
-	
-	}
-	else
-	{
+		for(i = 0; i < 3; i++)
+			dim_offset *= current->output_dim[i];
+		flat_output_dim = dim_offset * current->output_dim[3];
+		
+		if(net->is_inference == 1 && net->use_wema)
+		{
+			l_gamma = current->ema_weights;
+			l_beta = ((float*)current->ema_weights) + n_param->nb_group;
+		}
+		else
+		{
+			l_gamma = n_param->gamma;
+			l_beta = n_param->beta;
+		}
+		
 		reduce_group_mean_conv_fct(current->input, n_param->mean, n_param->group_size, n_param->nb_group, 
-			n_param->dim_offset, net->batch_size, n_param->dim_offset*n_param->group_size);
+			dim_offset, net->batch_size, dim_offset*n_param->group_size);
 
 		reduce_group_var_conv_fct(current->input, n_param->var, n_param->mean, n_param->group_size, 
-			n_param->nb_group, n_param->dim_offset, net->batch_size, n_param->dim_offset*n_param->group_size);
+			n_param->nb_group, dim_offset, net->batch_size, dim_offset*n_param->group_size);
 
-		group_normalization_conv_fct(current->output, current->input, n_param->gamma, n_param->beta, n_param->mean, n_param->var, 
-			net->length, net->batch_size, n_param->group_size, n_param->nb_group, n_param->n_dim, n_param->dim_offset, n_param->set_off);
+		group_normalization_conv_fct(current->output, current->input, l_gamma, l_beta, n_param->mean, n_param->var, 
+			net->length, net->batch_size, n_param->group_size, n_param->nb_group, current->output_dim[3], dim_offset, n_param->set_off);
 	}
 	
 	current->activation(current);
+	
+	if(!net->inference_only)
+		memset(current->delta_o, 0, flat_output_dim * net->batch_size * sizeof(float));
 }
 
 
-void naiv_backward_norm_layer(layer *current)
+void backward_norm_layer(layer *current)
 {
 	int i, j;
+	size_t dim_offset = 1;
 	double sum_dgamma = 0.0, sum_dbeta = 0.0;
-	n_param = (norm_param*)current->param;
+	
 	network* net = current->c_network;
+	n_param = (norm_param*)current->param;
+
+	//Must be done here so all layers can add their contribution to current layer delta_o (merging / branching)
+	current->deriv_activation(current);
 	
-	if(current->previous->type == DENSE)
+	if(current->output_type == SPATIAL)
 	{
-	
-	}
-	else
-	{
+		for(i = 0; i < 3; i++)
+			dim_offset *= current->output_dim[i];
+		
 		reduce_group_mean_conv_fct(current->delta_o, n_param->d_beta, n_param->group_size, 
-			n_param->nb_group, n_param->dim_offset, net->batch_size, 1);
+			n_param->nb_group, dim_offset, net->batch_size, 1);
 	
 		reduce_group_dgamma_conv_fct(current->input, current->delta_o, n_param->d_gamma, n_param->var, 
-			n_param->mean, n_param->group_size, n_param->nb_group, n_param->dim_offset, net->batch_size);
+			n_param->mean, n_param->group_size, n_param->nb_group, dim_offset, net->batch_size);
 	
 		group_normalization_conv_back_fct(current->input, current->delta_o, current->previous->delta_o, n_param->gamma, n_param->beta, 
 			n_param->d_gamma, n_param->d_beta, n_param->mean, n_param->var, net->length, net->batch_size, n_param->group_size, 
-			n_param->nb_group, n_param->n_dim, n_param->dim_offset, n_param->set_off);
-				
-		if(!current->frozen)
-		{
-			for(j = 0; j < n_param->nb_group - n_param->set_off; j++)
-			{
-				sum_dgamma = 0.0f;
-				sum_dbeta = 0.0f;
-				for(i = 0; i < net->batch_size; i++)
-				{
-					sum_dgamma += n_param->d_gamma[i*n_param->nb_group + j];
-					sum_dbeta  += n_param->d_beta[i*n_param->nb_group + j];
-				}
-				n_param->gamma_update[j] = net->momentum*n_param->gamma_update[j] 
-					+ net->learning_rate*(sum_dgamma/net->batch_size);
-				n_param->beta_update[j] = net->momentum*n_param->beta_update[j]  
-					+ net->learning_rate*(sum_dbeta/net->batch_size);
-				
-				n_param->gamma[j] -= n_param->gamma_update[j];
-				n_param->beta[j] -= n_param->beta_update[j]; 
-			}
-		}
+			n_param->nb_group, current->output_dim[3], dim_offset, n_param->set_off);
 	}
 	
-	current->previous->deriv_activation(current->previous);
+	if(!current->frozen)
+	{
+		for(j = 0; j < n_param->nb_group - n_param->set_off; j++)
+		{
+			sum_dgamma = 0.0f;
+			sum_dbeta = 0.0f;
+			for(i = 0; i < net->batch_size; i++)
+			{
+				sum_dgamma += n_param->d_gamma[i*n_param->nb_group + j];
+				sum_dbeta  += n_param->d_beta[i*n_param->nb_group + j];
+			}
+			n_param->gamma_update[j] = sum_dgamma;
+			n_param->beta_update[j] = sum_dbeta;
+		}
+		
+		net->optim_update_fct(current, 0, 2*n_param->nb_group, 2*n_param->nb_group);
+		//No decay for gamma and beta
+		
+		if(current->wema_replace_signal > 0)
+		{
+			for(i = 0; i < 2*n_param->nb_group; i++)
+				current->FP32_weights[i] = current->ema_weights[i];
+			current->wema_replace_signal = 0;
+		}
+	}
 }
 
 
-void naiv_norm_define(layer *current)
+void norm_define(layer *current)
 {
-	current->forward = naiv_forward_norm_layer;
-	current->backprop = naiv_backward_norm_layer;
+	current->forward = forward_norm_layer;
+	current->backprop = backward_norm_layer;
 }
 
 

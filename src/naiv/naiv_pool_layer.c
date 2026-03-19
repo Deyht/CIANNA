@@ -40,7 +40,7 @@ void max_pooling_fct
 	int w_size_out, int h_size_out, int d_size_out, int bias_in, int length)
 {	
 	#pragma omp parallel
-	#ifdef OPEN_MP
+	#ifdef _OPENMP
 	{
 	#endif
 	
@@ -122,7 +122,7 @@ void max_pooling_fct
 			}
 		}
 	}
-	#ifdef OPEN_MP
+	#ifdef _OPENMP
 	}
 	#endif
 }
@@ -137,7 +137,7 @@ void avg_pooling_fct
 	int w_size_out, int h_size_out, int d_size_out, int bias_in, int length)
 {	
 	#pragma omp parallel
-	#ifdef OPEN_MP
+	#ifdef _OPENMP
 	{
 	#endif
 	
@@ -190,7 +190,7 @@ void avg_pooling_fct
 			output[i] = (r_avg/sum_elem);
 		}
 	}
-	#ifdef OPEN_MP
+	#ifdef _OPENMP
 	}
 	#endif
 }
@@ -205,7 +205,7 @@ void deltah_max_pool_cont_fct
 	int w_size_out, int h_size_out, int d_size_out, size_t length)
 {	
 	#pragma omp parallel
-	#ifdef OPEN_MP
+	#ifdef _OPENMP
 	{
 	#endif
 	
@@ -254,9 +254,9 @@ void deltah_max_pool_cont_fct
 				}
 			}
 		}
-		delta_o_unpool[(pos[2]-padding_d)*(size_t)(w_size*h_size) + (pos[1]-padding_h)*w_size + (pos[0]-padding_w)] = l_delta_h;
+		delta_o_unpool[(pos[2]-padding_d)*(size_t)(w_size*h_size) + (pos[1]-padding_h)*w_size + (pos[0]-padding_w)] += l_delta_h;
 	}
-	#ifdef OPEN_MP
+	#ifdef _OPENMP
 	}
 	#endif
 }
@@ -271,7 +271,7 @@ void deltah_avg_pool_cont_fct
 	int w_size_out, int h_size_out, int d_size_out, size_t length)
 {	
 	#pragma omp parallel
-	#ifdef OPEN_MP
+	#ifdef _OPENMP
 	{
 	#endif
 	
@@ -314,9 +314,9 @@ void deltah_avg_pool_cont_fct
 				}
 			}
 		}
-		delta_o_unpool[(pos[2]-padding_d)*(size_t)(w_size*h_size) + (pos[1]-padding_h)*w_size + (pos[0]-padding_w)] = l_delta_h;
+		delta_o_unpool[(pos[2]-padding_d)*(size_t)(w_size*h_size) + (pos[1]-padding_h)*w_size + (pos[0]-padding_w)] += l_delta_h;
 	}
-	#ifdef OPEN_MP
+	#ifdef _OPENMP
 	}
 	#endif
 }
@@ -361,11 +361,11 @@ void dropout_scale_pool(void* i_table, size_t size, float drop_rate)
 
 void forward_pool_layer(layer* current)
 {
-	int bias_in = 0;
-	network* net = current->c_network;
+	size_t l_size, flat_nb_area = 1;
+	int i, nb_maps, bias_in = 0;
 	
-	if(net->length == 0)
-		return;
+	network* net = current->c_network;
+	p_param = (pool_param*) current->param;
 	
 	if(current->previous == NULL)
 	{
@@ -373,7 +373,9 @@ void forward_pool_layer(layer* current)
 		bias_in = 1;
 	}
 	
-	p_param = (pool_param*) current->param;
+	nb_maps = current->output_dim[3];
+	for(i = 0; i < 3; i++)
+		flat_nb_area *= current->output_dim[i];
 	
 	switch(p_param->pool_type)
 	{
@@ -383,18 +385,18 @@ void forward_pool_layer(layer* current)
 				p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
 				p_param->stride[0], p_param->stride[1], p_param->stride[2],
 				p_param->padding[0], p_param->padding[1], p_param->padding[2],
-				p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
-				p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
-				bias_in, p_param->nb_maps * net->batch_size);
+				current->prev_dim[0], current->prev_dim[1], current->prev_dim[2], 
+				current->output_dim[0], current->output_dim[1], current->output_dim[2], 
+				bias_in, nb_maps * net->batch_size);
 			break;
 		case AVG_pool:
 			avg_pooling_fct(current->input, current->output, 
 				p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
 				p_param->stride[0], p_param->stride[1], p_param->stride[2],
 				p_param->padding[0], p_param->padding[1], p_param->padding[2],
-				p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
-				p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
-				bias_in, p_param->nb_maps * net->batch_size);
+				current->prev_dim[0], current->prev_dim[1], current->prev_dim[2], 
+				current->output_dim[0], current->output_dim[1], current->output_dim[2], 
+				bias_in, nb_maps * net->batch_size);
 			break;
 	}
 
@@ -402,56 +404,59 @@ void forward_pool_layer(layer* current)
 	{
 		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
 		{
-			dropout_select_pool(p_param->dropout_mask, p_param->nb_maps 
-				* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, current->dropout_rate);	
-			
-			dropout_apply_pool(current->output, p_param->dropout_mask, p_param->nb_maps 
-				* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);
+			dropout_select_pool(current->dropout_mask, nb_maps * flat_nb_area * net->batch_size, current->dropout_rate);	
+			dropout_apply_pool(current->output, current->dropout_mask, nb_maps * flat_nb_area * net->batch_size);
 		}
 		else
-			dropout_scale_pool(current->output, p_param->nb_maps
-				* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, current->dropout_rate);
+			dropout_scale_pool(current->output, nb_maps * flat_nb_area * net->batch_size, current->dropout_rate);
 	}
 	
 	current->activation(current);
+	
+	if(!net->inference_only)
+	{
+		l_size = flat_nb_area * nb_maps * net->batch_size;
+		memset(current->delta_o, 0, l_size*sizeof(float));
+	}
 }
 
 
 void backward_pool_layer(layer* current)
 {	
-	int i;
+	size_t flat_nb_area = 1, prev_flat_nb_area = 1;
+	int i, nb_maps;
 
 	network* net = current->c_network;
-
 	p_param = (pool_param*) current->param;
+	
+	nb_maps = current->output_dim[3];
+	for(i = 0; i < 3; i++)
+	{
+		flat_nb_area *= current->output_dim[i];
+		prev_flat_nb_area *= current->prev_dim[i];
+	}
+	
+	//Must be done here so all layers can add their contribution to current layer delta_o (merging / branching)
+	current->deriv_activation(current);
 
 	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
-	{
-		dropout_apply_pool(current->delta_o, p_param->dropout_mask, p_param->nb_maps 
-			* (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size);
-	}
+		dropout_apply_pool(current->delta_o, current->dropout_mask, nb_maps * flat_nb_area * net->batch_size);
 
 	if(current->previous != NULL)
 	{
-		if(current->previous->type == CONV ||
-			((current->previous->type == NORM || current->previous->type == LRN) && current->previous->previous->type == CONV))
-		{		
-			int size = p_param->nb_maps*p_param->prev_size[0]*p_param->prev_size[1]*p_param->prev_size[2]*net->batch_size;
-			float* f_tab = (float*) current->previous->delta_o;
-			for(i = 0; i < size; i++)
-				f_tab[i] = 0.0f;
-			
+		if(current->output_type == SPATIAL)
+		{
 			switch(p_param->pool_type)
 			{
 				default:
 				case MAX_pool:
-					deltah_max_pool_cont_fct(current->delta_o, current->previous->delta_o, 
-						p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
+					deltah_max_pool_cont_fct(current->delta_o, current->previous->delta_o, p_param->pool_map, 
+						p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
 						p_param->stride[0], p_param->stride[1], p_param->stride[2],
 						p_param->padding[0], p_param->padding[1], p_param->padding[2],
-						p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2],
-						p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2],
-						net->batch_size * p_param->nb_maps * (size_t)(p_param->prev_size[0] * p_param->prev_size[1] *p_param->prev_size[2]));
+						current->prev_dim[0], current->prev_dim[1], current->prev_dim[2],
+						current->output_dim[0], current->output_dim[1], current->output_dim[2],
+						net->batch_size * nb_maps * prev_flat_nb_area);
 					break;
 				
 				case AVG_pool:
@@ -459,13 +464,12 @@ void backward_pool_layer(layer* current)
 						p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
 						p_param->stride[0], p_param->stride[1], p_param->stride[2],
 						p_param->padding[0], p_param->padding[1], p_param->padding[2],
-						p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2],
-						p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2],
-						net->batch_size * p_param->nb_maps * (size_t)(p_param->prev_size[0] * p_param->prev_size[1] *p_param->prev_size[2]));
+						current->prev_dim[0], current->prev_dim[1], current->prev_dim[2],
+						current->output_dim[0], current->output_dim[1], current->output_dim[2],
+						net->batch_size * nb_maps * prev_flat_nb_area);
 					break;
 			}
 		}
-		current->previous->deriv_activation(current->previous);
 	}
 }
 
@@ -475,10 +479,6 @@ void pool_define(layer *current)
 	current->forward = forward_pool_layer;
 	current->backprop = backward_pool_layer;
 }
-
-
-
-
 
 
 

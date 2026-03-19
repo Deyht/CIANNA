@@ -38,9 +38,9 @@ void cuda_backward_dense_layer(layer* current);
 //convert into all filters continuous for image 1, then image 2, ...
 #define cuda_flat_dense(name, type) 																											\
 __global__ void cuda_flat_dense_##name																											\
-	(void* i_in, void* i_out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, int size)									\
+	(void* i_in, void* i_out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, size_t size)								\
 {																																				\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	int map_id, image_id, pos;																													\
 																																				\
 	type* in = (type*) i_in;																													\
@@ -62,9 +62,9 @@ __global__ void cuda_flat_dense_##name																											\
 
 #define cuda_reroll_batch(name, type) 																											\
 __global__ void cuda_reroll_batch_##name																										\
-	(void* i_in, void* i_out, int map_size, int flatten_size, int nb_map, int batch_size, int size)												\
+	(void* i_in, void* i_out, int map_size, int flatten_size, int nb_map, int batch_size, size_t size)											\
 {																																				\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	int map_id, image_id, pos;																													\
 																																				\
 	type* in = (type*) i_in;																													\
@@ -76,7 +76,7 @@ __global__ void cuda_reroll_batch_##name																										\
 		image_id = (i % (map_size*batch_size))/map_size;																						\
 		pos = (i % (map_size*batch_size))%map_size;																								\
 																																				\
-		out[i] = in[image_id*(flatten_size) + map_id*map_size + pos];																			\
+		out[i] += in[image_id*(flatten_size) + map_id*map_size + pos];																			\
 	}																																			\
 }
 
@@ -84,7 +84,7 @@ __global__ void cuda_reroll_batch_##name																										\
 #define cuda_dropout_apply_dense(name, type) 																									\
 __global__ void cuda_dropout_apply_dense_##name(void* i_table, float* mask, size_t size, int biased_dim, float drop_rate)						\
 {																																				\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
 	type* table = (type*) i_table;																												\
 																																				\
@@ -103,7 +103,7 @@ __global__ void cuda_dropout_apply_dense_##name(void* i_table, float* mask, size
 #define cuda_dropout_scale_dense(name, type) 																									\
 __global__ void cuda_dropout_scale_dense_##name(void* i_table, float* mask, size_t size, int biased_dim, float drop_rate)						\
 {																																				\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
 	type* table = (type*) i_table;																												\
 																																				\
@@ -114,18 +114,31 @@ __global__ void cuda_dropout_scale_dense_##name(void* i_table, float* mask, size
 		table[i] = (type)((float)table[i]*(1.0f-drop_rate)); 																					\
 }
 
-
+#define cuda_set_input_bias_dense(name, type) 																									\
+__global__ void cuda_set_input_bias_dense_##name(void* i_table, size_t unbiased_dim, float bias_value, size_t size)								\
+{																																				\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+																																				\
+	type* table = (type*) i_table;																												\
+																																				\
+	if(i >= size)																																\
+		return;																																	\
+																																				\
+	table[i*(unbiased_dim+1) + unbiased_dim] = bias_value;																						\
+}
 
 cuda_flat_dense(FP32, float);
 cuda_reroll_batch(FP32, float);
 cuda_dropout_apply_dense(FP32, float);
 cuda_dropout_scale_dense(FP32, float);
+cuda_set_input_bias_dense(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 cuda_flat_dense(FP16, half);
 cuda_reroll_batch(FP16, half);
 cuda_dropout_apply_dense(FP16, half);
 cuda_dropout_scale_dense(FP16, half);
+cuda_set_input_bias_dense(FP16, half);
 #endif
 
 #if defined (GEN_AMPERE)
@@ -133,6 +146,7 @@ cuda_flat_dense(BF16, nv_bfloat16);
 cuda_reroll_batch(BF16, nv_bfloat16);
 cuda_dropout_apply_dense(BF16, nv_bfloat16);
 cuda_dropout_scale_dense(BF16, nv_bfloat16);
+cuda_set_input_bias_dense(BF16, nv_bfloat16);
 #endif
 
 
@@ -148,6 +162,7 @@ void cuda_dense_init(network *net)
 			net->cu_inst.cu_dense_fcts.reroll_fct = cuda_reroll_batch_FP32;
 			net->cu_inst.cu_dense_fcts.drop_apply_fct = cuda_dropout_apply_dense_FP32;
 			net->cu_inst.cu_dense_fcts.drop_scale_fct = cuda_dropout_scale_dense_FP32;
+			net->cu_inst.cu_dense_fcts.set_input_bias = cuda_set_input_bias_dense_FP32;
 			break;
 		
 		case FP16C_FP32A:
@@ -157,6 +172,7 @@ void cuda_dense_init(network *net)
 			net->cu_inst.cu_dense_fcts.reroll_fct = cuda_reroll_batch_FP16;
 			net->cu_inst.cu_dense_fcts.drop_apply_fct = cuda_dropout_apply_dense_FP16;
 			net->cu_inst.cu_dense_fcts.drop_scale_fct = cuda_dropout_scale_dense_FP16;
+			net->cu_inst.cu_dense_fcts.set_input_bias = cuda_set_input_bias_dense_FP16;
 			#else
 			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
 			exit(EXIT_FAILURE);
@@ -169,6 +185,7 @@ void cuda_dense_init(network *net)
 			net->cu_inst.cu_dense_fcts.reroll_fct = cuda_reroll_batch_BF16;
 			net->cu_inst.cu_dense_fcts.drop_apply_fct = cuda_dropout_apply_dense_BF16;
 			net->cu_inst.cu_dense_fcts.drop_scale_fct = cuda_dropout_scale_dense_BF16;
+			net->cu_inst.cu_dense_fcts.set_input_bias = cuda_set_input_bias_dense_BF16;
 			#else
 			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
 			exit(EXIT_FAILURE);
@@ -179,73 +196,30 @@ void cuda_dense_init(network *net)
 
 size_t cuda_convert_dense_layer(layer *current)
 {
-	d_param = (dense_param*)current->param;
-	size_t vram_approx = 0;
+	int i, nb_neurons;
+	size_t flat_in_size = 1, vram_approx = 0;
 	#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
 	float* temp_tab;
 	#endif
 	
 	network* net = current->c_network;
+	d_param = (dense_param*)current->param;
+	
+	nb_neurons = current->output_dim[3];
+	for(i = 0; i < 4; i++)
+		flat_in_size *= current->prev_dim[i];
+	flat_in_size += 1;
 	
 	if(current->previous != NULL)
 	{
-		switch(current->previous->type)
-		{	
-			case CONV:
-				vram_approx += cuda_convert_table(net, &(d_param->flat_input), d_param->in_size*net->batch_size,0);
-				if(!net->inference_only)
-					vram_approx += cuda_convert_table(net, &(d_param->flat_delta_o),
-						(((conv_param*)current->previous->param)->nb_area[0] 
-							* ((conv_param*)current->previous->param)->nb_area[1] 
-							* ((conv_param*)current->previous->param)->nb_area[2] 
-							* ((conv_param*)current->previous->param)->nb_filters + 1) 
-							* net->batch_size,0);
-				break;
-				
-			case NORM:
-			case LRN:
-				vram_approx += cuda_convert_table(net, &(d_param->flat_input), d_param->in_size*net->batch_size,0);
-				if(!net->inference_only)
-				{
-					switch(current->previous->previous->type)
-					{
-						default:
-						case CONV:
-							vram_approx += cuda_convert_table(net, &(d_param->flat_delta_o),
-								(((conv_param*)current->previous->previous->param)->nb_area[0] 
-									* ((conv_param*)current->previous->previous->param)->nb_area[1] 
-									* ((conv_param*)current->previous->previous->param)->nb_area[2] 
-									* ((conv_param*)current->previous->previous->param)->nb_filters + 1) 
-									* net->batch_size,0);
-							break;
-						case POOL:
-							vram_approx += cuda_convert_table(net, &(d_param->flat_delta_o),
-								(((pool_param*)current->previous->previous->param)->nb_area[0] 
-									* ((pool_param*)current->previous->previous->param)->nb_area[1] 
-									* ((pool_param*)current->previous->previous->param)->nb_area[2] 
-									* ((pool_param*)current->previous->previous->param)->nb_maps + 1) 
-									* net->batch_size,0);
-							break;
-					}
-				}
-				break;
-				
-			case POOL:
-				vram_approx += cuda_convert_table(net, &(d_param->flat_input), d_param->in_size * net->batch_size,0);
-				if(!net->inference_only)
-					vram_approx += cuda_convert_table(net, &(d_param->flat_delta_o),
-						(((pool_param*)current->previous->param)->nb_area[0]
-							* ((pool_param*)current->previous->param)->nb_area[1] 
-							* ((pool_param*)current->previous->param)->nb_area[2] 
-							* ((pool_param*)current->previous->param)->nb_maps + 1) 
-							* net->batch_size,0);
-				break;
-				
-			case DENSE:
-			default:
-				d_param->flat_delta_o = current->previous->delta_o;
-				break;
+		if(current->previous->output_type == SPATIAL)
+		{
+			vram_approx += cuda_convert_table(net, &(d_param->flat_input), flat_in_size * net->batch_size, 0);
+			if(!net->inference_only)
+				vram_approx += cuda_convert_table(net, &(d_param->flat_delta_o), flat_in_size * net->batch_size, 0);
 		}
+		else
+			d_param->flat_delta_o = current->previous->delta_o;
 	}
 	
 	switch(net->cu_inst.use_cuda_TC)
@@ -253,48 +227,52 @@ size_t cuda_convert_dense_layer(layer *current)
 		default:
 		case FP32C_FP32A:
 		case TF32C_FP32A:
-			vram_approx += cuda_convert_table(net, &(d_param->weights), d_param->in_size*(d_param->nb_neurons+1),0);
-			d_param->FP32_weights = d_param->weights;
+			vram_approx += cuda_convert_table(net, &(current->weights), flat_in_size*(nb_neurons+1), 0);
+			current->FP32_weights = (float*) current->weights;
 			break;
 		
 		case FP16C_FP32A:
 		case FP16C_FP16A:
 			#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
-			temp_tab = (float*)d_param->weights;
-			cudaMalloc(&(d_param->FP32_weights), d_param->in_size*(d_param->nb_neurons+1)*sizeof(float));
-			vram_approx += d_param->in_size*(d_param->nb_neurons+1)*sizeof(float);
-			cudaMemcpy(d_param->FP32_weights, temp_tab, d_param->in_size 
-				* (d_param->nb_neurons+1) * sizeof(float),cudaMemcpyHostToDevice);
+			temp_tab = (float*)current->weights;
+			cudaMalloc(&(current->FP32_weights), flat_in_size*(nb_neurons+1)*sizeof(float));
+			vram_approx += flat_in_size*(nb_neurons+1)*sizeof(float);
+			cudaMemcpy(current->FP32_weights, temp_tab, flat_in_size 
+				* (nb_neurons+1) * sizeof(float),cudaMemcpyHostToDevice);
 			free(temp_tab);
-			cudaMalloc(&(d_param->weights), d_param->in_size*(d_param->nb_neurons+1)*sizeof(half));
-			vram_approx += d_param->in_size*(d_param->nb_neurons+1)*sizeof(half);
+			cudaMalloc(&(current->weights), flat_in_size*(nb_neurons+1)*sizeof(half));
+			vram_approx += flat_in_size*(nb_neurons+1)*sizeof(half);
 			#endif
 			break;
 			
 		case BF16C_FP32A:
 			#if defined(GEN_AMPERE) 
-			temp_tab = (float*)d_param->weights;
-			cudaMalloc(&(d_param->FP32_weights), d_param->in_size*(d_param->nb_neurons+1)*sizeof(float));
-			vram_approx += d_param->in_size*(d_param->nb_neurons+1)*sizeof(float);
-			cudaMemcpy(d_param->FP32_weights, temp_tab, d_param->in_size 
-				* (d_param->nb_neurons+1) * sizeof(float),cudaMemcpyHostToDevice);
+			temp_tab = (float*)current->weights;
+			cudaMalloc(&(current->FP32_weights), flat_in_size*(nb_neurons+1)*sizeof(float));
+			vram_approx += flat_in_size*(nb_neurons+1)*sizeof(float);
+			cudaMemcpy(current->FP32_weights, temp_tab, flat_in_size 
+				* (nb_neurons+1) * sizeof(float),cudaMemcpyHostToDevice);
 			free(temp_tab);
-			cudaMalloc(&(d_param->weights),d_param->in_size*(d_param->nb_neurons+1)*sizeof(nv_bfloat16));
-			vram_approx += d_param->in_size*(d_param->nb_neurons+1)*sizeof(nv_bfloat16);
+			cudaMalloc(&(current->weights),flat_in_size*(nb_neurons+1)*sizeof(nv_bfloat16));
+			vram_approx += flat_in_size*(nb_neurons+1)*sizeof(nv_bfloat16);
 			#endif
 			break;
 	}
 	
-	vram_approx += cuda_convert_table(net, &(current->output), (d_param->nb_neurons+1) 
-		* net->batch_size,0);
+	vram_approx += cuda_convert_table(net, &(current->output), (nb_neurons+1) * net->batch_size, 0);
 		
 	if(current->dropout_rate > 0.01f)
-		vram_approx += cuda_convert_table_FP32((void**)&(d_param->dropout_mask), (d_param->nb_neurons+1) * net->batch_size, 0);
+		vram_approx += cuda_convert_table_FP32((void**)&(current->dropout_mask), (nb_neurons+1) * net->batch_size, 0);
 	
 	if(!net->inference_only)
 	{
-		vram_approx += cuda_convert_table(net, &(d_param->update), d_param->in_size*(d_param->nb_neurons+1),0);
-		vram_approx += cuda_convert_table(net, &(current->delta_o), (d_param->nb_neurons+1) * net->batch_size,0);
+		if(net->use_wema)
+			vram_approx += cuda_convert_table_FP32((void**)&(current->ema_weights), flat_in_size*(nb_neurons+1), 0);
+		
+		vram_approx += cuda_convert_table(net, &(current->gradient), flat_in_size*(nb_neurons+1), 0);
+		vram_approx += cuda_convert_table(net, &(current->delta_o), (nb_neurons+1) * net->batch_size, 0);
+		
+		vram_approx += cuda_convert_optimizer_var(current, flat_in_size * (nb_neurons+1));
 	}
 
 	return vram_approx;
@@ -304,225 +282,193 @@ void cuda_free_dense(layer *current)
 {
 	d_param = (dense_param*) current->param;
 	
-	cudaFree(d_param->weights);
+	cudaFree(current->weights);
 	if(current->c_network->cu_inst.use_cuda_TC != FP32C_FP32A && current->c_network->cu_inst.use_cuda_TC != TF32C_FP32A)
-		cudaFree(d_param->FP32_weights);
+		cudaFree(current->FP32_weights);
 	cudaFree(current->output);
 	
 	if(current->dropout_rate > 0.01f)
-		cudaFree(d_param->dropout_mask);
+		cudaFree(current->dropout_mask);
 	
-	if(current->previous != NULL && current->previous->type != DENSE)
+	if(current->previous != NULL && current->previous->output_type != FLAT)
 		cudaFree(d_param->flat_input);
 	
 	if(!current->c_network->inference_only)
 	{
-		cudaFree(d_param->update);
+		if(current->c_network->use_wema)
+			cudaFree(current->ema_weights);
+		cudaFree(current->gradient);
 		cudaFree(current->delta_o);
-		if(current->previous != NULL && current->previous->type != DENSE)
+		if(current->previous != NULL && current->previous->output_type != FLAT)
 			cudaFree(d_param->flat_delta_o);
+		
+		cuda_free_optimizer_var(current);
 	}
 }
 
 
 void cuda_forward_dense_layer(layer *current)
 {
-	int nb_area_w, nb_area_h, nb_area_d, depth;
-	void *ref_input;
+	int i, nb_neurons;
+	size_t flat_in_size = 1;
+	void *ref_input, *l_weights;
 	
 	network* net = current->c_network;
-	
-	if(net->length == 0)
-		return;
-	
 	d_param = (dense_param*) current->param;
 	
-	cuda_master_weight_copy(net, (float*)d_param->FP32_weights, d_param->weights, 
-		d_param->in_size*(d_param->nb_neurons+1));
+	nb_neurons = current->output_dim[3];
+	for(i = 0; i < 4; i++)
+		flat_in_size *= current->prev_dim[i];
+	flat_in_size += 1;
 	
 	if(current->previous == NULL)
+	{
+		ref_input = net->input;
+		
+		cu_blocks = (net->batch_size + cu_threads - 1) / cu_threads;
+		net->cu_inst.cu_dense_fcts.set_input_bias<<< cu_blocks, cu_threads >>>(
+			ref_input, flat_in_size-1, current->bias_value, net->batch_size);
+		
 		current->input = net->input;
+	}
+	else
+		current->input = current->previous->output;
 	
 	ref_input = current->input;
-		
-	if(current->previous != NULL && current->previous->type != DENSE)
+	
+	if(net->is_inference == 1 && net->use_wema)
 	{
-		//Use a converted (flatten) input if needed
-		switch(current->previous->type)
+		if(current->FP32_weights == current->weights) //Equivalent to test if mixed precision is off or FP32C_FP32A
+			l_weights = (void*) current->ema_weights;
+		else
 		{
-			case POOL:
-				nb_area_w = ((pool_param*)current->previous->param)->nb_area[0];
-				nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
-				nb_area_d = ((pool_param*)current->previous->param)->nb_area[2];
-				depth = ((pool_param*)current->previous->param)->nb_maps;
-				break;
-				
-			case NORM:
-			case LRN:
-				switch(current->previous->previous->type)
-				{
-					default:
-					case CONV:
-						nb_area_w = ((conv_param*)current->previous->previous->param)->nb_area[0];
-						nb_area_h = ((conv_param*)current->previous->previous->param)->nb_area[1];
-						nb_area_d = ((conv_param*)current->previous->previous->param)->nb_area[2];
-						depth = ((conv_param*)current->previous->previous->param)->nb_filters;
-						break;
-					case POOL:
-						nb_area_w = ((pool_param*)current->previous->previous->param)->nb_area[0];
-						nb_area_h = ((pool_param*)current->previous->previous->param)->nb_area[1];
-						nb_area_d = ((pool_param*)current->previous->previous->param)->nb_area[2];
-						depth = ((pool_param*)current->previous->previous->param)->nb_maps;
-						break;
-				}
-				break;
-				
-			case CONV:
-			default:
-				nb_area_w = ((conv_param*)current->previous->param)->nb_area[0];
-				nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
-				nb_area_d = ((conv_param*)current->previous->param)->nb_area[2];
-				depth = ((conv_param*)current->previous->param)->nb_filters;
-				break;
+			cuda_master_weight_copy(net, (float*)current->ema_weights, current->weights, flat_in_size*(nb_neurons+1));
+			l_weights = current->weights;
+		}	
+	}
+	else
+	{
+		if(current->FP32_weights == current->weights)
+			l_weights = (void*) current->FP32_weights;
+		else
+		{
+			cuda_master_weight_copy(net, (float*)current->FP32_weights, current->weights, flat_in_size*(nb_neurons+1));
+			l_weights = current->weights;
 		}
+	}
+	
+	if(current->previous != NULL && current->previous->output_type != FLAT)
+	{
+		cu_blocks = (flat_in_size * net->batch_size + cu_threads - 1) / cu_threads;
 		
-		cu_blocks = ((nb_area_w * nb_area_h * nb_area_d * depth + 1) 
-			* net->batch_size + cu_threads - 1) / cu_threads;
-		
-		net->cu_inst.cu_dense_fcts.flat_dense_fct<<< cu_blocks, cu_threads >>>(current->input, 
-			d_param->flat_input, current->bias_value, nb_area_w * nb_area_h * nb_area_d,
-			nb_area_w * nb_area_h * nb_area_d * depth + 1, depth, net->batch_size, 
-			(nb_area_w * nb_area_h * nb_area_d * depth + 1) * net->batch_size);
+		net->cu_inst.cu_dense_fcts.flat_dense_fct<<< cu_blocks, cu_threads >>>(
+			current->input, d_param->flat_input, current->bias_value, 
+			current->prev_dim[0]*current->prev_dim[1]*current->prev_dim[2],
+			flat_in_size, current->prev_dim[3], net->batch_size, flat_in_size * net->batch_size);
 		
 		ref_input = d_param->flat_input;
 	}
 	
-	cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, d_param->nb_neurons+1, 
-		net->batch_size, d_param->in_size, cu_alpha, d_param->weights, cuda_data_type, 
-		d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, cu_beta, 
-		current->output, cuda_data_type, d_param->nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+	cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, nb_neurons+1, 
+		net->batch_size, flat_in_size, cu_alpha,  l_weights, cuda_data_type, 
+		nb_neurons+1, ref_input, cuda_data_type, flat_in_size, cu_beta, 
+		current->output, cuda_data_type, nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 
 	if(current->dropout_rate > 0.01f)
 	{
 	
 		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
 		{
-			cu_blocks = ((d_param->nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
-			
-			cuda_random_vector(d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size);
-			
+			cu_blocks = ((nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
+			cuda_random_vector(current->dropout_mask, (nb_neurons+1) * net->batch_size);
 			net->cu_inst.cu_dense_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, 
-				d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, (d_param->nb_neurons+1), current->dropout_rate);
+				current->dropout_mask, (nb_neurons+1) * net->batch_size, (nb_neurons+1), current->dropout_rate);
 		}
 		else
 			net->cu_inst.cu_dense_fcts.drop_scale_fct<<<cu_blocks, cu_threads>>>(current->output, 
-				d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, (d_param->nb_neurons+1), current->dropout_rate);
+				current->dropout_mask, (nb_neurons+1) * net->batch_size, (nb_neurons+1), current->dropout_rate);
 	}
 	
 	current->activation(current);
+	
+	if(!net->inference_only)
+	{
+		net->cu_inst.cu_auxil_fcts.cu_typed_memset_fct(current->delta_o, 0, (nb_neurons+1) * net->batch_size);
+		if(current->previous != NULL && current->previous->output_type != FLAT)
+			net->cu_inst.cu_auxil_fcts.cu_typed_memset_fct(d_param->flat_delta_o, 0, flat_in_size * net->batch_size);
+	}
 }
 
 
 void cuda_backward_dense_layer(layer* current)
 {
-	int nb_area_w, nb_area_h, nb_area_d, depth;
+	size_t i, nb_neurons;
+	size_t flat_in_size = 1;
 	void* ref_input;
 
 	network* net = current->c_network;
-
 	d_param = (dense_param*) current->param;	
+
+	nb_neurons = current->output_dim[3];
+	for(i = 0; i < 4; i++)
+		flat_in_size *= current->prev_dim[i];
+	flat_in_size += 1;
+	
+	//Must be done here so all layers can add their contribution to current layer delta_o (merging / branching)
+	current->deriv_activation(current);
 	
 	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 	{
-		cu_blocks = ((d_param->nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
-		
+		cu_blocks = ((nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
 		net->cu_inst.cu_dense_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->delta_o, 
-			d_param->dropout_mask, (d_param->nb_neurons+1) * net->batch_size, (d_param->nb_neurons+1), current->dropout_rate);
+			current->dropout_mask, (nb_neurons+1) * net->batch_size, (nb_neurons+1), current->dropout_rate);
 	}
 	
 	//######################## ERROR PROPAGATION ########################
-
 	ref_input = current->input;
 	
 	//skip error prop if previous is the input layer
 	if(current->previous != NULL)
 	{
-		cublasGemmEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, d_param->in_size, 
-			net->batch_size, d_param->nb_neurons+1, cu_alpha, d_param->weights, cuda_data_type, 
-			d_param->nb_neurons+1, current->delta_o, cuda_data_type, d_param->nb_neurons+1, cu_beta, 
-			d_param->flat_delta_o, cuda_data_type, d_param->in_size, cuda_compute_type,
+		cublasGemmEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, flat_in_size, 
+			net->batch_size, nb_neurons+1, cu_alpha, current->weights, cuda_data_type, 
+			nb_neurons+1, current->delta_o, cuda_data_type, nb_neurons+1, cu_alpha, 
+			d_param->flat_delta_o, cuda_data_type, flat_in_size, cuda_compute_type,
 			CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 		//if previous layer is dense then flat_delta_o = previous->delta_o
 		
-		if(current->previous->type == POOL || current->previous->type == CONV 
-			|| current->previous->type == NORM || current->previous->type == LRN)
+		if(current->previous->output_type == SPATIAL)
 		{
-			switch(current->previous->type)
-			{
-				case POOL:
-					nb_area_w = ((pool_param*)current->previous->param)->nb_area[0];
-					nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
-					nb_area_d = ((pool_param*)current->previous->param)->nb_area[2];
-					depth = ((pool_param*)current->previous->param)->nb_maps;
-					break;
-			
-				case NORM:
-				case LRN:
-					switch(current->previous->previous->type)
-					{
-						default:
-						case CONV:
-							nb_area_w = ((conv_param*)current->previous->previous->param)->nb_area[0];
-							nb_area_h = ((conv_param*)current->previous->previous->param)->nb_area[1];
-							nb_area_d = ((conv_param*)current->previous->previous->param)->nb_area[2];
-							depth = ((conv_param*)current->previous->previous->param)->nb_filters;
-							break;
-						case POOL:
-							nb_area_w = ((pool_param*)current->previous->previous->param)->nb_area[0];
-							nb_area_h = ((pool_param*)current->previous->previous->param)->nb_area[1];
-							nb_area_d = ((pool_param*)current->previous->previous->param)->nb_area[2];
-							depth = ((pool_param*)current->previous->previous->param)->nb_maps;
-							break;
-					}
-					break;
-					
-				case CONV:
-				default:
-					nb_area_w = ((conv_param*)current->previous->param)->nb_area[0];
-					nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
-					nb_area_d = ((conv_param*)current->previous->param)->nb_area[2];
-					depth = ((conv_param*)current->previous->param)->nb_filters;
-					break;
-			}
-			
 			//Need to unroll delta_o to already be in the proper format for deriv calculation
-			cu_blocks = (nb_area_w * nb_area_h * nb_area_d * depth 
-				* net->batch_size + cu_threads - 1) / cu_threads;
+			cu_blocks = ((flat_in_size-1) * net->batch_size + cu_threads - 1) / cu_threads;
 			
 			net->cu_inst.cu_dense_fcts.reroll_fct<<< cu_blocks, cu_threads >>>(d_param->flat_delta_o, 
-				current->previous->delta_o, nb_area_w * nb_area_h * nb_area_d, 
-				nb_area_w * nb_area_h * nb_area_d * depth + 1, depth, net->batch_size,
-				nb_area_w * nb_area_h * nb_area_d * depth * net->batch_size);
+				current->previous->delta_o, current->prev_dim[0]*current->prev_dim[1]*current->prev_dim[2], 
+				flat_in_size, current->output_dim[3], net->batch_size,
+				(flat_in_size-1) * net->batch_size);
 		}
-		
-		current->previous->deriv_activation(current->previous);
 	}
 		
 	//########################  WEIGHTS UPDATE   ########################
-	if(current->previous != NULL && current->previous->type != DENSE)
-		ref_input = d_param->flat_input;
-	
 	if(!current->frozen)
 	{
-		set_cu_learning_rate_and_momentum(net);
+		if(current->previous != NULL && current->previous->output_type != FLAT)
+			ref_input = d_param->flat_input;
 		
-		cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_T, d_param->nb_neurons+1, d_param->in_size,
-			net->batch_size, cu_learning_rate, current->delta_o, cuda_data_type, 
-			d_param->nb_neurons+1, ref_input, cuda_data_type, d_param->in_size, cu_momentum,
-			d_param->update, cuda_data_type, d_param->nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+		cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_T, nb_neurons+1, flat_in_size,
+			net->batch_size, cu_alpha, current->delta_o, cuda_data_type, 
+			nb_neurons+1, ref_input, cuda_data_type, flat_in_size, cu_beta,
+			current->gradient, cuda_data_type, nb_neurons+1, cuda_compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 		
-		cuda_update_weights(net, d_param->FP32_weights, d_param->update, net->learning_rate*net->weight_decay, 
-			1, d_param->in_size * (d_param->nb_neurons+1));
+		net->optim_update_fct_gpu(current, (flat_in_size-1)*(nb_neurons+1), 
+			flat_in_size*(nb_neurons+1), flat_in_size*(nb_neurons+1));
+		
+		if(current->wema_replace_signal > 0)
+		{
+			cudaMemcpy(current->FP32_weights, current->ema_weights, 
+				flat_in_size * (nb_neurons+1) * sizeof(float), cudaMemcpyDeviceToDevice);
+			current->wema_replace_signal = 0;
+		}
 	}
 }
 

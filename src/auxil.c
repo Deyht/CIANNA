@@ -141,6 +141,26 @@ float clip(float n, float lower, float upper)
 }
 
 
+//return a random Real value between 0 <= x < 1
+double random_uniform(void)
+{
+	return  rand()/(double)RAND_MAX;
+}
+
+
+//return a real value following normal distribution with 0 mean and 1 standard deviation
+double random_normal(void)
+{
+	// non optimized box muller normal distribution generator
+	double U1, U2;
+	
+	U1 = rand()*(1.0/RAND_MAX);
+	U2 = rand()*(1.0/RAND_MAX);
+	
+	return sqrt(-2.0*log(U1))*cos(two_pi*U2);
+}
+
+
 //Warning : the following *eval* functions are used during network training and must not be used anywhere else in the code (would lead to incorrect training metrics)
 void eval_init(network *net)
 {
@@ -327,6 +347,10 @@ void perf_eval_display(network *net)
 			case LRN:
 				layer_type_char = 'L';
 				break;
+			
+			case MERGE:
+				layer_type_char = 'M';
+				break;
 		
 			case DENSE:
 				layer_type_char = 'D';
@@ -350,7 +374,7 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 	int l_in_padding, int l_activation, int l_bias, int l_dropout, int l_param_count)
 {
 	int i;
-	int type_count[5] = {0,0,0,0,0};
+	int type_count[6] = {0,0,0,0,0,0};
 	FILE* f_tex = NULL;
 	char full_path_name[200];
 	char command[600];
@@ -361,7 +385,7 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 	pool_param* p_param = NULL;
 	norm_param* n_param = NULL;
 	lrn_param* ln_param = NULL;
-	dense_param* d_param = NULL;
+	merge_param* m_param = NULL;
 	
 	if(stat(path, &st) == -1)
     	mkdir(path, 0700);
@@ -421,29 +445,29 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 				c_param = (conv_param*)c_l->param;
 				type_count[0] += 1;
 				fprintf(f_tex, "& Conv\\_%d ", type_count[0]);
-				if(l_in_size) fprintf(f_tex, "& %dx%dx%d ", c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2]);
-				if(l_size) fprintf(f_tex, "& %d ", c_param->nb_filters);
+				if(l_in_size) fprintf(f_tex, "& %dx%dx%d ", c_l->prev_dim[0], c_l->prev_dim[1], c_l->prev_dim[2]);
+				if(l_size) fprintf(f_tex, "& %d ", c_l->output_dim[3]);
 				if(l_f_size) fprintf(f_tex, "& %dx%dx%d ", c_param->f_size[0], c_param->f_size[1], c_param->f_size[2]);
 				if(l_stride) fprintf(f_tex, "& %d:%d:%d ", c_param->stride[0], c_param->stride[1], c_param->stride[2]);
 				if(l_padding) fprintf(f_tex, "& %d:%d:%d ", c_param->padding[0], c_param->padding[1], c_param->padding[2]);
 				if(l_in_padding) fprintf(f_tex, "& %d:%d:%d ", c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2]);
-				if(l_out_size) fprintf(f_tex, "& %dx%dx%d ", c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2]);
+				if(l_out_size) fprintf(f_tex, "& %dx%dx%d ", c_l->output_dim[0], c_l->output_dim[1], c_l->output_dim[2]);
 				if(l_activation) {fill_string_activ_param(c_l, activ_str,1); fprintf(f_tex, "& %s ", activ_str);}
 				if(l_bias) fprintf(f_tex, "& %0.2f ", c_l->bias_value);
 				if(l_dropout) fprintf(f_tex, "& %d\\%% ", (int)(c_l->dropout_rate*100.0f));
-				if(l_param_count) fprintf(f_tex, "& %d ", c_l->nb_params);
+				if(l_param_count) fprintf(f_tex, "& %ld ", c_l->nb_params);
 				break;
 			case POOL:
 				p_param = (pool_param*)c_l->param;
 				type_count[1] += 1;
 				fprintf(f_tex, "& Pool\\_%d ", type_count[1]);
-				if(l_in_size) fprintf(f_tex, "& %dx%dx%d ", p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2]);
+				if(l_in_size) fprintf(f_tex, "& %dx%dx%d ", c_l->prev_dim[0], c_l->prev_dim[1], c_l->prev_dim[2]);
 				if(l_size) fprintf(f_tex, "& ");
 				if(l_f_size) fprintf(f_tex, "& %dx%dx%d ", p_param->p_size[0], p_param->p_size[1], p_param->p_size[2]);
 				if(l_stride) fprintf(f_tex, "& %d:%d:%d ", p_param->stride[0], p_param->stride[1], p_param->stride[2]);
 				if(l_padding) fprintf(f_tex, "& %d:%d:%d ", p_param->padding[0], p_param->padding[1], p_param->padding[2]);
 				if(l_in_padding) fprintf(f_tex, "& ");
-				if(l_out_size) fprintf(f_tex, "& %dx%dx%d ", p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2]);
+				if(l_out_size) fprintf(f_tex, "& %dx%dx%d ", c_l->output_dim[0], c_l->output_dim[1], c_l->output_dim[2]);
 				if(l_activation) {fill_string_activ_param(c_l, activ_str,1); fprintf(f_tex, "& %s ", activ_str);}
 				if(l_bias) fprintf(f_tex, "& ");
 				if(l_dropout) fprintf(f_tex, "& %d\\%% ", (int)(c_l->dropout_rate*100.0f));
@@ -455,16 +479,11 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 				fprintf(f_tex, "& Norm\\_%d ", type_count[2]);
 				if(l_in_size)
 				{
-					switch(c_l->previous->type)
+					if(c_l->output_type == SPATIAL)
+						fprintf(f_tex, "& %dx%dx%d ", c_l->prev_dim[0], c_l->prev_dim[1], c_l->prev_dim[2]);
+					else
 					{
-						case CONV:
-							c_param = (conv_param*)c_l->previous->param;
-							fprintf(f_tex, "& %dx%dx%d ", c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2]);
-							break;
-						case POOL:
-							p_param = (pool_param*)c_l->previous->param;
-							fprintf(f_tex, "& %dx%dx%d ", p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2]);
-							break;
+						//empty for now
 					}
 				}
 				if(l_size) fprintf(f_tex, "& N.Gr. %d ", n_param->nb_group);
@@ -474,16 +493,11 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 				if(l_in_padding) fprintf(f_tex, "& ");
 				if(l_out_size)
 				{
-					switch(c_l->previous->type)
+					if(c_l->output_type == SPATIAL)
+						fprintf(f_tex, "& %dx%dx%d ", c_l->output_dim[0], c_l->output_dim[1], c_l->output_dim[2]);
+					else
 					{
-						case CONV:
-							c_param = (conv_param*)c_l->previous->param;
-							fprintf(f_tex, "& %dx%dx%d ", c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2]);
-							break;
-						case POOL:
-							p_param = (pool_param*)c_l->previous->param;
-							fprintf(f_tex, "& %dx%dx%d ", p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2]);
-							break;
+						//empty for now
 					}
 				}
 				if(l_activation) {fill_string_activ_param(c_l, activ_str,1); fprintf(f_tex, "& %s ", activ_str);}
@@ -498,16 +512,11 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 				fprintf(f_tex, "& LRN\\_%d ", type_count[3]);
 				if(l_in_size)
 				{
-					switch(c_l->previous->type)
+					if(c_l->output_type == SPATIAL)
+						fprintf(f_tex, "& %dx%dx%d ", c_l->prev_dim[0], c_l->prev_dim[1], c_l->prev_dim[2]);
+					else
 					{
-						case CONV:
-							c_param = (conv_param*)c_l->previous->param;
-							fprintf(f_tex, "& %dx%dx%d ", c_param->prev_size[0], c_param->prev_size[1], c_param->prev_size[2]);
-							break;
-						case POOL:
-							p_param = (pool_param*)c_l->previous->param;
-							fprintf(f_tex, "& %dx%dx%d ", p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2]);
-							break;
+						//empty for now
 					}
 				}
 				if(l_size) fprintf(f_tex, "& ch\\_range: %d", ln_param->range);
@@ -517,16 +526,11 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 				if(l_in_padding) fprintf(f_tex, "& ");
 				if(l_out_size)
 				{
-					switch(c_l->previous->type)
+					if(c_l->output_type == SPATIAL)
+						fprintf(f_tex, "& %dx%dx%d ", c_l->output_dim[0], c_l->output_dim[1], c_l->output_dim[2]);
+					else
 					{
-						case CONV:
-							c_param = (conv_param*)c_l->previous->param;
-							fprintf(f_tex, "& %dx%dx%d ", c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2]);
-							break;
-						case POOL:
-							p_param = (pool_param*)c_l->previous->param;
-							fprintf(f_tex, "& %dx%dx%d ", p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2]);
-							break;
+						//empty for now
 					}
 				}
 				if(l_activation) {fill_string_activ_param(c_l, activ_str,1); fprintf(f_tex, "& %s ", activ_str);}
@@ -537,21 +541,39 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 				break;
 				
 			case DENSE:
-				d_param = (dense_param*)c_l->param;
 				type_count[4] += 1;
 				fprintf(f_tex, "& Dense\\_%d ", type_count[4]);
-				if(l_in_size) fprintf(f_tex, "& %d", d_param->in_size);
-				if(l_size) fprintf(f_tex, "& %d ", d_param->nb_neurons);
+				if(l_in_size) fprintf(f_tex, "& %d", 
+					c_l->prev_dim[0]*c_l->prev_dim[1]*c_l->prev_dim[2]);
+				if(l_size) fprintf(f_tex, "& %d ", c_l->output_dim[3]);
 				if(l_f_size) fprintf(f_tex, "& ");
 				if(l_stride) fprintf(f_tex, "& ");
 				if(l_padding) fprintf(f_tex, "& ");
 				if(l_in_padding) fprintf(f_tex, "& ");
-				if(l_out_size) fprintf(f_tex, "& %d ", d_param->nb_neurons);
+				if(l_out_size) fprintf(f_tex, "& %d ", c_l->output_dim[3]);
 				if(l_activation) {fill_string_activ_param(c_l, activ_str,1); fprintf(f_tex, "& %s ", activ_str);}
 				if(l_bias) fprintf(f_tex, "& %0.2f ", c_l->bias_value);
 				if(l_dropout) fprintf(f_tex, "& %d\\%% ", (int)(c_l->dropout_rate*100.0f));
-				if(l_param_count) fprintf(f_tex, "& %d ", c_l->nb_params);
+				if(l_param_count) fprintf(f_tex, "& %ld ", c_l->nb_params);
 				break;
+				
+			case MERGE:
+				m_param = (merge_param*)c_l->param;
+				type_count[5] += 1;
+				fprintf(f_tex, "& MERGE\\_%d ", type_count[5]);
+				if(l_in_size) fprintf(f_tex, "L:%d / L:%d ", m_param->previous_id_a, m_param->previous_id_b);
+				if(l_size) fprintf(f_tex, "& %d ", c_l->output_dim[3]);
+				if(l_f_size) fprintf(f_tex, "& ");
+				if(l_stride) fprintf(f_tex, "& ");
+				if(l_padding) fprintf(f_tex, "& ");
+				if(l_in_padding) fprintf(f_tex, "& ");
+				if(l_out_size) fprintf(f_tex, "& %dx%dx%d ", c_l->output_dim[0], c_l->output_dim[1], c_l->output_dim[2]);
+				if(l_activation) {fill_string_activ_param(c_l, activ_str,1); fprintf(f_tex, "& %s ", activ_str);}
+				if(l_bias) fprintf(f_tex, "& ");
+				if(l_dropout) fprintf(f_tex, "& ");
+				if(l_param_count) fprintf(f_tex, "& ");
+				break;
+				
 			default:
 				printf("\n ERROR: Unrecognized layer type in architechture tex\n");
 				exit(EXIT_FAILURE);

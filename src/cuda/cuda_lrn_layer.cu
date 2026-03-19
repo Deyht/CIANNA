@@ -37,7 +37,7 @@ void cuda_backward_lrn_layer(layer *current);
 #define lrn_conv_kernel(name, type) 																											\
 __global__ void lrn_conv_kernel_##name(void *i_output, void *i_input,																			\
 	float *local_scale, int range, float k, float alpha, float beta,																			\
-	int b_size, int nb_channel, int flat_a_size)																								\
+	int b_size, int nb_channel, size_t flat_a_size)																								\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	type* input = (type*) i_input;																												\
@@ -73,7 +73,7 @@ __global__ void lrn_conv_kernel_##name(void *i_output, void *i_input,											
 __global__ void lrn_conv_back_kernel_##name(																									\
 	void *i_output, void *i_input, void *i_delta_output, void *i_delta_input,																	\
 	float *local_scale, int range, float k, float alpha, float beta,																			\
-	int b_size, int nb_channel, int flat_a_size)																								\
+	int b_size, int nb_channel, size_t flat_a_size)																								\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	type* input = (type*) i_input;																												\
@@ -98,7 +98,7 @@ __global__ void lrn_conv_back_kernel_##name(																									\
 		local_sum += (float)delta_output[l_id]*(float)output[l_id]/(float)local_scale[l_id];													\
 	}																																			\
 																																				\
-	delta_input[i] = (type)((float)delta_output[i]/powf(local_scale[i],beta)																	\
+	delta_input[i] += (type)((float)delta_output[i]/powf(local_scale[i],beta)																	\
 							- 2.0f*alpha*beta*(float)input[i]*local_sum/range);																	\
 }
 
@@ -154,21 +154,30 @@ void cuda_lrn_init(network* net)
 
 size_t cuda_convert_lrn_layer(layer *current)
 {
+	int i;
+	size_t flat_output_dim = 1;
 	n_param = (lrn_param*)current->param;
 	size_t vram_approx = 0;
 
 	network* net = current->c_network;
 	
-	vram_approx += cuda_convert_table(net, &(current->output), n_param->output_dim, 0);
+	if(current->output_type == FLAT)
+		flat_output_dim = current->output_dim[3] + 1;
+	else
+		for(i = 0; i < 4; i++)
+			flat_output_dim *= current->output_dim[i];
+	
+	vram_approx += cuda_convert_table(net, &(current->output), flat_output_dim * net->batch_size, 0);
 	
 	if(!net->inference_only)
 	{
-		vram_approx += cuda_convert_table(net, &(current->delta_o), n_param->output_dim, 0);
-		vram_approx += cuda_convert_table_FP32((void**)&(n_param->local_scale), n_param->output_dim, 0);
+		vram_approx += cuda_convert_table(net, &(current->delta_o), flat_output_dim * net->batch_size, 0);
+		vram_approx += cuda_convert_table_FP32((void**)&(n_param->local_scale), flat_output_dim * net->batch_size, 0);
 	}
 	
 	return vram_approx;
 }
+
 
 void cuda_free_lrn(layer *current)
 {
@@ -186,48 +195,57 @@ void cuda_free_lrn(layer *current)
 
 void cuda_forward_lrn_layer(layer *current)
 {
-	n_param = (lrn_param*)current->param;		
+	int i;
+	size_t flat_output_dim = 1;
+	
 	network* net = current->c_network;
+	n_param = (lrn_param*)current->param;		
 	
 	current->input = current->previous->output;
 	
-	if(current->previous->type == DENSE)
-	{
-	
-	}
+	if(current->output_type == FLAT)
+		flat_output_dim = current->output_dim[3] + 1;
 	else
 	{
-		cu_blocks = (n_param->output_dim + cu_threads - 1) / cu_threads;
-		
+		for(i = 0; i < 4; i++)
+			flat_output_dim *= current->output_dim[i];
+		cu_blocks = (flat_output_dim * net->batch_size + cu_threads - 1) / cu_threads;
 		net->cu_inst.cu_lrn_fcts.cu_lrn_conv_kernel<<< cu_blocks, cu_threads >>>(current->output, current->input, 
 			n_param->local_scale, n_param->range, n_param->k, n_param->alpha, n_param->beta, 
-			net->batch_size, n_param->n_dim, n_param->dim_offset);
+			net->batch_size, current->output_dim[3], current->a_dim);
 	}
 
 	current->activation(current);
+	
+	if(!net->inference_only)
+		net->cu_inst.cu_auxil_fcts.cu_typed_memset_fct(current->delta_o, 0, flat_output_dim*net->batch_size);
 }
+
 
 void cuda_backward_lrn_layer(layer *current)
 {
+	int i;
+	size_t flat_output_dim = 1;
+	network* net = current->c_network;	
 	n_param = (lrn_param*)current->param;	
-	network* net = current->c_network;
 	
-	if(current->previous->type == DENSE)
-	{
+	//Must be done here so all layers can add their contribution to current layer delta_o (merging / branching)
+	current->deriv_activation(current);
 	
-	}
+	if(current->output_type == FLAT)
+		flat_output_dim = current->output_dim[3] + 1;
 	else
 	{
-		cu_blocks = (n_param->output_dim + cu_threads - 1) / cu_threads;
-		
+		for(i = 0; i < 4; i++)
+			flat_output_dim *= current->output_dim[i];
+		cu_blocks = (flat_output_dim * net->batch_size + cu_threads - 1) / cu_threads;
 		net->cu_inst.cu_lrn_fcts.cu_lrn_conv_back_kernel<<< cu_blocks, cu_threads >>>(
 			current->output, current->input, current->delta_o, current->previous->delta_o,
 			n_param->local_scale, n_param->range, n_param->k, n_param->alpha, n_param->beta, 
-			net->batch_size, n_param->n_dim, n_param->dim_offset);
+			net->batch_size, current->output_dim[3], current->a_dim);
 	}
-	
-	current->previous->deriv_activation(current->previous);
 }
+
 
 void cuda_lrn_define(layer *current)
 {

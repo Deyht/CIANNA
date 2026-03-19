@@ -24,6 +24,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <time.h>
 #include <tgmath.h>
 #include <string.h>
@@ -55,7 +56,7 @@
 #include <cblas.h>
 #endif
 
-#ifdef OPEN_MP
+#ifdef _OPENMP
 #include <omp.h>
 #endif
 

@@ -27,6 +27,7 @@ rm -rf mnist_dat
 rm -rf arch
 rm -rf fwd_res
 rm -rf net_save
+rm -rf optim_save
 rm -rf __pycache__
 
 
@@ -40,6 +41,7 @@ rm *.jpg
 rm -rf arch
 rm -rf fwd_res
 rm -rf net_save
+rm -rf optim_save
 rm -rf __pycache__
 
 
@@ -54,6 +56,7 @@ rm -rf VOCdevkit
 rm -rf arch
 rm -rf fwd_res
 rm -rf net_save
+rm -rf optim_save
 rm -rf __pycache__
 
 
@@ -70,6 +73,7 @@ rm -rf val2017
 rm -rf arch
 rm -rf fwd_res
 rm -rf net_save
+rm -rf optim_save
 rm -rf __pycache__
 
 
@@ -82,6 +86,7 @@ rm -rf SDC1_data
 rm -rf arch
 rm -rf fwd_res
 rm -rf net_save
+rm -rf optim_save
 rm -rf __pycache__
 
 

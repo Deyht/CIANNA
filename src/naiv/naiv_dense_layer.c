@@ -71,7 +71,7 @@ void reroll_batch(void *in, void *out, int map_size, int flatten_size, int nb_ma
 		image_id = (i % (map_size*batch_size))/map_size;
 		pos = (i % (map_size*batch_size))%map_size;
 		
-		f_out[i] = f_in[image_id*(flatten_size) + map_id*map_size + pos];
+		f_out[i] += f_in[image_id*(flatten_size) + map_id*map_size + pos];
 	}
 }
 
@@ -120,90 +120,65 @@ void dropout_scale_dense(void *table, int biased_dim, size_t size, float drop_ra
 
 void naiv_forward_dense_layer(layer *current)
 {
-	int i, j, b;
+	size_t i, j, b;
 	double h;
-	int nb_area_w, nb_area_h, nb_area_d, depth;
-	void *ref_input;
+	int nb_neurons;
+	size_t flat_in_size = 1;
+	float *ref_input;
 	
 	network* net = current->c_network;
-	
-	if(net->length == 0)
-		return;
-	
 	d_param = (dense_param*) current->param;
 	
-	if(current->previous == NULL)
-		current->input = net->input;
-	
-	ref_input = current->input;
-
-	float *f_weights = (float*) d_param->weights;
+	float *f_weights;
 	float *f_output = (float*) current->output;
 	
-	if(current->previous != NULL && current->previous->type != DENSE)
+	nb_neurons = current->output_dim[3];
+	for(i = 0; i < 4; i++)
+		flat_in_size *= current->prev_dim[i];
+	flat_in_size += 1;
+	
+	if(current->previous == NULL)
 	{
-		//Use a converted (flatten) input if needed
-		switch(current->previous->type)
-		{
-			case CONV:
-				nb_area_w = ((conv_param*)current->previous->param)->nb_area[0];
-				nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
-				nb_area_d = ((conv_param*)current->previous->param)->nb_area[2];
-				depth = ((conv_param*)current->previous->param)->nb_filters;
-				break;
-				
-			case NORM:
-			case LRN:
-				switch(current->previous->previous->type)
-				{
-					default:
-					case CONV:
-						nb_area_w = ((conv_param*)current->previous->previous->param)->nb_area[0];
-						nb_area_h = ((conv_param*)current->previous->previous->param)->nb_area[1];
-						nb_area_d = ((conv_param*)current->previous->previous->param)->nb_area[2];
-						depth = ((conv_param*)current->previous->previous->param)->nb_filters;
-						break;
-					case POOL:
-						nb_area_w = ((pool_param*)current->previous->previous->param)->nb_area[0];
-						nb_area_h = ((pool_param*)current->previous->previous->param)->nb_area[1];
-						nb_area_d = ((pool_param*)current->previous->previous->param)->nb_area[2];
-						depth = ((pool_param*)current->previous->previous->param)->nb_maps;
-						break;
-				}
-				break;
-			
-			case POOL:
-			default:
-				nb_area_w = ((pool_param*)current->previous->param)->nb_area[0];
-				nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
-				nb_area_d = ((pool_param*)current->previous->param)->nb_area[2];
-				depth = ((pool_param*)current->previous->param)->nb_maps;
-				break;
-		}
+		ref_input = net->input;
+		for(i = 0; i < net->batch_size; i++)
+			ref_input[i*(net->input_dim+1) + net->input_dim] = current->bias_value;
 		
+		current->input = net->input;
+	}
+	else
+		current->input = current->previous->output;
+	
+	ref_input = (float*)current->input;
+	
+	if(net->is_inference == 1 && net->use_wema)
+		f_weights = (void*) current->ema_weights;
+	else
+		f_weights = (void*) current->weights;
+	
+	if(current->previous != NULL && current->previous->output_type != FLAT)
+	{
 		flat_dense(current->input, d_param->flat_input, current->bias_value, 
-			nb_area_w * nb_area_h * nb_area_d, nb_area_w * nb_area_h * nb_area_d * depth + 1, 
-			depth, net->batch_size, (nb_area_w * nb_area_h * nb_area_d * depth + 1) * net->batch_size);
+			current->prev_dim[0]*current->prev_dim[1]*current->prev_dim[2], flat_in_size, 
+			current->prev_dim[3], net->batch_size, flat_in_size * net->batch_size);
 		
-		ref_input = d_param->flat_input;
+		ref_input = (float*)d_param->flat_input;
 	}
 	
-	float *f_input = (float*) ref_input;
 	//Strongly affected by performance drop of cache miss
 	//Could be optimized by transposing the matrix first => better use OpenBLAS directly
-	#pragma omp parallel for private(i, j, h) shared(f_weights) collapse(2) schedule(guided, 2)
+	#pragma omp parallel for private(i, j, h) shared(f_weights) collapse(2) schedule(guided, 4)
 	for(b = 0; b < net->batch_size; b++)
 	{
-		for(i = 0; i < d_param->nb_neurons+1; i++)
+		for(i = 0; i < nb_neurons+1; i++)
 		{
 			h = 0.0;
-			for(j = 0; j < d_param->in_size; j++)
+			for(j = 0; j < flat_in_size; j++)
 			{
-				h += f_weights[j*(d_param->nb_neurons+1) + i]
-					* f_input[b*d_param->in_size + j];
+				h += f_weights[j*(nb_neurons+1) + i]
+					* ref_input[b*flat_in_size + j];
 			}
 			
-			f_output[b*(d_param->nb_neurons+1)+i] = h;
+			f_output[b*(nb_neurons+1)+i] = h;
 		}
 	}
 	
@@ -211,38 +186,52 @@ void naiv_forward_dense_layer(layer *current)
 	{
 		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
 		{
-			dropout_select_dense(d_param->dropout_mask, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
-			dropout_apply_dense(current->output, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
+			dropout_select_dense(current->dropout_mask, (nb_neurons+1), (nb_neurons+1)*net->batch_size, current->dropout_rate);
+			dropout_apply_dense(current->output, current->dropout_mask, (nb_neurons+1)*net->batch_size);
 		}
 		else
-			dropout_scale_dense(current->output, (d_param->nb_neurons+1), (d_param->nb_neurons+1)*net->batch_size, current->dropout_rate);
+			dropout_scale_dense(current->output, (nb_neurons+1), (nb_neurons+1)*net->batch_size, current->dropout_rate);
 	}
 	
 	current->activation(current);
+	
+	if(!net->inference_only)
+	{
+		memset(current->delta_o, 0, (nb_neurons+1) * net->batch_size * sizeof(float));
+		if(current->previous != NULL && current->previous->output_type != FLAT)
+			memset(d_param->flat_delta_o, 0, flat_in_size * net->batch_size * sizeof(float));
+	}
 }
 
 
 void naiv_backward_dense_layer(layer* current)
 {
-	int i, j, b;
+	size_t i, j, b;
 	double h;
-	int nb_area_w, nb_area_h, nb_area_d, depth;
-	void* ref_input;
+	int nb_neurons;
+	size_t flat_in_size = 1;
+	float *ref_input;
 	
 	network* net = current->c_network;
-	
 	d_param = (dense_param*) current->param;
 	
-	float *f_weights = (float*) d_param->weights;
+	float *f_weights = (float*) current->weights;
 	float *f_delta_o = (float*) current->delta_o;
 	float *f_flat_delta_o = (float*) d_param->flat_delta_o;
-	float *f_update = (float*) d_param->update;
+	float *f_update = (float*) current->gradient;
+	
+	nb_neurons = current->output_dim[3];
+	for(i = 0; i < 4; i++)
+		flat_in_size *= current->prev_dim[i];
+	flat_in_size += 1;
+	
+	//Must be done here so all layers can add their contribution to current layer delta_o (merging / branching)
+	current->deriv_activation(current);
 	
 	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
-		dropout_apply_dense(current->delta_o, d_param->dropout_mask, (d_param->nb_neurons+1)*net->batch_size);
+		dropout_apply_dense(current->delta_o, current->dropout_mask, (nb_neurons+1)*net->batch_size);
 	
 	//######################## ERROR PROPAGATION ########################
-	ref_input = current->input;
 
 	//skip error prop if previous is the input layer
 	if(current->previous != NULL)
@@ -250,94 +239,60 @@ void naiv_backward_dense_layer(layer* current)
 		#pragma omp parallel for private(i, j, h) collapse(2) schedule(guided, 4)
 		for(b = 0; b < net->batch_size; b++)
 		{
-			for(i = 0; i <  d_param->in_size; i++)
+			for(i = 0; i <  flat_in_size; i++)
 			{
 				h = 0.0;
-				for(j = 0; j < d_param->nb_neurons+1; j++)
+				for(j = 0; j < nb_neurons+1; j++)
 				{
-					h += f_weights[i*(d_param->nb_neurons+1) + j]
-							* f_delta_o[b*(d_param->nb_neurons+1) + j];
+					h += (double)f_weights[i*(nb_neurons+1) + j]
+							* (double)f_delta_o[b*(nb_neurons+1) + j];
 				}
-				f_flat_delta_o[b*(d_param->in_size)+i] = h;
+				f_flat_delta_o[b*(flat_in_size)+i] += h;
 			}
 		}
 		
 		//if previous layer is dense then flat_delta_o = previous->delta_o
-		if(current->previous->type == POOL || current->previous->type == CONV)
+		if(current->previous->output_type == SPATIAL)
 		{
-			switch(current->previous->type)
-			{
-				case POOL:
-					nb_area_w = ((pool_param*)current->previous->param)->nb_area[0];
-					nb_area_h = ((pool_param*)current->previous->param)->nb_area[1];
-					nb_area_d = ((pool_param*)current->previous->param)->nb_area[2];
-					depth = ((pool_param*)current->previous->param)->nb_maps;
-					break;
-				
-				case NORM:
-				case LRN:
-					switch(current->previous->previous->type)
-					{
-						default:
-						case CONV:
-							nb_area_w = ((conv_param*)current->previous->previous->param)->nb_area[0];
-							nb_area_h = ((conv_param*)current->previous->previous->param)->nb_area[1];
-							nb_area_d = ((conv_param*)current->previous->previous->param)->nb_area[2];
-							depth = ((conv_param*)current->previous->previous->param)->nb_filters;
-							break;
-						case POOL:
-							nb_area_w = ((pool_param*)current->previous->previous->param)->nb_area[0];
-							nb_area_h = ((pool_param*)current->previous->previous->param)->nb_area[1];
-							nb_area_d = ((pool_param*)current->previous->previous->param)->nb_area[2];
-							depth = ((pool_param*)current->previous->previous->param)->nb_maps;
-							break;
-					}
-					break;
-					
-				case CONV:
-				default:
-					nb_area_w = ((conv_param*)current->previous->param)->nb_area[0];
-					nb_area_h = ((conv_param*)current->previous->param)->nb_area[1];
-					nb_area_d = ((conv_param*)current->previous->param)->nb_area[2];
-					depth = ((conv_param*)current->previous->param)->nb_filters;
-					break;
-			}
-			
 			//Need to unroll delta_o to already be in the proper format for deriv calculation
 			reroll_batch(d_param->flat_delta_o, current->previous->delta_o,
-				nb_area_w * nb_area_h * nb_area_d, nb_area_w * nb_area_h * nb_area_d * depth + 1, depth, 
-				net->batch_size, nb_area_w * nb_area_h * nb_area_d * depth * net->batch_size);
+				current->prev_dim[0]*current->prev_dim[1]*current->prev_dim[2], flat_in_size, 
+				current->output_dim[3], net->batch_size, (flat_in_size-1) * net->batch_size);
 		}
-		current->previous->deriv_activation(current->previous);
 	}
 		
 	//########################  WEIGHTS UPDATE   ########################
-	if(current->previous != NULL && current->previous->type != DENSE)
-		ref_input = d_param->flat_input;
-	
-	float *f_input = (float*) ref_input;
-	//based on the recovered delta_o provided by the next layer propagation
-
 	if(!current->frozen)
 	{
+		ref_input = (float*) current->input;
+	
+		if(current->previous != NULL && current->previous->output_type != FLAT)
+			ref_input = (float*) d_param->flat_input;
+	
 		#pragma omp parallel for private(j, b, h) collapse(2) schedule(guided, 4)
-		for(i = 0; i <  d_param->in_size; i++)
+		for(i = 0; i <  flat_in_size; i++)
 		{
-			for(j = 0; j < d_param->nb_neurons+1; j++)
+			for(j = 0; j < nb_neurons+1; j++)
 			{
 				h = 0.0;
 				for(b = 0; b < net->batch_size; b++)
 				{
-					h += f_delta_o[b*(d_param->nb_neurons+1) + j]
-							* f_input[b*d_param->in_size + i];
+					h += (double)f_delta_o[b*(nb_neurons+1) + j]
+							* (double)ref_input[b*flat_in_size + i];
 				}
-				f_update[i*(d_param->nb_neurons+1)+j] = net->learning_rate/net->batch_size*h 
-						+ net->momentum * f_update[i*(d_param->nb_neurons+1)+j];
+				f_update[i*(nb_neurons+1)+j] = h;
 			}
 		}
 		
-		update_weights(d_param->weights, d_param->update, net->learning_rate*net->weight_decay, 
-			1, d_param->in_size*(d_param->nb_neurons+1));
+		net->optim_update_fct(current, (flat_in_size-1)*(nb_neurons+1), 
+			flat_in_size*(nb_neurons+1), flat_in_size*(nb_neurons+1));
+		
+		if(current->wema_replace_signal > 0)
+		{
+			for(i = 0; i < flat_in_size*(nb_neurons+1); i++)
+				current->FP32_weights[i] = current->ema_weights[i];
+			current->wema_replace_signal = 0;
+		}
 	}
 }
 

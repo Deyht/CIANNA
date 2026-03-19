@@ -55,6 +55,7 @@ void print_pool_type(FILE *f, int type, int f_bin)
 		fprintf(f, "%s", temp_string);
 }
 
+
 void get_string_pool_type(char* str, int type)
 {
 	switch(type)
@@ -70,6 +71,7 @@ void get_string_pool_type(char* str, int type)
 	}
 }
 
+
 int load_pool_type(const char *type)
 {
 	if(strcmp(type, "MAX") == 0)
@@ -80,181 +82,109 @@ int load_pool_type(const char *type)
 		return MAX_pool;
 }
 
-void pool_define_activation_param(layer *current, const char *activ)
-{
-	int size, dim, biased_dim, offset;
-	p_param = (pool_param*) current->param;
-	
-	size = p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * current->c_network->batch_size;
-	dim =  p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2];
-	biased_dim =  p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2];
-	offset = current->c_network->batch_size;
-	
-	switch(current->activation_type)
-	{
-		case RELU:
-			set_relu_param(current, size, dim, biased_dim, offset, activ);
-			break;
-			
-		case LOGISTIC:
-			set_logistic_param(current, size, dim, biased_dim, offset, activ);
-			break;
-			
-		case SOFTMAX:
-			set_softmax_param(current, size, dim, biased_dim, offset);
-			break;
-			
-		case YOLO:
-			set_yolo_param(current);
-			break;
-			
-		case LINEAR:
-		default:
-			set_linear_param(current, size, dim, biased_dim, offset);
-			break;
-	}
-}
 
-int pool_create(network *net, layer *previous, int *pool_size, int* stride, int *padding, const char *char_pool_type, const char *activation, int global, float drop_rate)
+int pool_create(network *net, layer *previous, int *pool_size, int* stride, int *padding, 
+	const char *char_pool_type, const char *activation, int global, float drop_rate)
 {
 	int k;
-	long long int mem_approx = 0;
+	size_t mem_approx = 0;
+	size_t flat_nb_area = 1;
+	int nb_maps;
 	layer* current;
 	
 	current = (layer*) malloc(sizeof(layer));
 	net->net_layers[net->nb_layers] = current;
 	current->c_network = net;
 	net->nb_layers++;
-
-	p_param = (pool_param*) malloc(sizeof(pool_param));
 	
 	printf("L:%d - CREATING POOL LAYER ...\n", net->nb_layers);
 
 	current->type = POOL;
-	//activation type not used for now but could be add for optimization
-	load_activation_type(current, activation);
-	current->previous = previous;
+	current->output_type = SPATIAL;
+	current->frozen = 0;
 	current->dropout_rate = drop_rate;
+	current->previous = previous;
 	
-	if(current->previous != NULL && current->previous->dropout_rate > 0.01f)
-	{
-		printf("\n ERROR: A pooling layer cannot be set if dropout is used in the previous layer due to problem with weight/output rescaling.\n");
-		printf("Consider adding the dropout on the present pooling layer or inserting a non-droping layer between the two.\n");
-		exit(EXIT_FAILURE);
-	}
+	current->output_dim = (int*) calloc(4, sizeof(int));
 	
-	p_param->nb_area = (int*) calloc(3, sizeof(int));
-	p_param->prev_size = (int*) calloc(3, sizeof(int));
+	p_param = (pool_param*) malloc(sizeof(pool_param));
+	current->param = p_param;
+	
 	p_param->p_size = (int*) calloc(3, sizeof(int));
 	p_param->stride = (int*) calloc(3, sizeof(int));
 	p_param->padding = (int*) calloc(3, sizeof(int));
+	
 	for(k = 0; k < 3; k++)
 	{
-		if(stride[k] > pool_size[k])
-		{
-			printf("\n ERROR: pool size cannot be smaller than stride size in a given dimension !\n");
-			exit(EXIT_FAILURE);
-		}
-		if(padding[k] > pool_size[k])
-		{
-			printf("\n ERROR: pool size cannot be equal or smaller than padding in a given dimension !\n");
-			exit(EXIT_FAILURE);
-		}
 		p_param->p_size[k] = pool_size[k];
 		p_param->stride[k] = stride[k];
 		p_param->padding[k] = padding[k];
 	}
+	
 	p_param->pool_type = load_pool_type(char_pool_type);
 	p_param->global = global;
 	
 	if(previous == NULL)
 	{
-		//Case of the first layer
-		p_param->prev_size[0] = net->in_dims[0];
-		p_param->prev_size[1] = net->in_dims[1];
-		p_param->prev_size[2] = net->in_dims[2];
-		p_param->prev_depth = net->in_dims[3];
-		//input pointer must be set at the begining of forward
+		current->prev_dim = net->in_dims;
 		current->input = net->input;
 	}
 	else
 	{
-		//regular case	
-		switch(previous->type)
+		if(previous->output_type == FLAT)
 		{
-			default:
-			case CONV:
-				for(k = 0; k < 3; k++)
-					p_param->prev_size[k] = ((conv_param*)previous->param)->nb_area[k];
-				p_param->prev_depth =  ((conv_param*)previous->param)->nb_filters;
-				break;
-			case POOL:
-				printf("\n ERROR: Bad network design, no use of two successive pooling layer.\n");
-				exit(EXIT_FAILURE);
-				break;
-			case NORM:
-			case LRN:
-				if(previous->previous->type != CONV)
-				{
-					printf("\n ERROR: Unsuported layer types stacking.");
-					exit(EXIT_FAILURE);
-				}
-				for(k = 0; k < 3; k++)
-					p_param->prev_size[k] = ((conv_param*)previous->previous->param)->nb_area[k];
-				p_param->prev_depth = ((conv_param*)previous->previous->param)->nb_filters;
-				break;
+			printf("\n ERROR: pooling layer after a FLAT format (dense) layer is not authorized.\n");
+			printf(" Use a conv layer with a specified input_shape for FLAT to SPATIAL conversion.\n");
+			exit(EXIT_FAILURE);
 		}
-		
+		current->prev_dim = previous->output_dim;
 		current->input = previous->output;
 	}
 	
 	if(global)
+	{
 		for(k = 0; k < 3; k++)
 		{
-			p_param->p_size[k] = p_param->prev_size[k];
-			p_param->stride[k] = p_param->prev_size[k];
+			p_param->p_size[k] = current->prev_dim[k];
+			p_param->stride[k] = current->prev_dim[k];
 			p_param->padding[k] = 0;
 		}
+	}
 	
 	for(k = 0; k < 3; k++)
-		p_param->nb_area[k] = nb_area_comp(p_param->prev_size[k], p_param->p_size[k], p_param->padding[k], 0, p_param->stride[k]);
+		current->output_dim[k] = nb_area_comp(current->prev_dim[k], p_param->p_size[k], p_param->padding[k], 0, p_param->stride[k]);
 	
-	p_param->nb_maps = p_param->prev_depth;
+	current->output_dim[3] = current->prev_dim[3];
+	nb_maps = current->prev_dim[3];
+	for(k = 0; k < 3; k++)
+		flat_nb_area *= current->output_dim[k];
 	
-	current->output = (float*) malloc((size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps 
-		* net->batch_size * sizeof(float));
-	mem_approx += (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps 
-		* net->batch_size * sizeof(float);
+	current->output = (float*) malloc(nb_maps * flat_nb_area * net->batch_size * sizeof(float));
+	mem_approx += nb_maps * flat_nb_area * net->batch_size * sizeof(float);
 		
 	if(drop_rate > 0.01f)
 	{
-		p_param->dropout_mask = (float*) calloc(p_param->nb_maps 
-			* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, sizeof(float));
-		mem_approx += p_param->nb_maps 
-			* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size * sizeof(float);
+		current->dropout_mask = (float*) calloc(nb_maps * flat_nb_area * net->batch_size, sizeof(float));
+		mem_approx += nb_maps * flat_nb_area * net->batch_size * sizeof(float);
 	}
 	
 	if(!net->inference_only)
 	{
-		p_param->pool_map = (int*) malloc((size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps 
-			* net->batch_size * sizeof(int));
-		mem_approx += (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps 
-			* net->batch_size * sizeof(int);
+		p_param->pool_map = (int*) malloc(nb_maps * flat_nb_area * net->batch_size * sizeof(int));
+		mem_approx += nb_maps * flat_nb_area * net->batch_size * sizeof(int);
 	
-		current->delta_o = (float*) malloc((size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps 
-			* net->batch_size * sizeof(float));
-		mem_approx += (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps 
-			* net->batch_size * sizeof(float);
+		current->delta_o = (float*) malloc(nb_maps * flat_nb_area * net->batch_size * sizeof(float));
+		mem_approx += nb_maps * flat_nb_area * net->batch_size * sizeof(float);
 	}
 	else
 		p_param->pool_map = NULL;
 	
-	current->param = p_param;
+	current->a_size       = flat_nb_area * nb_maps * net->batch_size;
+	current->a_dim        = flat_nb_area;
+	current->a_biased_dim = flat_nb_area;
+	current->a_offset     = net->batch_size;
 	
-	//Linear activation only = no activation
-	pool_define_activation_param(current, activation);
-	p_param = (pool_param*) current->param;
-	//No weights initialization in a pool layer
+	define_activation_param(current, activation);
 	
 	//associate the conv specific functions to the layer
 	switch(net->compute_method)
@@ -263,13 +193,13 @@ int pool_create(network *net, layer *previous, int *pool_size, int* stride, int 
 			#ifdef CUDA
 			cuda_pool_define(current);
 			mem_approx = cuda_convert_pool_layer(current);
-			cuda_define_activation(current);
+			cuda_define_activation_fct(current);
 			#endif
 			break;
 		case C_BLAS:
 		case C_NAIV:
 			pool_define(current);
-			define_activation(current);
+			define_activation_fct(current);
 			break;
 		default:
 			break;
@@ -283,9 +213,9 @@ int pool_create(network *net, layer *previous, int *pool_size, int* stride, int 
       P. size: %dx%dx%d, Stride: %dx%dx%d, padding: %dx%dx%d \n\
       Pool type: %s, Global: %d, Activation: %s, dropout rate: %0.2f\n\
       Approx layer RAM/VRAM requirement: %d MB\n",
-		p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
-		p_param->prev_depth, p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
-		p_param->nb_maps, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], 
+		current->prev_dim[0], current->prev_dim[1], current->prev_dim[2], current->prev_dim[3], 
+		current->output_dim[0], current->output_dim[1], current->output_dim[2], current->output_dim[3], 
+		p_param->p_size[0], p_param->p_size[1], p_param->p_size[2], 
 		p_param->stride[0], p_param->stride[1], p_param->stride[2],
 		p_param->padding[0], p_param->padding[1], p_param->padding[2],
 		s_pool_type, p_param->global, activ, current->dropout_rate,
@@ -294,6 +224,7 @@ int pool_create(network *net, layer *previous, int *pool_size, int* stride, int 
 	
 	return net->nb_layers - 1;
 }
+
 
 void pool_save(FILE *f, layer *current, int f_bin)
 {
@@ -324,6 +255,7 @@ void pool_save(FILE *f, layer *current, int f_bin)
 		fprintf(f, "\n\n");
 	}
 }
+
 
 void pool_load(network *net, FILE *f, int f_bin, int skip_layer)
 {
@@ -376,23 +308,11 @@ void pool_load(network *net, FILE *f, int f_bin, int skip_layer)
 	}
 }
 
-void get_pool_output_dim(layer *current, int *dim)
-{
-	int i;
-	p_param = (pool_param*) current->param;
-	
-	for (i = 0; i < 3; i++)
-		dim[i] = p_param->nb_area[i];
-	
-	dim[3] = p_param->nb_maps;
-}
 
 void free_pool(layer *current)
 {
 	p_param = (pool_param*)current->param;
 
-	free(p_param->nb_area);
-	free(p_param->prev_size);
 	free(p_param->p_size);
 	free(p_param->stride);
 	free(p_param->padding);
@@ -408,7 +328,7 @@ void free_pool(layer *current)
 		free(current->output);
 		
 		if(current->dropout_rate > 0.01f)
-			free(p_param->dropout_mask);
+			free(current->dropout_mask);
 		
 		if(!current->c_network->inference_only)
 		{

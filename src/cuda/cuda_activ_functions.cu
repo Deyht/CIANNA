@@ -32,23 +32,23 @@ __device__ float gpu_GIoU_fct(float *output, float *target);
 __device__ float gpu_DIoU_fct(float *output, float *target);
 __device__ float gpu_DIoU2_fct(float *output, float *target);
 void cuda_linear_activation(layer *current);
-void cuda_linear_deriv(layer *previous);
+void cuda_linear_deriv(layer *current);
 void cuda_linear_deriv_output_error(layer *current);
 void cuda_linear_output_error(layer *current);
 void cuda_ReLU_activation(layer *current);
-void cuda_ReLU_deriv(layer *previous);
+void cuda_ReLU_deriv(layer *current);
 void cuda_ReLU_deriv_output_error(layer* current);
 void cuda_ReLU_output_error(layer* current);
 void cuda_logistic_activation(layer *current);
-void cuda_logistic_deriv(layer *previous);
+void cuda_logistic_deriv(layer *current);
 void cuda_logistic_deriv_output_error(layer* current);
 void cuda_logistic_output_error(layer* current);
 void cuda_softmax_activation(layer *current);
-void cuda_softmax_deriv(layer *previous);
+void cuda_softmax_deriv(layer *current);
 void cuda_softmax_deriv_output_error(layer *current);
 void cuda_softmax_output_error(layer *current);
 void cuda_YOLO_activation(layer *current);
-void cuda_YOLO_deriv(layer *previous);
+void cuda_YOLO_deriv(layer *current);
 void cuda_YOLO_deriv_output_error(layer *current);
 void cuda_YOLO_output_error(layer *current);
 void cuda_YOLO_activ_init(layer *current);
@@ -58,7 +58,7 @@ void cuda_YOLO_activ_init(layer *current);
 
 //Is in fact a leaky ReLU, to obtain true ReLU set leaking_factor to 0
 #define linear_activation_kernel(name, type)																									\
-__global__ void linear_activation_kernel_##name(void *i_tab, int dim, int biased_dim, int offset, int length, size_t size)						\
+__global__ void linear_activation_kernel_##name(void *i_tab, size_t dim, size_t biased_dim, size_t offset, size_t length, size_t size)			\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
@@ -69,7 +69,7 @@ __global__ void linear_activation_kernel_##name(void *i_tab, int dim, int biased
 																																				\
 	if(biased_dim > dim)																														\
 	{																																			\
-		if(i >= (length*biased_dim) && (i+1)%(dim+1) != 0)																						\
+		if(i >= length*biased_dim)																												\
 			tab[i] = (type) 0.0f;																												\
 	}																																			\
 	else																																		\
@@ -80,7 +80,7 @@ __global__ void linear_activation_kernel_##name(void *i_tab, int dim, int biased
 }
 
 #define linear_deriv_kernel(name, type)																											\
-__global__ void linear_deriv_kernel_##name(void *i_deriv, int dim, int biased_dim, int offset, int length, size_t size)							\
+__global__ void linear_deriv_kernel_##name(void *i_deriv, size_t dim, size_t biased_dim, size_t offset, size_t length, size_t size)				\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
@@ -108,8 +108,8 @@ __global__ void linear_deriv_kernel_##name(void *i_deriv, int dim, int biased_di
 
 //Is in fact a leaky ReLU, to obtain true ReLU set leaking_factor to 0
 #define ReLU_activation_kernel(name, type)																										\
-__global__ void ReLU_activation_kernel_##name(void *i_tab, int dim, int biased_dim, int offset,													\
-	float saturation, float leaking_factor, int length, size_t size)																			\
+__global__ void ReLU_activation_kernel_##name(void *i_tab, size_t dim, size_t biased_dim, size_t offset,										\
+	float saturation, float leaking_factor, size_t length, size_t size)																			\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
@@ -120,12 +120,15 @@ __global__ void ReLU_activation_kernel_##name(void *i_tab, int dim, int biased_d
 																																				\
 	if(biased_dim > dim)																														\
 	{																																			\
-		if(i < (length*biased_dim) && (i+1)%(dim+1) != 0)																						\
+		if(i < length*biased_dim)																												\
 		{																																		\
-			if(tab[i] <= (type) 0.0f)																											\
-				tab[i] *= (type) leaking_factor;																								\
-			else if(tab[i] > (type) saturation)																									\
-				tab[i] = (type) saturation + (tab[i] - (type) saturation)*((type)leaking_factor);												\
+			if((i+1)%(dim+1) != 0)																												\
+			{																																	\
+				if(tab[i] <= (type) 0.0f)																										\
+					tab[i] *= (type) leaking_factor;																							\
+				else if(tab[i] > (type) saturation)																								\
+					tab[i] = (type) saturation + (tab[i] - (type) saturation)*((type)leaking_factor);											\
+			}																																	\
 		}																																		\
 		else																																	\
 			tab[i] = (type) 0.0f;																												\
@@ -146,8 +149,8 @@ __global__ void ReLU_activation_kernel_##name(void *i_tab, int dim, int biased_d
 
 
 #define ReLU_deriv_kernel(name, type)																											\
-__global__ void ReLU_deriv_kernel_##name(void *i_deriv, void *i_value, int dim, int biased_dim,	int offset,										\
-	 float saturation, float leaking_factor, int length, size_t size)																			\
+__global__ void ReLU_deriv_kernel_##name(void *i_deriv, void *i_value, size_t dim, size_t biased_dim, size_t offset,							\
+	 float saturation, float leaking_factor, size_t length, size_t size)																		\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
@@ -186,10 +189,11 @@ __global__ void ReLU_deriv_kernel_##name(void *i_deriv, void *i_value, int dim, 
 
 #define quadratic_deriv_output_error_kernel(name, type)																							\
 __global__ void quadratic_deriv_output_error_kernel_##name																						\
-	(void *i_delta_o, void *i_output, void *i_target, int dim, int biased_dim, int offset, int length, size_t size, float TC_scale_factor)		\
+	(void *i_delta_o, void *i_output, void *i_target, size_t dim, size_t biased_dim, 															\
+	size_t offset, size_t length, size_t size, float TC_scale_factor)																			\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
-	int nb_filters, c_batch, c_filter, in_filter_pos, pos;																						\
+	size_t nb_filters, c_batch, c_filter, in_filter_pos, pos;																					\
 																																				\
 	type* delta_o = (type*) i_delta_o;																											\
 	type* output  = (type*) i_output;																											\
@@ -228,10 +232,10 @@ __global__ void quadratic_deriv_output_error_kernel_##name																						
 
 #define quadratic_output_error_kernel(name, type)																								\
 __global__ void quadratic_output_error_kernel_##name																							\
-	(float *output_error, void *i_output, void *i_target, int dim, int biased_dim, int offset, int length, size_t size)							\
+	(float *output_error, void *i_output, void *i_target, size_t dim, size_t biased_dim, size_t offset, size_t length, size_t size)				\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
-	int nb_filters, c_batch, c_filter, in_filter_pos, pos;																						\
+	size_t nb_filters, c_batch, c_filter, in_filter_pos, pos;																					\
 																																				\
 	type* output = (type*) i_output;																											\
 	type* target = (type*) i_target;																											\
@@ -274,8 +278,8 @@ __global__ void quadratic_output_error_kernel_##name																							\
 //#####################################################
 
 #define logistic_activation_kernel(name, type, exp_fct)																							\
-__global__ void logistic_activation_kernel_##name(void *i_tab, float beta, float saturation, int dim, 											\
-	int biased_dim, int offset, int length, size_t size)																						\
+__global__ void logistic_activation_kernel_##name(void *i_tab, float beta, float saturation, size_t dim, 										\
+	size_t biased_dim, size_t offset, size_t length, size_t size)																				\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
@@ -289,12 +293,15 @@ __global__ void logistic_activation_kernel_##name(void *i_tab, float beta, float
 																																				\
 	if(biased_dim > dim)																														\
 	{																																			\
-		if(i < (length*biased_dim) && (i+1)%(dim+1) != 0)																						\
+		if(i < length*biased_dim)																												\
 		{																																		\
-			tab[i] = -t_beta*tab[i];																											\
-			if(tab[i] > t_saturation)																											\
-				tab[i] = t_saturation;																											\
-			tab[i] = t_one/(t_one + exp_fct((float)tab[i]));																					\
+			if((i+1)%(dim+1) != 0)																												\
+			{																																	\
+				tab[i] = -t_beta*tab[i];																										\
+				if(tab[i] > t_saturation)																										\
+					tab[i] = t_saturation;																										\
+				tab[i] = t_one/(t_one + exp_fct((float)tab[i]));																				\
+			}																																	\
 		}																																		\
 		else																																	\
 			tab[i] = (type)0.0f;																												\
@@ -315,8 +322,8 @@ __global__ void logistic_activation_kernel_##name(void *i_tab, float beta, float
 
 
 #define logistic_deriv_kernel(name, type)																										\
-__global__ void logistic_deriv_kernel_##name(void *i_deriv, void *i_value, float beta, int dim, 												\
-	int biased_dim, int offset, int length, size_t size)																						\
+__global__ void logistic_deriv_kernel_##name(void *i_deriv, void *i_value, float beta, size_t dim, 												\
+	size_t biased_dim, size_t offset, size_t length, size_t size)																				\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 																																				\
@@ -351,12 +358,12 @@ __global__ void logistic_deriv_kernel_##name(void *i_deriv, void *i_value, float
 
 
 #define softmax_activation_kernel(name, type, exp_fct)																							\
-__global__ void softmax_activation_kernel_##name(void *i_tab, int dim, int biased_dim, 															\
-	int offset, int length, int batch_size, size_t size)																						\
+__global__ void softmax_activation_kernel_##name(void *i_tab, size_t dim, size_t biased_dim, 													\
+	size_t offset, size_t length, size_t batch_size, size_t size)																				\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
-	int j, k, l;																																\
-	int nb_filters;																																\
+	size_t j, k, l;																																\
+	size_t nb_filters;																															\
 	type *pos, *off_pos;																														\
 	type vmax;																																	\
 	float normal = 0.0f;																														\
@@ -456,10 +463,11 @@ __global__ void softmax_activation_kernel_##name(void *i_tab, int dim, int biase
 
 #define cross_entropy_deriv_output_error_kernel(name, type)																						\
 __global__ void cross_entropy_deriv_output_error_kernel_##name																					\
-	(void *i_delta_o, void *i_output, void *i_target, int dim, int biased_dim, int offset, int length, size_t size, float TC_scale_factor)		\
+	(void *i_delta_o, void *i_output, void *i_target, size_t dim, size_t biased_dim, 															\
+		size_t offset, size_t length, size_t size, float TC_scale_factor)																		\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
-	int nb_filters, c_batch, c_filter, in_filter_pos, pos;																						\
+	size_t nb_filters, c_batch, c_filter, in_filter_pos, pos;																					\
 																																				\
 	type* delta_o = (type*)i_delta_o;																											\
 	type* output  = (type*)i_output;																											\
@@ -498,10 +506,10 @@ __global__ void cross_entropy_deriv_output_error_kernel_##name																		
 
 #define cross_entropy_output_error_kernel(name, type)																							\
 __global__ void cross_entropy_output_error_kernel_##name																						\
-	(float *output_error, void *i_output, void *i_target, int dim, int biased_dim, int offset, int length, size_t size)							\
+	(float *output_error, void *i_output, void *i_target, size_t dim, size_t biased_dim, size_t offset, size_t length, size_t size)				\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
-	int nb_filters, c_batch, c_filter, in_filter_pos, pos;																						\
+	size_t nb_filters, c_batch, c_filter, in_filter_pos, pos;																					\
 																																				\
 	type* output  = (type*)i_output;																											\
 	type* target  = (type*)i_target;																											\
@@ -548,9 +556,9 @@ __global__ void cross_entropy_output_error_kernel_##name																						\
 //#####################################################
 
 #define YOLO_activation_kernel(name, type, exp_fct)																								\
-__global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, size_t len, yolo_param y_param, size_t size, int class_softmax)		\
+__global__ void YOLO_activation_kernel_##name(void *i_tab, size_t flat_offset, size_t len, yolo_param y_param, size_t size, int class_softmax)	\
 {																																				\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	if(i >= size)																																\
 		return;																																	\
 																																				\
@@ -562,13 +570,13 @@ __global__ void YOLO_activation_kernel_##name(void *i_tab, int flat_offset, size
 	float normal = 0.0f;																														\
 	type vmax;																																	\
 	int fit_dim = y_param.fit_dim;																												\
-	int col, in_col, j;																															\
+	size_t col, in_col, j;																														\
 																																				\
 	col = i / flat_offset;																														\
 	in_col = col%(8+nb_class+nb_param);																											\
 																																				\
 	/*Position*/																																\
-	if(in_col >= 0 && in_col < 3)																												\
+	if(in_col < 3)																																\
 	{																																			\
 		if(fit_dim > in_col)																													\
 		{																																		\
@@ -773,10 +781,10 @@ __device__ pointFunction_gpu_IoU device_gpu_DIoU2_fct = gpu_DIoU2_fct;
 
 #define YOLO_deriv_error_kernel(name, type)																										\
 __global__ void YOLO_deriv_error_kernel_##name																									\
-	(void *i_delta_o, void *i_output, void *i_target, int flat_target_size, int flat_output_size, 												\
-	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, size_t size, float TC_scale_factor, int nb_im_iter)						\
+	(void *i_delta_o, void *i_output, void *i_target, size_t flat_target_size, size_t flat_output_size, 										\
+	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, size_t size, float TC_scale_factor, size_t nb_im_iter)						\
 {																																				\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	if(i >= size)																																\
 		return;																																	\
 																																				\
@@ -790,7 +798,7 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 	int nb_param                    = y_param.nb_param; 																						\
 	int strict_box_size_association = y_param.strict_box_size_association;																		\
 	int fit_dim                     = y_param.fit_dim;																							\
-	int rand_startup                = y_param.rand_startup;																						\
+	size_t rand_startup             = y_param.rand_startup;																						\
 	float rand_prob_best_box_assoc  = y_param.rand_prob_best_box_assoc;																			\
 	float rand_prob                 = y_param.rand_prob;																						\
 	float min_prior_forced_scaling  = y_param.min_prior_forced_scaling;																			\
@@ -822,7 +830,7 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 	int fit_pos = y_param.fit_parts[0], fit_size  = y_param.fit_parts[1], fit_prob  = y_param.fit_parts[2]; 									\
 	int fit_obj = y_param.fit_parts[3], fit_class = y_param.fit_parts[4], fit_param = y_param.fit_parts[5];										\
 																																				\
-	int j, k, l, l_o, l_t;																														\
+	size_t j, k, l, l_o, l_t;																													\
 	size_t f_offset, c_total_nb_area, c_total_nb_area_batch, total_cell_pos_nb_area, total_area_and_cell_offset;								\
 	int c_batch, output_offset, target_offset, nb_obj_target, s_p_i = 0;																		\
 	int nb_in_cell, id_in_cell, id_in_cell_offset, l_r_b = -1, resp_box = -1, resp_targ = -1, resp_targ_offset, targ_diff_flag = 0;				\
@@ -1484,10 +1492,10 @@ __global__ void YOLO_deriv_error_kernel_##name																									\
 
 #define YOLO_error_kernel(name, type)																											\
 __global__ void YOLO_error_kernel_##name																										\
-	(float *output_error, void *i_output, void *i_target, int flat_target_size, int flat_output_size, 											\
+	(float *output_error, void *i_output, void *i_target, size_t flat_target_size, size_t flat_output_size, 									\
 	int nb_area_w, int nb_area_h, int nb_area_d, yolo_param y_param, size_t size)																\
 {																																				\
-	int i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	if(i >= size)																																\
 		return;																																	\
 																																				\
@@ -2179,6 +2187,7 @@ void typed_cuda_activ_fct_association_##name(network *net)																						
 																																				\
 }
 
+
 linear_activation_kernel(FP32, float);
 linear_deriv_kernel(FP32, float);
 ReLU_activation_kernel(FP32, float);
@@ -2234,53 +2243,49 @@ typed_cuda_activ_fct_association(BF16);
 #endif
 
 
+
 //#####################################################
 //		 Linear activation related functions
 //#####################################################
 
 void cuda_linear_activation(layer *current)
 {
-	linear_param *param = (linear_param*)current->activ_param;
-	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = ( current->a_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_linear_activ_fcts.activ_fct<<< cu_blocks, cu_threads >>>
-		(current->output, param->dim, param->biased_dim, 
-		param->offset, current->c_network->length, param->size);
+		(current->output, current->a_dim, current->a_biased_dim, 
+		current->a_offset, current->c_network->length,current->a_size);
 }
 
 
-void cuda_linear_deriv(layer *previous)
+void cuda_linear_deriv(layer *current)
 {
-	linear_param *param = (linear_param*)previous->activ_param;
-	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = ( current->a_size + cu_threads - 1) / cu_threads;
 	
-	previous->c_network->cu_inst.cu_linear_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
-		(previous->delta_o, param->dim, param->biased_dim, 
-		param->offset, previous->c_network->length, param->size);
+	current->c_network->cu_inst.cu_linear_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
+		(current->delta_o, current->a_dim, current->a_biased_dim, 
+		current->a_offset, current->c_network->length, current->a_size);
 }
 
 
 void cuda_linear_deriv_output_error(layer *current)
 {	
-	linear_param *param = (linear_param*)current->activ_param;
-	
-	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = ( current->a_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_linear_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
 		(current->delta_o, current->output, current->c_network->target,
-		param->dim, param->biased_dim, param->offset, current->c_network->length, 
-		param->size, current->c_network->TC_scale_factor);
+		current->a_dim, current->a_biased_dim, current->a_offset, current->c_network->length, 
+		current->a_size, current->c_network->TC_scale_factor);
 }
 
 
 void cuda_linear_output_error(layer *current)
 {	
-	linear_param *param = (linear_param*)current->activ_param;
-	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = (current->a_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_linear_activ_fcts.output_error_fct<<< cu_blocks, cu_threads >>>
 		((float*)current->c_network->output_error, current->output, current->c_network->target, 
-		param->dim, param->biased_dim, param->offset, current->c_network->length, param->size);
+		current->a_dim, current->a_biased_dim, current->a_offset, current->c_network->length, current->a_size);
 }
 
 
@@ -2291,49 +2296,42 @@ void cuda_linear_output_error(layer *current)
 void cuda_ReLU_activation(layer *current)
 {
 	ReLU_param *param = (ReLU_param*)current->activ_param;
-	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = ( current->a_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_ReLU_activ_fcts.activ_fct<<< cu_blocks, cu_threads >>>
-		(current->output, param->dim, param->biased_dim, param->offset, param->saturation, 
-		param->leaking_factor, current->c_network->length, param->size);
+		(current->output, current->a_dim, current->a_biased_dim, current->a_offset, param->saturation, 
+		param->leaking_factor, current->c_network->length, current->a_size);
 }
 
 
-void cuda_ReLU_deriv(layer *previous)
-{
-	ReLU_param *param = (ReLU_param*)previous->activ_param;
-	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
-	
-	previous->c_network->cu_inst.cu_ReLU_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
-		(previous->delta_o, previous->output, param->dim, param->biased_dim, param->offset, 
-		param->saturation, param->leaking_factor, previous->c_network->length, param->size);
-}
-
-
-// Should re write an output function to take into account ReLU for Conv output format
-void cuda_ReLU_deriv_output_error(layer* current)
+void cuda_ReLU_deriv(layer *current)
 {
 	ReLU_param *param = (ReLU_param*)current->activ_param;
-	cu_blocks = ( param->size + cu_threads - 1) / cu_threads;
-	
-	current->c_network->cu_inst.cu_ReLU_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
-		(current->delta_o, current->output, current->c_network->target, param->dim, param->biased_dim,
-		param->offset, current->c_network->length, param->size, current->c_network->TC_scale_factor);
+	cu_blocks = ( current->a_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_ReLU_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
-		(current->delta_o, current->output, param->dim, param->biased_dim,
-		param->offset, param->saturation, param->leaking_factor, current->c_network->length, param->size);
+		(current->delta_o, current->output, current->a_dim, current->a_biased_dim, current->a_offset, 
+		param->saturation, param->leaking_factor, current->c_network->length, current->a_size);
+}
+
+
+void cuda_ReLU_deriv_output_error(layer* current)
+{
+	cu_blocks = ( current->a_size + cu_threads - 1) / cu_threads;
+	
+	current->c_network->cu_inst.cu_ReLU_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
+		(current->delta_o, current->output, current->c_network->target, current->a_dim, current->a_biased_dim,
+		current->a_offset, current->c_network->length, current->a_size, current->c_network->TC_scale_factor);
 }
 
 
 void cuda_ReLU_output_error(layer* current)
 {
-	ReLU_param *param = (ReLU_param*)current->activ_param;	
-	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = (current->a_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_ReLU_activ_fcts.output_error_fct<<< cu_blocks, cu_threads >>>
 		((float*)current->c_network->output_error, current->output, current->c_network->target, 
-		param->dim, param->biased_dim, param->offset, current->c_network->length, param->size);
+		current->a_dim, current->a_biased_dim, current->a_offset, current->c_network->length, current->a_size);
 }
 
 
@@ -2344,48 +2342,42 @@ void cuda_ReLU_output_error(layer* current)
 void cuda_logistic_activation(layer *current)
 {
 	logistic_param *param = (logistic_param*)current->activ_param;
-	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = (current->a_size + cu_threads - 1) / cu_threads;
 
 	current->c_network->cu_inst.cu_logistic_activ_fcts.activ_fct<<< cu_blocks, cu_threads >>>
-		(current->output, param->beta, param->saturation, param->dim, 
-		param->biased_dim, param->offset, current->c_network->length, param->size);
+		(current->output, param->beta, param->saturation, current->a_dim, 
+		current->a_biased_dim, current->a_offset, current->c_network->length, current->a_size);
 }
 
 
-void cuda_logistic_deriv(layer *previous)
+void cuda_logistic_deriv(layer *current)
 {
-	logistic_param *param = (logistic_param*)previous->activ_param;
-	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
+	logistic_param *param = (logistic_param*)current->activ_param;
+	cu_blocks = (current->a_size + cu_threads - 1) / cu_threads;
 	
-	previous->c_network->cu_inst.cu_logistic_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
-		(previous->delta_o, previous->output, param->beta, param->dim, 
-		param->biased_dim, param->offset, previous->c_network->length, param->size);
+	current->c_network->cu_inst.cu_logistic_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
+		(current->delta_o, current->output, param->beta, current->a_dim, 
+		current->a_biased_dim, current->a_offset, current->c_network->length, current->a_size);
 }
 
 
 void cuda_logistic_deriv_output_error(layer* current)
 {
-	logistic_param *param = (logistic_param*)current->activ_param;
-	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = (current->a_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_logistic_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
-		(current->delta_o, current->output, current->c_network->target, param->dim, param->biased_dim, 
-		param->offset, current->c_network->length, param->size, current->c_network->TC_scale_factor);
-	
-	current->c_network->cu_inst.cu_logistic_activ_fcts.deriv_fct<<< cu_blocks, cu_threads >>>
-		(current->delta_o, current->output, param->beta, param->dim, 
-		param->biased_dim, param->offset, current->c_network->length, param->size);
+		(current->delta_o, current->output, current->c_network->target, current->a_dim, current->a_biased_dim, 
+		current->a_offset, current->c_network->length, current->a_size, current->c_network->TC_scale_factor);
 }
 
 
 void cuda_logistic_output_error(layer* current)
 {
-	logistic_param *param = (logistic_param*)current->activ_param;
-	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = (current->a_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_logistic_activ_fcts.output_error_fct<<< cu_blocks, cu_threads >>>
 		((float*)current->c_network->output_error, current->output, current->c_network->target,
-		param->dim, param->biased_dim, param->offset, current->c_network->length, param->size);
+		current->a_dim, current->a_biased_dim, current->a_offset, current->c_network->length, current->a_size);
 }
 
 //#####################################################
@@ -2394,45 +2386,43 @@ void cuda_logistic_output_error(layer* current)
 
 void cuda_softmax_activation(layer *current)
 {
-	softmax_param *param = (softmax_param*)current->activ_param;
 	cu_blocks = (current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_softmax_activ_fcts.activ_fct<<< cu_blocks, cu_threads >>>
-		(current->output, param->dim, param->biased_dim, param->offset, 
-		current->c_network->length, current->c_network->batch_size, param->size);
+		(current->output, current->a_dim, current->a_biased_dim, current->a_offset, 
+		current->c_network->length, current->c_network->batch_size, current->a_size);
 }
 
 
-void cuda_softmax_deriv(layer *previous)
+void cuda_softmax_deriv(layer *current)
 {
-	printf("ERROR: Softmax activation can not be used in the middle of the network !\n");
-	exit(EXIT_FAILURE);
+	//Empty on purpose
+	//Only the last layer can be softmax activated with a cross entropy error
+	//In this case, activation derivation is handled by deriv output_error directly (next function).
 }
 
 
 void cuda_softmax_deriv_output_error(layer *current)
 {
 	//use by default a cross entropy error
-	softmax_param *param = (softmax_param*)current->activ_param;
-	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = (current->a_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_softmax_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
 		(current->delta_o, current->output, current->c_network->target,
-		param->dim, param->biased_dim, param->offset, current->c_network->length,
-		param->size, current->c_network->TC_scale_factor);
+		current->a_dim, current->a_biased_dim, current->a_offset, current->c_network->length,
+		current->a_size, current->c_network->TC_scale_factor);
 }
 
 
 void cuda_softmax_output_error(layer *current)
 {
 	//use by default a cross entropy error
-	softmax_param *param = (softmax_param*)current->activ_param;
-	cu_blocks = (param->size + cu_threads - 1) / cu_threads;
+	cu_blocks = (current->a_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_softmax_activ_fcts.output_error_fct<<< cu_blocks, cu_threads >>>
 		((float*)current->c_network->output_error, current->output, 
-		current->c_network->target, param->dim, param->biased_dim, param->offset, 
-		current->c_network->length, param->size);
+		current->c_network->target, current->a_dim, current->a_biased_dim, current->a_offset, 
+		current->c_network->length, current->a_size);
 }
 
 //#####################################################
@@ -2442,34 +2432,32 @@ void cuda_softmax_output_error(layer *current)
 void cuda_YOLO_activation(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
-	conv_param *c_param = (conv_param*)current->param;
-	cu_blocks = ((size_t)current->c_network->out_size *
+	cu_blocks = (current->c_network->out_size *
 			current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_YOLO_activ_fcts.activ_fct<<< cu_blocks, cu_threads >>>
-		(current->output, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size,
-		a_param->biased_dim*current->c_network->batch_size, *a_param, a_param->size, a_param->class_softmax);
+		(current->output, current->a_dim * current->c_network->batch_size,
+		current->a_biased_dim * current->c_network->batch_size, *a_param, current->a_size, a_param->class_softmax);
 }
 
 
-void cuda_YOLO_deriv(layer *previous)
+void cuda_YOLO_deriv(layer *current)
 {
-	printf("ERROR : YOLO activation can not be used in the middle of the network !\n");
-	exit(EXIT_FAILURE);
+	//Empty on purpose
+	//Only the last layer can be YOLO activated with a dedicated error
+	//In this case, activation derivation is handled by deriv output_error directly (next function).
 }
 
 
 void cuda_YOLO_deriv_output_error(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
-	conv_param *c_param = (conv_param*)current->param;
-	cu_blocks = ((size_t)c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] *
-			current->c_network->batch_size + cu_threads - 1) / cu_threads;
+	cu_blocks = (current->a_dim * current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_YOLO_activ_fcts.deriv_output_error_fct<<< cu_blocks, cu_threads >>>
 		(current->delta_o, current->output, current->c_network->target, current->c_network->output_dim, 
-		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
-		*a_param, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size, 
+		current->a_dim, current->output_dim[0], current->output_dim[1], current->output_dim[2], 
+		*a_param, current->a_dim * current->c_network->batch_size, 
 		current->c_network->TC_scale_factor, current->c_network->iter * current->c_network->train.size);
 }
 
@@ -2477,14 +2465,12 @@ void cuda_YOLO_deriv_output_error(layer *current)
 void cuda_YOLO_output_error(layer *current)
 {
 	yolo_param *a_param = (yolo_param*)current->activ_param;
-	conv_param *c_param = (conv_param*)current->param;
-	cu_blocks = ((size_t)c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] *
-			current->c_network->batch_size + cu_threads - 1) / cu_threads;
+	cu_blocks = (current->a_dim * current->c_network->batch_size + cu_threads - 1) / cu_threads;
 	
 	current->c_network->cu_inst.cu_YOLO_activ_fcts.output_error_fct<<< cu_blocks, cu_threads >>>
 		((float*)current->c_network->output_error, current->output, current->c_network->target, current->c_network->output_dim, 
-		c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2], c_param->nb_area[0], c_param->nb_area[1], c_param->nb_area[2], 
-		*a_param, c_param->nb_area[0] * c_param->nb_area[1] * c_param->nb_area[2] * current->c_network->batch_size);
+		current->a_dim, current->output_dim[0], current->output_dim[1], current->output_dim[2], 
+		*a_param, current->a_dim * current->c_network->batch_size);
 }
 
 
@@ -2496,9 +2482,7 @@ void cuda_YOLO_activ_init(layer *current)
 
 	yolo_param* a_param = (yolo_param*)current->activ_param;
 	
-	nb_area_flat = ((conv_param*)current->param)->nb_area[0]
-		* ((conv_param*)current->param)->nb_area[1]
-		* ((conv_param*)current->param)->nb_area[2];
+	nb_area_flat = current->a_dim;
 	
 	switch(a_param->IoU_type)
 	{
@@ -2537,12 +2521,9 @@ void cuda_YOLO_activ_init(layer *current)
 	cuda_convert_table_FP32((void**)&(a_param->IoU_limits), 8, 1);
 	cuda_convert_table_int(&(a_param->fit_parts), 6, 1);
 	
-	cudaMalloc((void**)(&(a_param->block_state)), ((conv_param*)current->param)->nb_filters 
-			* nb_area_flat * current->c_network->batch_size * sizeof(curandState_t));
-	cu_blocks = ((((conv_param*)current->param)->nb_filters * current->c_network->batch_size 
-		* (size_t)(nb_area_flat))  + cu_threads - 1) / cu_threads;
-	init_block_state<<< cu_blocks, cu_threads>>>(time(NULL),(curandState_t*)(a_param->block_state), 
-		((conv_param*)current->param)->nb_filters * nb_area_flat * current->c_network->batch_size);
+	cudaMalloc((void**)(&(a_param->block_state)), current->a_size * sizeof(curandState_t));
+	cu_blocks = (current->a_size + cu_threads - 1) / cu_threads;
+	init_block_state<<< cu_blocks, cu_threads>>>(time(NULL),(curandState_t*)(a_param->block_state), current->a_size);
 	
 	cuda_convert_table_int(&(a_param->cell_size), 3, 0);
 	cuda_convert_table_FP32((void**)&(a_param->IoU_monitor),
@@ -2629,7 +2610,7 @@ void init_typed_cuda_activ(network* net)
 }
 
 
-void cuda_define_activation(layer *current)
+void cuda_define_activation_fct(layer *current)
 {	
 	switch(current->activation_type)
 	{
@@ -2653,9 +2634,9 @@ void cuda_define_activation(layer *current)
 			current->deriv_activation = cuda_YOLO_deriv;
 			cuda_YOLO_activ_init(current);
 			break;
-			
-		case LINEAR:
+		
 		default:
+		case LINEAR:
 			current->activation = cuda_linear_activation;
 			current->deriv_activation = cuda_linear_deriv;
 			break;
@@ -2683,8 +2664,8 @@ void cuda_deriv_output_error(layer *current)
 			cuda_YOLO_deriv_output_error(current);
 			break;
 			
-		case LINEAR:
 		default:
+		case LINEAR:
 			cuda_linear_deriv_output_error(current);
 			break;
 	

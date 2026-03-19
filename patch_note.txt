@@ -1,462 +1,102 @@
 ********************************************
-===== V-1.0.1.1 =====
- (interface V-1.0)
-
-Minor hot-fix patch.
-
-- Fix crash when trying to load a YOLO layer prior to a call to set_yolo_params().
-  In such a case, set_yolo_params is now automaticaly called with default parmeters when loading the YOLO layer.
-  A warning is isued as this is not necessarly considered a good practice, even though it might help create lighter inference-only codes.
-- Fix a missing guarding clause preventing compilation without CUDA.
-- Fix an error in YOLO destructors.
-- Add missing verification checks in model load when skipping layers.
-- Loading a saved model no longer reset the existing network structure and can be used to append layers to an existing backbone.
-- Light code refactoring (split auxil.c, rename initializers.c and rename functions for consistency)
-- Add missing call to linear_deriv_function to fully fix linear behavior regarding delta_o propagation also on the last layer.
-- Fix missing call to layer activation for norm layers with CPU backend (was properly activated in GPU).
-- Fix a cuda kernel boundary when initializing random state (used for droppout), unlikely to have any negative effect.
-
-********************************************
-===== V-1.0.1.0 =====
- (interface V-1.0)
-
-Minor update with small bug fixing and code refactoring.
-Supported functionalities and interface are (almost) identical to V-1.0.0.
-This is an intermediate version preparing for the re-implementation of features from the experimental branch.
-
-====    Interface related    ====
-- Change the default behavior of init (see low-level for details)
-- Networks are now referenced by id only, with no required continuity.
-  All interface functions now have a default value of 0 for network_id 
-  (this might break some specific multi-network applications that were not relying on explicit id setting).
-- Add the capability to skip a given number of layers when using the load_network function (see low-level for details).
-- Add two new examples: One related to the publication of Cornu et al. 2026 
-  presenting the use of YOLO-CIANNA-3D on the SDC2 dataset.
-  Pre-trained models and dedicated codes will be hosted on Zenodo for long-term availability.
-  The second example illustrates the results of training a cascaded DDPM with the experimental 
-  version of CIANNA on images of galaxies from the SDSS.
-- Add new installation methods and update the Wiki accordingly
-  -> Add Dockerfile install for CIANNA CPU
-  -> Add apt packages (ubuntu 20,22,24) for CIANNA CPU
-  -> Add guix file install for CIANNA CPU
-  -> (Ongoing) Add new install from source procedure based on CMake and pip (or uv)
-     for all compute backends.
-- Minor fixes of the examples (links, paths, notebooks due to Colab update)
-
-
-==== Low-level modifications ====
-- Update compile.cp for compatibility with CUDA 13+ versions (add linking to -lstdc++ to overcome change in function header definitions)
-- Rename cuda_main.cu source file into cuda_auxil.cu to improve clarity (update compile.cp and python_module_setup.py accordingly).
-- Remove the nb_networks global variable. Networks are now referenced by id only, with no required continuity.
-- Change the default behavior of init. Instead of creating a new network with a new net_id, init now checks if a network
-  with the specified id (default 0) exists, and if yes free it in order to create a new network in its place. 
-  Having init without an id specified in a loop will no longer create more and more networks until it crashes. 
-  Instead, it will free and replace the previous network (better suits beginners' expectations, especially in notebooks).
-- Add missing destructors for various data structures (networks and all layers). This change (in combination with the previous one) should 
-  allow more intuitive use in notebooks or interactive environments, and make CIANNA better suited for building services (e.g., CIANNA-OTF).
-- Add the capability to skip a given number of layers when using the load_network function. All layer loading functions have been updated 
-  so they can still read the layer header from the save file, but skip the layer creation itself. Learnable parameters (weights) loading
-  is skipped. As the layer structure and number of parameters depend on the previous layer setup, we update a running input dimension vector
-  that is updated based on each skipped layer configuration. This running dimension is compared to the actual network input dimension setup
-  during init after the last layer is skipped. If both nb_skip_layers and nb_layers are provided, loading will stop after reaching
-  nb_skip_layers + nb_layers.
-
-
-********************************************
-===== V-1.0.0.0 =====
- (interface V-1.0)
-
-Minor update from V-0.9.5.5 for 1.0 release
-Mostly code cleanup and minor readibility adjustment.
-Update all the date and version-related hard-coded values.
-Remove some experimental functions but that will be present in the dev branch.
-Move the pre-trained example models to Zenodo for long-term availability https://doi.org/10.5281/zenodo.12801421
-
-
-********************************************
-===== V-0.9.3.5 =====
- (interface V-0.6.6)
-
-Minor update toward V-1.0 release
-
-/!\ Break compatibility with previous network saves containing dropout (prediction only, not save file format)
-
-- Add examples on the SKAO SDC1 following submission of the associated Cornu et al. 2024 (scripts and Colab notebook)
-- Update examples, add PASCAL and COCO object detection examples in scripts and notebooks
-- Fix an error occurring when setting control_interv to <= 0; now it just properly do no control step.
-
-====    Interface related    ====
-- Various minor visual/log adjustments
-- Change the behavior of "silent" in cianna.train so it now properly skips all outputs.
-  Also added the possibility of specifying silent=2 so only the control steps are displayed.
-- Add a setlocale(LC_ALL, "C") at the beginning of all interface functions to prevent python libraries from affecting the inner variable formatting of CIANNA 
-  (e.g., some calls to the matplotlib library were affecting the ascii net save file formatting) 
-
-==== Low-level modifications ====
-- Various minor visual/log adjustments
-- Experimental GAN support:
-    + Update old GAN functions to work on the latest version
-    + Only CUDA support and hard-coded parameters for now
-- Change the dropout output scaling to be done by the layer that is actually dropping. This improves compatibility with other layers and results
-  in more resilient source code. The dropout scaling is also moved before the activation function so it improves compatibility with non-linear activation
-  functions (like our default saturated leaky relu). Finally, makes the is_inference and drop_mode parameters checked in backprop so that the gradient 
-  can be propagated with or without dropout (useful for some applications like GANs).
-- Fix an error affecting low_IoU_best_box association and random_best_box_association in some cases.
-- Fix a discrepancy in the eps value used in group norm for CPU and GPU
-- Fix a variable ordering when setting activation to RELU, has no impact as the two variable where having the same value in cases where ordering was wrong.
-- Fix an error in Uniform initializers that was producing all positive weights instead of 0-centered distributions
-- Fix an error in weight decay that was causing the matrix bias pivot value used for dense layers to decay over time.
-- Fix a boundary error in im2col that was causing edge errors in both forward processing and backpropagation of the gradient. 
-  This error was affecting several convolutional layer configurations. While it affects the exact inference results of almost all example models,
-  we observed no significant impact on the predictive performance with or without re-training.
-- Fix an issue where pooling layers' memory footprint was not properly included in the total network memory footprint.
-- Fix an error when loading a specific number of layers from a saved model file in text format.
-
-
-********************************************
-===== V-0.9.3.4 =====
- (interface V-0.6.6)
- (continuous update from 9.3.1 to 9.3.4)
-
-/!\ Break compatibility with previous save formats, interface keywords, MC-drop prediction format, and learning-rate related values scaling /!\
-
-/!\ Add new Interface API documentation to the Wiki page !!
-
-====    Interface related    ====
-
-- /!\ Move from distutils to setuptools to follow the removal of distutils from python 3.12
-- /!\ Change all weights update computations to align with the more classical view of averaged contribution over mini_batch instead of sum.
-  This should ease the reproduction of classical architectures and will facilitate the sharing and comparison of the related training hyper-parameters.
-  The affected parameters are mainly the learning rate and the weight decay.
-- Add a silent option to forward and modify the option on dataset handling to allow true no-output prediction
-  (useful for real-time predictions, e.g, camera feed)
-- Add two new compact "confmat" display: confmat = 2, with only Precision / Recall and global accuracy displayed
-  confmat = 3, with only global accuracy. (Can be helpful to reduce output footprint when working with many classes).
-- Add a new "adv_size" keyword in init_network that defines the size of the progress bar display.
-  (useful to reduce output width footprint for small display or to allow smaller terminal width)
-- Add a "nb_layers" keyword in cnn load to get only the first N layers of a saved network (e.g if used on a pre-training task).
-  New layers can be added after the ones that have been loaded to fit the new task.
-- Add a "class_softmax" keyword in the "set_yolo_params" function (more information in low-level)
-- Modify the monitoring output of YOLO => now display the mean IoU for all targets, the mean Probability for all targets, 
-  and the proportion of targets that have a prediction above "goog_IoU_lim".
-- Relax the input size check when loading a saved network. This helps change input resolution for translational equivariant networks.
-- Add a "global" keyword for pool_create following low-level modification (ignore set filter size, but the parameter is still mandatory).
-- Add stride and padding keywords for pool_create following pooling rework (see low-level for details).
-- Add a weight_decay keyword in the train network function. Change the previous "decay" keyword to "lr_decay" to prevent confusion.
-- Add a set_frozen_layers function in both interfaces. It takes as an argument an integer array to specify which layers should be frozen.
-  Frozen layers will not update their weights during training. The frozen status was already included in the low-level layer code
-  for GAN but was not previously accessible in the high-level interface. This status can now be updated manually at any time.
-- Add new interface functions that allow the construction of several required configuration arrays for YOLO setup. These functions help
-  generate the properly formatted array from a more explicit list of keywords, with better handling of default values if a keyword is
-  not specified. e.g "set_error_scales", "fit_parts", "set_IoU_lims", "set_slopes_and_maxes", "set_sm_single".
-- Add a new YOLO keyword that specifies the use of the "difficult" flag (see low-level)
-- Add a new YOLO keyword that controls the type of error display (see low-level)
-- Add new keywords in conv and dense layer creation to control the type of weight initialization and a user scaling on the variance.
-- /!\ Add the "strict_size" keyword to the last layer in the example scripts to emphasize the fact that any dense layer without the
-  keyword set can be automatically shrunk when using Tensor Cores if its dimension is a multiple of 8 (e.g., 1000 classes issue). 
-- Add an interface to the save network function. This change make renaming and format change of network saves easier.
-- Change the performance display to state the layer type.
-- Add the "inference_only" keyword in the init function (see low-level for details).
-- Add interface functions for the new "norm" layer type (see low-level for details). The keywords for this layer creation function are "group_size" and "set_off".
-- Change all references to a number of "epochs" and the corresponding keywords to iteration (or iter). This change was done to prevent confusion between a real number of epochs
-  and the number of paths through a smaller training sub-sample, especially for dynamic augmentation.
-- Change conv loading display for elements that are not "volumes", namely stride, padding, and internal padding, for which the "x" splitting is replaced by a ":".
-- Add a function to export the network architecture in a .tex formatted table. Also compile it as a .pdf. The table column can be selected individually.
-- Add a new YOLO keyword that specifies the type of prior distance association (see low-level).
-- Add different categories of "difficult" objects, characterized by the int value in the difficult flag (see low-level).
-- Add a return value to all layer creation functions, return the layer_id integer number. Anticipate more complexe architectures construction.
-- Add a "rand_prob" keyword in set_yolo_param (see low-level).
-
-==== Low-level modifications ====
-
-- /!\ Fix an error in YOLO error and deriv that could contaminate association tables between subsequent batches.
-  Prediction output was not directly affected, but the association process was corrupted during training, impacting the computation of the error gradient.
-  This bug might have impacted the predictive performance of YOLO networks trained on older versions.
-- /!\ Change all weights update computations to align with the more classical view of averaged contribution over mini_batch instead of sum.
-  This should ease the reproduction of classical architectures and will facilitate the sharing and comparison of the related training hyper-parameters.
-  The affected parameters are mainly the learning rate and the weight decay.
-- Validated with the latest CUDA 12.0 (no significant performance difference observed atm with the current version)
-- Fix a global keyword error that was preventing the proper compilation of non-CUDA compute methods when not compiling the CUDA compute method.
-- Small adjustment to default activation limits (better support for FP16).
-- Add the possibility of not fitting the position in the YOLO loss (in addition to all other fit_parts options).
-- Fix an error in the computation of dropout weight scaling for dense layers and ensure consistency between all compute methods
-- Add support for Softmax / Cross Entropy activation and loss for YOLO classification. Add a "class_softmax" parameter to
-  the YOLO initialization function to "opt-in", the default remains logistic / MSE activation and loss for the moment.
-- Add an experimental "joint classification and detection" option for the YOLO layer. Relatively simple at the moment: any target image with nb_box
-  set to -1 will consider that the provided box (still has to be defined by the user in the target vector) can only be predicted with an IoU equivalent
-  to good_IoU_lim, also update the class and parameters but not positions and sizes.
-- Add a "GLOBAL" variant for pooling layers. The filter size is automatically set to the whole spatial dimension of the previous layer.
-  Also relax some constraints for pooling layers construction (e.g. now allowed as the first layer). Also moved the type "char" interpretation to the C code.
-- Global rework of the pooling layer "class". It is now possible to define independently the pooling size, the stride and to add some padding.
-  This allows the use of overlapping pooling operations. (Also fix an error in average pooling behavior).
-- Add weight decay in all the versions of weight updates (analog to an L2-norm). The amount of weight decay is specified as a parameter in the train_network function (default 0).
-  In practice, the weight decay is scaled by the learning_rate and applied inside of the momentum update.
-- /!\ Change the MC-dropout prediction scheme. Previously, all batches in the dataset were fully forwarded, and this process was repeated for the 
-  specified number of repetitions. Now, the first layer that presents dropout is flagged, and each batch is forwarded only once before that layer, and the forward
-  repetition is only done after this layer. This helps reduce the total amount of computation and data movements and strongly improves prediction speed for network
-  architectures where only the last few layers have dropout. The output layout is changed to follow the new ordering. The disadvantages are that the batch_size used
-  for inference has to be known to reshape the output; and that the average loss is now computed as an average over all prediction repetitions 
-  (same for other averaged monitor quantities).
-- Add a new optional "difficult" flag to the target of object detection with YOLO. This flag allows to specify that some objects are difficult for a variety of reasons 
-  (apparent size, occlusion, small apparent fraction, ...). During the training process, objects with this flag will be updated through positive reinforcement only. 
-  This behavior is controlled by two new hyper-parameters in "IoU_limits": a diff_IoU_lim, which corresponds to a minimum IoU between prediction and target; 
-  and a diff_obj_lim, which corresponds to a minimum predicted objecteness. Difficult objects still act as targets for the "Good but not best" association but 
-  can be locked as a complete target only if the predictions respect the two IoU and objectness conditions.
-- Change the YOLO error computation for display (/!\ does not affect error gradient computation). It now supports two modes: "Complete": which mimics all non-random aspects
-  of the association process used for the gradient computation. "Natural": which ignores most of the association tricks to display a more continuous error evolution during training.
-  The idea behind this choice is that the use of several association tricks like: the strict box size association, the low IoU best bow association, the handling of 
-  "difficult" objects, all the cascading loss limits, ... ; it can result in an apparent increase in predicted output error because the network is progressively trying to 
-  fit more (and more difficult) objects over time. To avoid possible confusion between this type of complex loss behavior and a classical overtraining, the "natural"
-  error display mode allows to deactivate all the association tricks for error display, effectively computing error on a fixed number of targets 
-  (atm difficult objects do not result in a match for "natural" display but still count for good but not best association).
-- Restore diversity in weight initialization functions (Xavier, LeCun, normal and uniform variations) and allow their selection per layer along with a user control variance scaling.
-- Fix an error that was preventing the deletion of the "error.txt" file if the error compute interval was larger than 10 epochs.
-- Add a size check between output_size and output_dim to prevent user errors in the definition of the last layer (or highlight that the strict_size keyword is mandatory when using TC).
-  Also add a condition to the dense layer size alteration to ensure that it can only happen during network creation and not when loading a saved network.
-- Fix an error that was occurring when loading a network in text format with the "nb_layer" keyword set. Know "non" layer character between layers are properly ignored.
-- Move all the confmat function to CPU side (some functions where still on the GPU even so the batch output was already copied on the host for other operations).
-- Fix an error in all convolutional layers activation functions that could corrupt the activation map if the dataset size was not a multiple of the batch_size.
-- Add support for "output" activation functions to convolutional layers, so now a conv or pool layer with a spatial size of 1 can be used for classification using
-  either logistic or softmax output. All the necessary functions (error, deriv error, confmat, etc) are updated to account for the different data ordering of conv layers.
-  This modification is especially useful to construct input-size agnostic networks.
-- Add an "inference only" mode that can be set at network initialization to prevent allocation of all the memory related to the backpropagation. 
-  This should allow a significant memory saving when trained networks are deployed (especially on systems on light GPUs).
-- /!\ Add a new normalization layer. This layer is added with its own set of files for all compute methods and other layers have been adjusted to interact properly with this new layer.
-  For now, only a "Group" Normalization type is allowed, and the group size is user defined. It means that it is also possible to perform "Layer" normalization and "Instance"
-  normalization with the present implementation. The normalization layer supports a subset of the activation function, but the default is linear. For now, normalization layers can be placed   
-  either after a conv or a pool layer. A second user defined parameter "set_off" allows specifying a number of "groups" that should be forced to produce an identity transformation
-  between the input and the output of the layer. Note that dropout at any point in the network before a normalization layer is not recommended to prevent variance shifting, but they 
-  can be used in combination with dropout if placed after the last normalization layer.
-- Dropout has been changed in various ways. The masks are now computed using a global curand generator and an array allocation function. The drop mask is now also computed
-  for each element in the batch (instead of one drop mask shared for all). Some ways of declaring dropout (between specific types of layers, etc) are now detected and forbidden
-  with a returned error message. Some of these interdictions might be removed in future versions if they are found useful in specific contexts.
-- The only remaining part of the framework that uses curand_kernel is the YOLO layer. For this one, the blockstate is now initialized per thread and not just per block.
-- Change all variable names, structure elements, and functions referring to "epoch" in favor of iteration (or iter). This change was done to prevent confusion between a real number
-  of epochs and the number of paths through a smaller training sub-sample, especially for dynamic augmentation.
-- /!\ Add a second normalization layer type with Local Response Normalization as an experimental feature. This layer is added with its own set of files only for CUDA compute method at the moment.
-  An LRN layer parameters are the range in number of neurons (only on the neurons/activation-maps direction for now, no spatial inhibition), the k, alpha and beta parameters as expressed in the LRN
-  formula to adapt the response type. By default an LRN layer is not activated (linear) but an activation function can be specified. Default values are in "python_module.c" for now.
-- Change in prior size format has been reverted
-- New save format for YOLO layer. Now save all the parameters required to perform inference from saved model: nb_box, nb_class, nb_param, fit_dim, class_softmax, and all the size priors.
-  A network can now be forwarded without the ancillary script setup. Still, to allow new setup on a saved model, a new "no_override" parameter is present in the YOLO setup function
-  so the parameters from the save file are ignored.
-- Change the default output of YOLO forward saving to better represent this new resolution agnostic behavior. Instead of the raw grid element relative position and log of 
-  prior adjust, the new output is automatically converted to the predicted bounding box corner coordinates. A new raw_output flag has been added to the YOLO setup function 
-  to restore the previous output behavior.
-- Refinement of the YOLO association process: i) The "distance" between predictions and priors are now replaced by a 0 centered IoU comparison, expect for the smallest prior 
-  search and forced association. ii) The forced smallest association is now made before the "best prior" forcing and the second is skipped if the first condition is verified.
-  Note: With this formalism it is now possible to fully emulate the YOLOv2 association process by setting strict size association to 1, or GoodIoUlim to maximum.
-- Add different way of selecting the closest prior to a current box_prediction. "IoU" uses a 0 centered IoU comparison, "Size" uses an euclidian distance in the size space,
-  "Offset" uses an euclidian distance in the size-offset space (following box size prediction formalism).
-- Rework all activation functions to fix incorrect behavior that occured with a conv layer as output layer.
-- Port existing support of dense to conv expansion capability from CUDA only to all compute methods.
-- Port existing support of explicit transposed convolution settings for spatial size increase from CUDA only to all compute methods.
-- Rework YOLO kernels (CPU and GPU) to improve readibility and reduce some memory and compute overhead.
-- Add different categories of "difficult" objects, caracterised by the int value in the difficult flag. 
-  0: not difficult, 1: update all if found, 2: update all except class and parameters if found, 3: only update probability and objectness if found.  
-  When using the "Natural" error type, all difficult objects are ignored regardless of their type.
-- Change in compute performance measurement to increase accuracy when using C_CUDA compute method.
-- Add a return value to all layer creation functions, return the layer_id integer number. Anticipate more complexe architectures construction.
-- Fix an error for in cuda-kernel random number generation. This was mainly impacting random startup.
-- Fix an error in random and Low-IoU best prior association for all compute methods.
-- Fix an error in strict box size association that came from latest kernel rework, any strict_box_size_association higer than 1 was in fact considered as 1.
-- Add a random prior association probability parameter to YOLO loss. This allows to force random prior association at a given rate in a similar way to random startup. 
-  This can be used either as a regularizer or a way to smooth the representation transition between prior since each one will see a larger contextual range at a small rate. 
-
-
-********************************************
-===== V-0.9.3.1 =====
- (interface V-0.6.3)
-
-====    Interface related    ====
-
-- Correct an error in the display of the running Mean Prob. Max IoU.
-- Fix a display error for YOLO causing class and param error to be != 0 when nb_class or nb_param = 0.
-- Fix the B.perf display for the last batch for cases where data.size % batch_size != 0.
-- Add display of previously missing hyper-parameters for YOLO.
-- Moved some remaining default hyper-parameters setting from the Python interface to the C backend.
-  This allows more consistency and fine control, and also ease the use of the direct C interface if required.
-
-==== Low-level modifications ====
-
-- Tested support for the new Nvidia Ada Lovelace architecture, working great on Ubuntu 20.04 with CUDA 11.8 and driver 520.
-- Fix an activation error for ReLU, all comp_meth (no impact on results, but remove possible out-of-bound access).
-- Fix an error introduced in V-0.9.3.0 on the transfer of YOLO parameters "all IoU limits" to the GPU memory, 
-  which was causing the crash of any network with nb_param > 0.
-- Modify the YOLO association process introduced in V-9.3.0 to correct a condition-specific error with CUDA comp_method.
-  The error was occurring when the size of nb_box x max_nb_obj_per_image was too large. In the previous version, a vector of this size was allocated 
-  in each CUDA thread local memory, which is too small for this in some cases. The present correction reworks the association, so it preserves
-  the search for "Good but not best" for all target boxes, but then search for best IoU and prior distances only on the target present in the current grid element.
-  Also update the CPU version to preserve consistency between compute methods.
-- In addition to the previous point, all dynamically allocated arrays inside YOLO-specific kernels have been moved to global GPU memory.
-  This change does not affect the results but strongly improves the compute performance of the YOLO layer and removes all possibility of 
-  exceeding the CUDA thread local memory through specific network configuration.
-- Instead of using a single definition of DIoU there are now two: "DIoU" to use the direct distance ratio
-  and "DIoU2" to use the squared distance ratio (which is the classical definition).
-- Small refinement of the association process for cases with multiple identical priors: 
- 	+ In the case of "best theoretical prior association": the process now searches for the best theoretical prior, but if it 
- 	  corresponds to several identical priors it will select the one for which the prediction has the best IoU with the target 
- 	  (still excluding priors already associated to a previous target).
-	+ In the case of "smallest prior" association, the smallest prior is now searched (and not assumed to be the first one) and
-	  if there are multiple occurrences of this prior, it will select the one for which the prediction has the best IoU with the target.
-  Note: All these refinements do not change the fact that the "next target" to process is selected in order of best IoU with available boxes
-  (only impacted by "strict box size association").
-	+ Also removed some conditions that were granting a bypass of strict box association. 
-	  This condition is now absolutely strict (even for random startup), and the constraints it implies should only be leveraged by using more boxes
-	  or using a larger range of strict association.  
-- Add "max_nb_obj_per_image" as a mandatory parameter for YOLO layer configuration. This allows the allocation of the working spaces required by 
-  the previous points, and it is also used in a new verification step on the dimension of "net output size", which corresponds to the target array.
-- Fix an error that was not correctly updating the deriv error and error compute in YOLO network if the number of targets in the image was 0.
-
-
-********************************************
-===== V-0.9.3.0 =====
- (interface V-0.6.3)
-
-====    Interface related    ====
-
-- Various minor updates to wiki and readme
-- Update various console outputs to increase density and generate fewer lines overall
-- Add a more complete YOLO parameter setting summary-display
-- Add information about the total number of weights and the corresponding total "network" memory
-  in the perf eval display
-  
-
-==== Low-level modifications ====
-
-- Fix an error that was preventing the use of a flat input since the last dropout update
-- Fix an indexing error in the loss display computation
-- For CUDA compute, all layers now initialize a seed for random number generation (previously only layers with dropout)
-- Add more (and better) default values to the YOLO parameters. More optional keywords in set_yolo_params.
-- Change the default bias value for YOLO layer to 0.5 
-  (better for parameter regression with LIN activation, no apparent negative impact on other parameters)
-- Refine the Probability derivative error compute to avoid impossible targets with low bit count datatypes.
-- Correct a definition error in the DIoU (now properly uses squared distances). 
-  It is still being determined if it would be better for cases like SDCs => support for both types of DIoU might come at some point.
-- Switch back to objectness being (P x IoU). The sole IoU value was too often not informative. 
-  Still, keep the Probability-only output with specific fined-grained settings.
-- Move almost all YOLO default setting to the low-level C init functions (rather than being in the Python interface).
-
--   *********************    COMPLETE REWORK OF THE ASSOCIATION PROCESS DURING YOLO TRAINING    ********************* 
-	+ Associations are now made in the order of the best IoU for all targets in the same grid element.
-	+ Include a new "starting phase" during which the association is random (allow all boxes to get in the proper range).
-	+ "Good but not best" now uses all targets (even not associated with the current grid element).
-		If no good enough prediction is found for a given target (new threshold), it gets associated with the best
-		"available" theoretical Prior instead of the closest prediction.*
-	+ In addition, there is a reinforced association for the smallest theoretical Prior to overcome the fact that it is 
-		less probable to have a random overlap between two small boxes. This takes the form of a scaled surface/volume of the 
-		smallest Prior, under which all boxes are associated with the smallest Prior (default value 1.5).
-	+ It is also possible to define a random proportion (new user define) of predictions that get associated to the best 
-		theoretical Prior regardless of their prediction quality, the default is 5%. This allows the network to regularly
-		re-evaluate the use of leftover Priors.
-	+ The new "strict box size association" is now independent of Prior sizes ordering in the parameters.
-		It now defines a distance proximity to each theoretical Prior. Then define a range of "proper" Priors,
-		that can be associated or not, this new number is user defined 
-		(the default value is 2 best theoretical Priors that can be used as the best match).
-		Repetition of the same box Prior count for only one in the number of best Priors authorized, but they all remain open.
-	+ If all the "good" Priors are used, the target will fall in the case of "no good enough prediction found".
-		and will search for the best Prior outside the best theoretical Prior range. This is useful to force all the Priors to
-		represent an object in case of a very crowded region in the image.~~ (Removed in 9.3.1)
-	+ Finally, note that with this definition, the only way for a target not to be associated with any prediction box
-		is when there are more targets than Priors in a grid cell.~~ (Not true anymore in 9.3.1)
-  Most fine-grained associations only apply when computing the YOLO layer error propagation. 
-  The displayed error remains based on the best IoU association only, so it remains representative of the network's final performance evolution.
-
-- Add diversity to the "fit_param" behavior (per output part):
-	+ fit_param = 1 : compute the output loss using the target
-	+ fit_param = 0 : still compute the loss, but with "average/neutral" value corresponding to each output part
-		(Pos = 0.5, Size = 0 (==prior), Prob = 0.5, Obj = 0.5, class = 0.5, param = 0.5)
-	+ fit_param = 0 : the loss is set to 0 for the corresponding output part
-- Add a fit_dim parameter that prevent computing a loss for unused dimensions,
-  also set corresponding outputs to the appropriate "neutral" value.  
-- Rewrite some parts of the deriv_error and error YOLO functions to improve readability.
-- Port all the previous changes in the YOLO layer to the CPU version.
-
-
-
-********************************************
-===== V-0.9.2.9 =====
- (interface V-0.6.2)
-
-/!\ Break compatibility with previous save format and interface /!\
-
-====    Interface related    ====
-
-- New bias keyword for CONV and DENSE layers (read low-level mod. for details).
-- Some keywords for activation function have been changed (LINEAR => LIN, SOFTMAX => SMAX, LOGISTIC => LOGI).
-- A char string is now used to pass additional arguments to activation functions
-  (e.g leaking factor and saturation for RELU can be set using "RELU_S200.0_L0.1" as activation keyword).
-- Add a list of interface functions as an alternative way to construct the properly formatted activation strings
-  (e.g cnn.relu(saturation=100.0, leaking=0.2), cnn.logistic(beta=2.0), cnn.softmax(), etc).
-- Simplify several interface function names (when non-ambiguous).
-- Fix dynamic load for a bug in GIL threading and update the new interface.
-
-==== Low-level modifications ====
-
-- Activation function sub_parameters can now be customized on a layer-per-layer basis 
-(e.g., beta for Logistic or saturation and leaking factor for RELU).
-- Unification of the bias behavior (more aligned with other widely adopted frameworks) => 
-  now every layer bias value defines the bias added to its own input matrix. 
-  This was already the case for conv layers but not for dense layers. Following the bias propagation through a pivot method,
-  a dense layer now updates the bias of the previous dense layer weight matrix (instead of its own). 
-  In all cases, the "in_bias" parameter in the init_network function remains mandatory and will ALWAYS OVERWRITE any bias 
-  value specified locally for the first layer. Saves, load, and interface functions have been updated accordingly.
-- bias_value and dropout are now members of the default layer structure (and no more related to the layer type structure).
-- Correction of an error (segfault) that was occurring when forwarding the test dataset using 
-compute_method = BLAS or NAIV while CIANNA was also compiled with the CUDA option.
-- Fix an error for when shuffle every was set to 0 (now only shuffle if shuffle_every > 0 and do nothing otherwise).
-- Add an error info display and a proper program termination if the error.txt external monitoring file cannot be opened.
-
-
-
-********************************************
-===== V-0.9.2.8 =====
- (interface V-0.6.1)
- 
-/!\ Break compatibility with previous save format and interface /!\
-
-====    Interface related    ====
-
-- Update the Python interface for network and layer creation with more default values and automated 1D->2D->3D completion for the C function call.
-- Remove (comment) the formatted I/O-related functions from the interface (depreciated). 
-  The use of dynamic data loading is now recommended for large datasets by using the recent behavior of "create" and "swap" dataset functions (will add an example script asap).
-- Related to the previous point: all datasets created from the python interface must NOT include a bias value (bias parameter depreciated). The bias addition is managed automatically.
-- A new example file ex_script_dyn_load.py is provided to illustrate how to use the dynamic data loading functions. The wiki page will be extended to provide more in-depth details.
-- Unified saving parameter naming in code, the keyword is now "save_every" and can be <= 0 value to indicate that the network should not be saved automatically.
-- The prior existence of "fwd_res" and "net_save" directories is now checked at execution time. They are now created if missing, which prevents several crashes or error stop. 
-Consequently, they are no more present in the default git repo structure. 
-- Add a CIANNA logo display in ascii art. It can be turned off by setting the no-logo parameter to 1.
-- Fix spacing in some terminal displays, and remove unnecessary logs in the default output.
-
-==== Low-level modifications ====
-
-- Add internal padding user control. Allows to create convolutional layers that increase the spatial dimensionality
-  (int_padding is a required parameter for layer creation at the moment, no default).
-- Add experimental support (CUDA Only) for GAN construction and training. Classical GAN works partially (call for Batch Norm addition to CIANNA).
-     Add some experimental functions in the perspective of semi-supervised GAN implementation. (not accessible through the interface for now).
-- Add the option to save and load networks in a binary format (forward results are already possible in binary)
-- Fix remaining edge errors on classical convolution.
-- Fix the global behavior of transposed convolution (both for the new user-controlled Tr.Conv and the automated one in backprop).
-- Fix a discrepancy between CUDA and CPU implementation in dropout for dense layers (errors in both compute methods might remain for the AVG_MODEL inference).
-- Fix an import issue that could occur in a specific environment when compiling the python interface.
-- Added interrupt signal handling in the C code when called from the Python interface. This solves the issue with CUDA not freeing up GPU memory when using ctrl-C to abort training. 
-(Works to be done on a graceful memory clean in this context).
-
-
-
-********************************************
-V-0.9.2.7
-
-Starting patch note after version 9.2.7
-Before this version, most of the update descriptions were in the commit message.
-
-
-
-
-
-
-
-
+===== V-1.1.0_dev =====
+
+Branch and empty the patch for the new DEV branch.
+Initial state of the branch is based on Stable V-1.0.1.1 (commit a24c040)
+
+- Backprop now accumulates the gradient in the previous layer instead of setting its value. All layers set their own gradient to zero at inference time.
+  This change aims at allowing complex layer branching (e.g., split and merge layers).
+  NOTE: We should accommodate a way to manually set the gradient values to zero for all layers in order to decorrelate it from an inference step.
+  (This could help for GAN-like network structures).
+- Generalize the LRN layer to CPU computation (identical for BLAS and NAIV backends)
+- Remove the input bias setting for more clarity. Bias default value is now defined based on the activation function unless specified as a layer argument
+  (affecting the input of this layer). For SPATIAL layers, bias is always set by im2col, and for FLAT layers (dense specifically), the input bias is
+  set by the forward function, while all subsequent dense layers use the weight matrix pivot trick.
+- Layer and activation data structure rework (simplification):
+  - All non-specific activation variables have been removed. Replacement size-related variables are now present in the layer structure
+    and can be used for different purposes by each layer/activation type. All functions have been updated accordingly.
+  - Layers are now characterized by their “output format”, either SPATIAL (CONV, POOL), or FLAT (DENSE). Transformation layers that can be applied to both
+    formats (NORM, LRN, MERGE) now inherit their format from the previous layer. This change allows to simplify complex architecture structure
+    dependencies that were reflected by complex branched conditions in various places in the code.
+  - While the logic has been updated, the NORM and LRN layers still need to be adapted to handle FLAT-formatted layer outputs.
+- Fix an error in Linear, ReLU, and Logistic activation for dense layers that was erasing the bias value, setting a zero value instead.
+  This was only present when two dense layers were stacked; adding a single dense layer at the end of an otherwise fully-conv network worked as intended.
+  This error is likely present in V-1.0 but will not be retroactively patched, as it would break the deterministic behavior of existing trained models.
+  The fix is only applied for V-1.1+, which is already expected to break backward save compatibility to some extent.
+- Rework fixed optimizer construction for a modular multi-optimizer approach (in optimizers.c and cuda_optimizers.cu). An optimizer and its configuration
+  can now be selected at runtime through an argument in the init function. Currently supported optimizers are SGD with momentum, RMSprop, and ADAM.
+  While the optimizer itself cannot be changed after network initialization, its configuration can be updated dynamically (e.g., momentum value for SGD).
+  Learning rate and weight decay remain general parameters set when the train function is called and can therefore be scheduled finely.
+  Also, the optimizer is now applied to all learnable parameters via a unified function, including normalization layer scaling and shift values.
+- Fix an error in weight decay that was not affecting all learnable parameters equally. Now, weight decay is done in each optimizer and affects only the weights in
+  dense and conv layers (ignoring norm layers) and is not applied to the bias weight (as initially intended).
+- Add Weights Exponential Moving Average for all learnable parameters directly at the end of each optimizer (same kernel launch). Shadow EMA weights are
+  updated during training, while all inference steps (inference over the validation dataset during training or separate inference over the test set) use
+  the EMA weights instead of regular weights. WEMA usage can be specified at init time (for allocation), while the WEMA rate can be set (and updated)
+  through the train function. Running weights can be replaced by the EMA weights periodically using a wema_replace_every keyword in the train function.
+- Add an option to decouple weight decay from the optimizer computation (while still performing it in the optimizer functions). This typically allows adamW.
+- Fix an error in the conv NAIV weight gradient computation that came from a previous code refactoring (does not affect V-1.0).
+- Add a new layer type, MERGE, for all compute backends. A merge layer takes absolute or relative ids for two input layers as arguments and can either be
+  of type ADD or CONCAT. ADD type merge layers sum two layers output element-wise and require the two input layers to have the exact same shape,
+  while CONCAT merge will append features from the two layers in a new output and only require the spatial shape to be identical.
+  For now, merge can only take “SPATIAL” output type layers as input (CONV, POOL, NORM), but we plan to generalize them to FLAT layers as well.
+- Rework the saving system to store the optimizer and EMA states for proper training restart. The regular save format is now based on running or EMA weights if use_wema is set to 1
+  (EMA weights are already the ones used on the validation and test dataset).
+  An optim save file stores regular weights, ema_weights if use_wema is 1, and the optimizer variables (e.g., for Adam, the optimizer state, the first and second moments,
+  and second moment max value if ams_grad is set to 1). The train function exposes this capability through the save_optim_every optional argument,
+  while the save function allows specifying a save_optim_state optional argument. By default, optim save files are stored in a directory named optim_save.
+  When loading a save file, the format (regular or optim save) is determined automatically. If an optim save file is loaded while there is
+  no layer in the model yet, then the full optimizer configuration is replaced by the one loaded from the file. In contrast, if at least one layer already exists,
+  the loading scheme will only update possible optimizer values (e.g, can’t change the choice of optimizer, the activation of wema, or of ams_grad for ADAM).
+- Major rework of the convolutional layer. This change was motivated by the addition of depth-wise convolution. Instead of adding a special case, the whole convolution
+  has instead been revamped as a general case depth-grouped convolution. Regular convolution and depth-wise convolution are now special cases of this general implementation, 
+  with either nb_group = 1 or nb_group = nb_input_channels. The interface remains identical, just adding the number of groups as an extra optional argument.
+  Internally, the grouped convolution is decomposed into subproblems, each corresponding to a convolution on a subset of nb_input_channels/nb_group input features using
+  nb_output_channels/nb_group filters. All data arrays related to the convolution operation are now decomposed into chunks, each representing a sub-convolution.
+  Regarding computation, for both CPU implementations, we simply loop over the subproblems, whereas in CUDA, we use the cublasGemmStridedBatchedEx function.
+  All other kernels have also been rewritten accordingly (e.g., im2col and rotate_filters).
+- Fix a bug related to OpenMP. On some systems, not setting OMP_NUM_THREADS manually causes strong performance issues for both OpenBLAS gemm and our custom functions.
+  Now, if OMP_NUM_THREADS = OMP_MAX_THREADS at startup (likely not manually set), we automatically set OMP_NUM_THREADS = OMP_MAX_THREADS/2, fixing the issue for most systems.
+- Datasets no longer require a target array to be declared. This change specifically targets the TEST dataset that is used for inference, so no zero-filled target array is required.
+  Checks have been added at several places to verify that operations on a given dataset are authorized without a target array (e.g., training now returns an error if provided with
+  a train dataset without target labels). The forward function now defaults to “no_error=1” to follow this change.
+- The forward model function now returns a NumpyArray containing all the predictions for the current TEST dataset. Saving still defaults to 1, so the model also saves a file 
+  with the result. This change aims to speed up models that require frequent inference, like DDPMs that require many recursive forward passes to generate the final image.
+- Removed the appended 0 to output prediction and saved values when the last layer is of type FLAT. This zero, resulting from the automatic dense layer bias propagation, is
+  still present internally, but is now skipped when writing to file and in the output array.
+
+
+
+#######  To do  #######
+
+Urgent
+
+Code arrangement
+
+- P0 modularize optimizer.c/.cu code
+- Remove as many switch statements as possible through function pointers (e.g., save, load, free layer functions).
+- Rework the compute error and the predict functions
+
+Fix known errors / unexpected behaviors
+
+- Review all binary writes and reads and base them on fixed Byte count types (using e.g <inttypes.h>)
+- Add back dropout to all layers and add drop_feature to spatial layers.
+
+New functionalities / reworks (EASY)
+
+- Work specifically on DENSE/CONV branching in order to add N dense elements directly to the flat im2col representation instead of full channels.
+- Merge with any number of layer.
+- Generalize Norm layer and LRN layer for dense ? Add back a specific implementation for Batch norm or generalize the current norm implementation ?
+- Add GRN layer and learnable scaling layer (or include partial freeze in existing norm layer (freeze offset ?) )
+- Overlapping pool kernels (set a stride)
+
+New functionalities / reworks (HARD)
+
+- Rework input and output construction to authorize more complex architectures (multiple outputs and multiple inputs, likely need to treat inputs as layers)
+- Add “REORDER” / “Shuffle?” layer for non-destructive layer output reshape
+- Investigate network stochastic depth through “drop path.”
+- Investigate dilated convolution
+- Investigate inception-like block structures
 
 
 

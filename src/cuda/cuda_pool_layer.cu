@@ -227,7 +227,7 @@ __global__ void deltah_max_pool_cont_##name																										\
 			}																																	\
 		}																																		\
 	}																																			\
-	delta_o_unpool[(pos[2]-padding_d)*(size_t)(w_size*h_size) + (pos[1]-padding_h)*w_size + (pos[0]-padding_w)] = (type) l_delta_h;				\
+	delta_o_unpool[(pos[2]-padding_d)*(size_t)(w_size*h_size) + (pos[1]-padding_h)*w_size + (pos[0]-padding_w)] += (type) l_delta_h;			\
 }
 
 
@@ -279,7 +279,7 @@ __global__ void deltah_avg_pool_cont_##name																										\
 			}																																	\
 		}																																		\
 	}																																			\
-	delta_o_unpool[(pos[2]-padding_d)*(size_t)(w_size*h_size) + (pos[1]-padding_h)*w_size + (pos[0]-padding_w)] = (type) l_delta_h;				\
+	delta_o_unpool[(pos[2]-padding_d)*(size_t)(w_size*h_size) + (pos[1]-padding_h)*w_size + (pos[0]-padding_w)] += (type) l_delta_h;			\
 }
 
 
@@ -316,15 +316,6 @@ __global__ void cuda_dropout_scale_pool_##name(void* i_table, float* mask, size_
 }
 
 
-#define cuda_typed_memset(name, type)																											\
-void cuda_typed_memset_##name(void* i_table, int value, size_t size)																			\
-{																																				\
-	type* table = (type*) i_table;																												\
-																																				\
-	cudaMemset(table,  value, size * sizeof(type));																								\
-}
-
-
 
 max_pooling_kernel(FP32, float);
 avg_pooling_kernel(FP32, float);
@@ -332,7 +323,6 @@ deltah_max_pool_cont(FP32, float);
 deltah_avg_pool_cont(FP32, float);
 cuda_dropout_apply_pool(FP32, float);
 cuda_dropout_scale_pool(FP32, float);
-cuda_typed_memset(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 max_pooling_kernel(FP16, half);
@@ -341,7 +331,6 @@ deltah_max_pool_cont(FP16, half);
 deltah_avg_pool_cont(FP16, half);
 cuda_dropout_apply_pool(FP16, half);
 cuda_dropout_scale_pool(FP16, half);
-cuda_typed_memset(FP16, half);
 #endif
 
 #if defined (GEN_AMPERE)
@@ -351,7 +340,6 @@ deltah_max_pool_cont(BF16, nv_bfloat16);
 deltah_avg_pool_cont(BF16, nv_bfloat16);
 cuda_dropout_apply_pool(BF16, nv_bfloat16);
 cuda_dropout_scale_pool(BF16, nv_bfloat16);
-cuda_typed_memset(BF16, nv_bfloat16);
 #endif
 
 
@@ -368,7 +356,6 @@ void cuda_pool_init(network* net)
 			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_FP32;
 			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_FP32;
 			net->cu_inst.cu_pool_fcts.drop_scale_fct = cuda_dropout_scale_pool_FP32;
-			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_FP32;
 			break;
 		
 		case FP16C_FP32A:
@@ -380,7 +367,6 @@ void cuda_pool_init(network* net)
 			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_FP16;
 			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_FP16;
 			net->cu_inst.cu_pool_fcts.drop_scale_fct = cuda_dropout_scale_pool_FP16;
-			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_FP16;
 			#else
 			printf("ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
 			exit(EXIT_FAILURE);
@@ -395,7 +381,6 @@ void cuda_pool_init(network* net)
 			net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct = deltah_avg_pool_cont_BF16;
 			net->cu_inst.cu_pool_fcts.drop_apply_fct = cuda_dropout_apply_pool_BF16;
 			net->cu_inst.cu_pool_fcts.drop_scale_fct = cuda_dropout_scale_pool_BF16;
-			net->cu_inst.cu_pool_fcts.typed_memset_fct = cuda_typed_memset_BF16;
 			#else
 			printf("ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
 			exit(EXIT_FAILURE);
@@ -406,26 +391,28 @@ void cuda_pool_init(network* net)
 
 size_t cuda_convert_pool_layer(layer *current)
 {
+	int k;
 	p_param = (pool_param*)current->param;
-	size_t vram_approx = 0;
+	size_t vram_approx = 0, flat_nb_area = 1;
+	int nb_maps;
 	
 	network* net = current->c_network;
 
-	vram_approx += cuda_convert_table(net, &(current->output), p_param->nb_area[0]
-		* p_param->nb_area[1] * p_param->nb_area[2] * p_param->nb_maps * net->batch_size, 0);
+	nb_maps = current->output_dim[3];
+	for(k = 0; k < 3; k++)
+		flat_nb_area *= current->output_dim[k];
+
+	vram_approx += cuda_convert_table(net, &(current->output), flat_nb_area * nb_maps * net->batch_size, 0);
 	
 	if(current->dropout_rate > 0.01f)
 	{
-		vram_approx += cuda_convert_table_FP32((void**)&(p_param->dropout_mask), p_param->nb_maps
-			* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, 0);
+		vram_approx += cuda_convert_table_FP32((void**)&(current->dropout_mask), nb_maps * flat_nb_area * net->batch_size, 0);
 	}
 	
 	if(!net->inference_only)
 	{
-		vram_approx += cuda_convert_table_int(&(p_param->pool_map), (size_t)(p_param->nb_area[0]
-			* p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps * net->batch_size, 0);
-		vram_approx += cuda_convert_table(net, &(current->delta_o), (size_t)(p_param->nb_area[0]
-			* p_param->nb_area[1] * p_param->nb_area[2]) * p_param->nb_maps * net->batch_size, 0);
+		vram_approx += cuda_convert_table_int(&(p_param->pool_map), flat_nb_area * nb_maps * net->batch_size, 0);
+		vram_approx += cuda_convert_table(net, &(current->delta_o), flat_nb_area * nb_maps * net->batch_size, 0);
 	}
 	
 	return vram_approx;
@@ -438,7 +425,7 @@ void cuda_free_pool(layer *current)
 	
 	cudaFree(current->output);
 	if(current->dropout_rate > 0.01f)
-		cudaFree(p_param->dropout_mask);
+		cudaFree(current->dropout_mask);
 	if(!current->c_network->inference_only)
 	{
 		cudaFree(p_param->pool_map);
@@ -448,23 +435,25 @@ void cuda_free_pool(layer *current)
 
 void cuda_forward_pool_layer(layer *current)
 {
-	int bias_in = 0;
-	network* net = current->c_network;
+	size_t l_size, flat_nb_area = 1;
+	int i, nb_maps, bias_in = 0;
 	
-	if(net->length == 0)
-		return;
+	network* net = current->c_network;
+	p_param = (pool_param*) current->param;
 	
 	if(current->previous == NULL)
 	{
 		current->input = net->input;
 		bias_in = 1;
 	}
-		
-	p_param = (pool_param*) current->param;
+	
+	nb_maps = current->output_dim[3];
+	for(i = 0; i < 3; i++)
+		flat_nb_area *= current->output_dim[i];
 	
 	dim3 threadsPerBlock(32, 8);
-    dim3 numBlocks(((size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) + threadsPerBlock.x - 1) / threadsPerBlock.x,
-    	(net->batch_size * p_param->nb_maps + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    dim3 numBlocks((flat_nb_area + threadsPerBlock.x - 1) / threadsPerBlock.x,
+    	(net->batch_size * nb_maps + threadsPerBlock.y - 1) / threadsPerBlock.y);
 	
 	switch(p_param->pool_type)
 	{
@@ -474,18 +463,18 @@ void cuda_forward_pool_layer(layer *current)
 				p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
 				p_param->stride[0], p_param->stride[1], p_param->stride[2],
 				p_param->padding[0], p_param->padding[1], p_param->padding[2],
-				p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
-				p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
-				bias_in, p_param->nb_maps * net->batch_size);
+				current->prev_dim[0], current->prev_dim[1], current->prev_dim[2], 
+				current->output_dim[0], current->output_dim[1], current->output_dim[2], 
+				bias_in, nb_maps * net->batch_size);
 			break;
 		case AVG_pool:
 			net->cu_inst.cu_pool_fcts.avg_pool_fct<<< numBlocks , threadsPerBlock >>>(current->input, current->output, 
 				p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
 				p_param->stride[0], p_param->stride[1], p_param->stride[2],
 				p_param->padding[0], p_param->padding[1], p_param->padding[2],
-				p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2], 
-				p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2], 
-				bias_in, p_param->nb_maps * net->batch_size);
+				current->prev_dim[0], current->prev_dim[1], current->prev_dim[2], 
+				current->output_dim[0], current->output_dim[1], current->output_dim[2], 
+				bias_in, nb_maps * net->batch_size);
 			break;
 	}
 
@@ -493,76 +482,84 @@ void cuda_forward_pool_layer(layer *current)
 	{
 		if(net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL))
 		{
-			cu_blocks = ((size_t)(p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) 
-				* net->batch_size) + cu_threads - 1) / cu_threads;
+			cu_blocks = ((nb_maps * flat_nb_area * net->batch_size) + cu_threads - 1) / cu_threads;
+			cuda_random_vector(current->dropout_mask, nb_maps * net->batch_size * flat_nb_area);
 			
-			cuda_random_vector(p_param->dropout_mask, p_param->nb_maps * net->batch_size
-				* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]));
-			
-			net->cu_inst.cu_pool_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, p_param->dropout_mask, p_param->nb_maps 
-				* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])* net->batch_size, current->dropout_rate);
+			net->cu_inst.cu_pool_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->output, 
+				current->dropout_mask, nb_maps * flat_nb_area * net->batch_size, current->dropout_rate);
 		}
 		else
-			net->cu_inst.cu_pool_fcts.drop_scale_fct<<<cu_blocks, cu_threads>>>(current->output, p_param->dropout_mask, p_param->nb_maps 
-				* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2])* net->batch_size, current->dropout_rate);
+			net->cu_inst.cu_pool_fcts.drop_scale_fct<<<cu_blocks, cu_threads>>>(current->output, 
+				current->dropout_mask, nb_maps * flat_nb_area * net->batch_size, current->dropout_rate);
 	}
 	
-	//Linear == No activation
 	current->activation(current);
+	
+	if(!net->inference_only)
+	{
+		l_size = flat_nb_area * nb_maps * net->batch_size;
+		net->cu_inst.cu_auxil_fcts.cu_typed_memset_fct(current->delta_o, 0, l_size);
+	}
 }
 
 
 void cuda_backward_pool_layer(layer* current)
 {
-	network* net = current->c_network;
+	size_t flat_nb_area = 1, prev_flat_nb_area = 1;
+	int i, nb_maps;
 	
+	network* net = current->c_network;
 	p_param = (pool_param*) current->param;
+	
+	nb_maps = current->output_dim[3];
+	for(i = 0; i < 3; i++)
+	{
+		flat_nb_area *= current->output_dim[i];
+		prev_flat_nb_area *= current->prev_dim[i];
+	}
+	
+	//Must be done here so all layers can add their contribution to current layer delta_o (merging / branching)
+	current->deriv_activation(current);
 	
 	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 	{
-		cu_blocks = ((size_t)(p_param->nb_maps * (p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) 
-			* net->batch_size) + cu_threads - 1) / cu_threads;
+		cu_blocks = ((nb_maps * flat_nb_area * net->batch_size) + cu_threads - 1) / cu_threads;
 		
-		net->cu_inst.cu_pool_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->delta_o, p_param->dropout_mask, p_param->nb_maps 
-			* (size_t)(p_param->nb_area[0] * p_param->nb_area[1] * p_param->nb_area[2]) * net->batch_size, current->dropout_rate);
+		net->cu_inst.cu_pool_fcts.drop_apply_fct<<<cu_blocks, cu_threads>>>(current->delta_o, 
+			current->dropout_mask, nb_maps * flat_nb_area * net->batch_size, current->dropout_rate);
 	}
 
 	if(current->previous != NULL)
 	{
-		if(current->previous->type == CONV ||
-			((current->previous->type == NORM || current->previous->type == LRN) && current->previous->previous->type == CONV))
-		{		
-			net->cu_inst.cu_pool_fcts.typed_memset_fct(current->previous->delta_o, 0, p_param->nb_maps 
-				* (size_t)(p_param->prev_size[0] * p_param->prev_size[1] * p_param->prev_size[2])
-				* net->batch_size);
-				
-			cu_blocks = (net->batch_size * p_param->nb_maps *(size_t)(p_param->prev_size[0] 
-				* p_param->prev_size[1] * p_param->prev_size[2]) + cu_threads - 1) / cu_threads;
+		if(current->output_type == SPATIAL)
+		{
+			cu_blocks = (current->previous->a_size + cu_threads - 1) / cu_threads;
 			switch(p_param->pool_type)
 			{
 				default:
 				case MAX_pool:
-					net->cu_inst.cu_pool_fcts.max_deltah_pool_fct<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, 
+					net->cu_inst.cu_pool_fcts.max_deltah_pool_fct<<< cu_blocks, cu_threads >>>(
+						current->delta_o, current->previous->delta_o, 
 						p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
 						p_param->stride[0], p_param->stride[1], p_param->stride[2],
 						p_param->padding[0], p_param->padding[1], p_param->padding[2],
-						p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2],
-						p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2],
-						net->batch_size * p_param->nb_maps * (size_t)(p_param->prev_size[0] * p_param->prev_size[1] *p_param->prev_size[2]));
+						current->prev_dim[0], current->prev_dim[1], current->prev_dim[2],
+						current->output_dim[0], current->output_dim[1], current->output_dim[2],
+						net->batch_size * nb_maps * prev_flat_nb_area);
 					break;
 				
 				case AVG_pool:
-					net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct<<< cu_blocks, cu_threads >>>(current->delta_o, current->previous->delta_o, 
+					net->cu_inst.cu_pool_fcts.avg_deltah_pool_fct<<< cu_blocks, cu_threads >>>(
+						current->delta_o, current->previous->delta_o, 
 						p_param->pool_map, p_param->p_size[0], p_param->p_size[1], p_param->p_size[2],
 						p_param->stride[0], p_param->stride[1], p_param->stride[2],
 						p_param->padding[0], p_param->padding[1], p_param->padding[2],
-						p_param->prev_size[0], p_param->prev_size[1], p_param->prev_size[2],
-						p_param->nb_area[0], p_param->nb_area[1], p_param->nb_area[2],
-						net->batch_size * p_param->nb_maps * (size_t)(p_param->prev_size[0] * p_param->prev_size[1] *p_param->prev_size[2]));
+						current->prev_dim[0], current->prev_dim[1], current->prev_dim[2],
+						current->output_dim[0], current->output_dim[1], current->output_dim[2],
+						net->batch_size * nb_maps * prev_flat_nb_area);
 					break;
 			}
 		}
-		current->previous->deriv_activation(current->previous);
 	}
 }
 
