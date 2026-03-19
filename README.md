@@ -17,32 +17,31 @@
 
 ## WARNING - YOU ARE CURRENTLY ON THE EXPERIMENTAL BRANCH OF CIANNA
 **This branch provides early access to new functionalities currently being tested and verified.**  
-**This branch should be used for testing and prototyping, not to produce sensitive results or model deployment.**  
-**Please note that:**
+**This branch should be used for testing and prototyping, not to produce sensitive results or model deployment. Please note that:**
 
 * The published documentation might not reflect the functions of this branch.
-* Some functions might be deprecated and function interfaces might have changed in an undocumented way.
+* Some functions might be deprecated, and function interfaces might have changed in an undocumented way (see the python_module.c file for up-to-date API functions).
 * Some specific configuration combination might crush the code.
-* Some functionalities might not crash the code but still provide wrong result or behavior.
+* Some functionalities might not crash the code, but still provide wrong results or behaviors.
 * API interface, model save format, and functionalities are all subject to changes over short time periods with no warnings.
 
-**Use this branch at you own risks!**
+**Use this branch at your own risk!**
 
 &nbsp;
 
 **Development Update 19/03/2026:**
 
-This branch aimed at accumulating new functionalities that have a reasonable level of maturity in preparion for the next CIANNA release.  
-Active development is not conducted here but on a private branch, so functionalities that end up here are those that we already tested on simples cases.  
+This branch aims to accumulate new functionalities with a reasonable level of maturity in preparation for the next CIANNA release.  
+Active development is not conducted here but on a private branch. Functionalities that end up here are those we have already tested in  simple cases.  
 The MNIST example script has been modified to illustrate most of the new functionalities.  
 
-Highlight of new features (check the patch_note.txt file a detailed view):
-* Add optmizers diversity and high level interface for them (SGD, ADAM, RMSprop). Also add decoupled weight decay for all optimizers.
+Highlight of new features (check the patch_note.txt file for a detailed view):
+* Add optimizer choice and a high-level interface to interact with them (SGD, ADAM, RMSprop). Also, add decoupled weight decay for all optimizers.
 * Add merge layers (Add and concatenate) and rework gradient flow. Enable the creation of residual blocks and U-net style architectures.
 * Add Weight Exponential Moving Average (WEMA) support.
 * Rework model saving to keep optimizer and ema states. Enable clean model training restart from a save state.
-* The couv layer is now a grouped convolution. Classical convolution correspond to a single group. Also provide access to depth-wise convolution.
-* The forward function now returns a numpy array with the network prediction directly (writing of a prediction result file is still possible but optional).
+* The couv layer is now a grouped convolution. Classical convolution corresponds to a single group. Also enable depth-wise convolution.
+* The forward function now returns a numpy array with the network prediction directly (writing of a prediction result file is still possible, but optional).
 * Many QOL changes
 
 
