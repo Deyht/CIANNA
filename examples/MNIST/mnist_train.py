@@ -49,7 +49,7 @@ print ("Done !", flush=True)
 
 cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10,
 		bias=0.1, b_size=16, comp_meth="C_CUDA", #Change to C_BLAS or C_NAIV
-		dynamic_load=1, mixed_precision="FP16C_FP32A", no_logo=1) 
+		dynamic_load=1, mixed_precision="FP32C_FP32A", no_logo=1) 
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)
@@ -65,10 +65,10 @@ if(load_step > 0):
 else:
 	cnn.conv(f_size=i_ar([5,5]), nb_filters=8 , padding=i_ar([2,2]), activation="LIN")
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.norm(group_size=2, activation="RELU")
+	#cnn.norm(group_size=2, activation="RELU")
 	cnn.conv(f_size=i_ar([5,5]), nb_filters=16, padding=i_ar([2,2]), activation="LIN")
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.norm(group_size=4, activation="RELU")
+	#cnn.norm(group_size=4, activation="RELU")
 	cnn.dense(nb_neurons=256, activation="RELU", drop_rate=0.5)
 	cnn.dense(nb_neurons=128, activation="RELU", drop_rate=0.2)
 	cnn.dense(nb_neurons=10, strict_size=1, activation="SMAX")

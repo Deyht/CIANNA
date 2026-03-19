@@ -24,8 +24,8 @@ open_mp_extra = []
 if(os.environ.get('USE_CUDA') != None):
 	print("USE_CUDA")
 	cuda_obj = ['cuda/cuda_auxil.o', 'cuda/cuda_conv_layer.o', 'cuda/cuda_dense_layer.o', 'cuda/cuda_pool_layer.o', 'cuda/cuda_norm_layer.o', 'cuda/cuda_lrn_layer.o', 'cuda/cuda_activ_functions.o']
-	cuda_include = ['/usr/local/cuda-12.4/include']
-	cuda_extra = ['-L/usr/local/cuda-12.4/lib64', '-lstdc++', '-lcudart', '-lcublas', '-lcurand']
+	cuda_include = ['/usr/local/cuda-13.0/include']
+	cuda_extra = ['-L/usr/local/cuda-13.0/lib64', '-lstdc++', '-lcudart', '-lcublas', '-lcurand']
 	cuda_macro = [('CUDA','1'), ('CUDA_THREADS_PER_BLOCKS', '256')]
 if(os.environ.get('USE_BLAS') != None):
 	print("USE_BLAS")
