@@ -32,31 +32,31 @@
 
 CIANNA is a general-purpose deep learning framework primarily developed and used for astronomical data analysis. Functionalities and optimizations are added based on relevance for astrophysical problem-solving. CIANNA can be used to build and train large neural network models for various tasks and is provided with a high-level Python interface (similar to keras, pytorch, etc.). One of the specificities of CIANNA is its custom implementation of a YOLO-inspired object detector used in the context of galaxy detection in 2D or 3D radio-astronomical data products. The framework is fully GPU-accelerated through low-level CUDA programming.
 
-**Development team**  
+**[Development team](https://cianna.obspm.fr/content/Team/Team.html)**  
 [David Cornu](https://vm-weblerma.obspm.fr/dcornu/) - creator and lead dev, post-doc researcher, AI Fellow PR[AI]RIE, FR - LUX / Observatoire de Paris, PSL  
 Gregory Sainton - dev, AI Research engineer, FR - LUX / Observatoire de Paris  
 Aristide Doussot - dev, HPC Research engineer, FR - LUX / Observatoire de Paris
 
-Preferred contact point: david.cornu@observatoiredeparis.psl.eu
+Preferred contact point: contact.cianna@sympa.obspm.fr
 
 See Copyright &copy; and [License](#License) terms at the end.
 
 &nbsp;
 
 **Quick access:**
-* [CIANNA examples](#cianna-application-examples)
-* [Wiki](https://github.com/Deyht/CIANNA/wiki)
-* [Installation instructions](https://github.com/Deyht/CIANNA/wiki/2\)-Installation-instructions)
-* [How to use](https://github.com/Deyht/CIANNA/wiki/3\)-How-to-use-(Python-interface))
-* [API documentation](https://github.com/Deyht/CIANNA/wiki/4\)-Interface-API-documentation)
-* [Publications](https://github.com/Deyht/CIANNA/wiki/Related-publications)
+* [CIANNA examples](https://cianna.obspm.fr/content/Examples/Examples.html)
+* [Installation instructions](https://cianna.obspm.fr/content/Installation/Installation.html)
+* [How to use](https://cianna.obspm.fr/content/How_to_use/How_to_use.html)
+* [API documentation](https://cianna.obspm.fr/content/API/API.html)
+* [Dev Blog](https://cianna.obspm.fr/content/Dev_Blog/Dev_Blog.html)
+* [Publications](https://cianna.obspm.fr/content/Publications/Publications.html)
 
 
 &nbsp;
 
 **CIANNA status update (03/2026)**  
-* CIANNA now has a dedicated website: [cianna.obspm.fr](cianna.obspm.fr) (thanks to the hard work of Aristide Doussot). This website aims to improve the framework's visibility and provide a more flexible interface to host content from the GitHub Wiki page. This includes installation instructions, application examples, tutorials, a dev blog, known publications, contact information, ...
-* A new "experimental" branch has been added. This branch will be used to accumulate new functionalities that have a reasonable level of maturity in preparation for the next CIANNA release. This branch can be used for testing and prototyping using new features and reworked interfaces. Highlight of the recently added functionalities (see the experimental patch note for more details):
+* CIANNA now has a dedicated website: [cianna.obspm.fr](https://cianna.obspm.fr) (thanks to the hard work of Aristide Doussot). This website aims to improve the framework's visibility and provide a more flexible interface to host content from the GitHub Wiki page. This includes installation instructions, application examples, tutorials, a dev blog, known publications, contact information, ...
+* A new "experimental" branch has been added. This branch will be used to accumulate new functionalities that have reached a reasonable level of maturity in preparation for the next CIANNA release. This branch can be used for testing and prototyping using new features and reworked interfaces. Highlight of the recently added functionalities (see the experimental patch note for more details):
   * Optimizer choice and a high-level interface to interact with them (SGD, ADAM, RMSprop). Also add decoupled weight decay for all optimizers.
   * New merge layer (Add and concatenate) and reworked gradient flow. Enable the creation of residual blocks and U-net style architectures.
   * Weight Exponential Moving Average (WEMA) support.
