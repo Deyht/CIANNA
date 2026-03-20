@@ -57,6 +57,7 @@ Initial state of the branch is based on Stable V-1.0.1.1 (commit a24c040)
   All other kernels have also been rewritten accordingly (e.g., im2col and rotate_filters).
 - Fix a bug related to OpenMP. On some systems, not setting OMP_NUM_THREADS manually causes strong performance issues for both OpenBLAS gemm and our custom functions.
   Now, if OMP_NUM_THREADS = OMP_MAX_THREADS at startup (likely not manually set), we automatically set OMP_NUM_THREADS = OMP_MAX_THREADS/2, fixing the issue for most systems.
+  The same check is done independantly for OpenBLAS in case a version no compiled with OpenMP is used.
 - Datasets no longer require a target array to be declared. This change specifically targets the TEST dataset that is used for inference, so no zero-filled target array is required.
   Checks have been added at several places to verify that operations on a given dataset are authorized without a target array (e.g., training now returns an error if provided with
   a train dataset without target labels). The forward function now defaults to “no_error=1” to follow this change.
@@ -64,7 +65,7 @@ Initial state of the branch is based on Stable V-1.0.1.1 (commit a24c040)
   with the result. This change aims to speed up models that require frequent inference, like DDPMs that require many recursive forward passes to generate the final image.
 - Removed the appended 0 to output prediction and saved values when the last layer is of type FLAT. This zero, resulting from the automatic dense layer bias propagation, is
   still present internally, but is now skipped when writing to file and in the output array.
-
+- Fix an error in the CPU version of the YOLO_error computation (only affect error display, not training).
 
 
 #######  To do  #######

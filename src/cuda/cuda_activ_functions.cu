@@ -686,8 +686,8 @@ __device__ float gpu_IoU_fct(float *output, float *target)
 	inter_d = max(0.0f, min(output[5], target[5]) - max(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d =  abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
-			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2])
+	uni_3d =  fabsf(output[3]-output[0])*fabsf(output[4]-output[1])*fabsf(output[5]-output[2])
+			+ fabsf(target[3]-target[0])*fabsf(target[4]-target[1])*fabsf(target[5]-target[2])
 			- inter_3d;
 	
 	return ((float)inter_3d)/(float)uni_3d;
@@ -703,8 +703,8 @@ __device__ float gpu_GIoU_fct(float *output, float *target)
 	inter_d = max(0.0f, min(output[5], target[5]) - max(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d =  abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
-			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2])
+	uni_3d =  fabsf(output[3]-output[0])*fabsf(output[4]-output[1])*fabsf(output[5]-output[2])
+			+ fabsf(target[3]-target[0])*fabsf(target[4]-target[1])*fabsf(target[5]-target[2])
 			- inter_3d;
 	enclose_w = (max(output[3], target[3]) - min(output[0], target[0]));
 	enclose_h = (max(output[4], target[4]) - min(output[1], target[1]));
@@ -727,8 +727,8 @@ __device__ float gpu_DIoU_fct(float *output, float *target)
 	inter_d = max(0.0f, min(output[5], target[5]) - max(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d =  abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
-			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2])
+	uni_3d =  fabsf(output[3]-output[0])*fabsf(output[4]-output[1])*fabsf(output[5]-output[2])
+			+ fabsf(target[3]-target[0])*fabsf(target[4]-target[1])*fabsf(target[5]-target[2])
 			- inter_3d;
 	enclose_w = (max(output[3], target[3]) - min(output[0], target[0]));
 	enclose_h = (max(output[4], target[4]) - min(output[1], target[1]));
@@ -755,8 +755,8 @@ __device__ float gpu_DIoU2_fct(float *output, float *target)
 	inter_d = max(0.0f, min(output[5], target[5]) - max(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d =  abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
-			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2])
+	uni_3d =  fabsf(output[3]-output[0])*fabsf(output[4]-output[1])*fabsf(output[5]-output[2])
+			+ fabsf(target[3]-target[0])*fabsf(target[4]-target[1])*fabsf(target[5]-target[2])
 			- inter_3d;
 	enclose_w = (max(output[3], target[3]) - min(output[0], target[0]));
 	enclose_h = (max(output[4], target[4]) - min(output[1], target[1]));

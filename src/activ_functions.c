@@ -1096,8 +1096,8 @@ float IoU_fct(float *output, float *target)
 	inter_d = fmaxf(0.0f, fminf(output[5], target[5]) - fmaxf(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d = abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
-			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2])
+	uni_3d = fabs(output[3]-output[0])*fabs(output[4]-output[1])*fabs(output[5]-output[2])
+			+ fabs(target[3]-target[0])*fabs(target[4]-target[1])*fabs(target[5]-target[2])
 			- inter_3d;
 	
 	return ((float)inter_3d)/(float)uni_3d;
@@ -1113,8 +1113,8 @@ float GIoU_fct(float *output, float *target)
 	inter_d = fmaxf(0.0f, fminf(output[5], target[5]) - fmaxf(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d = abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
-			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2])
+	uni_3d = fabs(output[3]-output[0])*fabs(output[4]-output[1])*fabs(output[5]-output[2])
+			+ fabs(target[3]-target[0])*fabs(target[4]-target[1])*fabs(target[5]-target[2])
 			- inter_3d;
 	enclose_w = (fmaxf(output[3], target[3]) - fminf(output[0], target[0]));
 	enclose_h = (fmaxf(output[4], target[4]) - fminf(output[1], target[1]));
@@ -1136,8 +1136,8 @@ float DIoU_fct(float *output, float *target)
 	inter_d = fmaxf(0.0f, fminf(output[5], target[5]) - fmaxf(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d = abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
-			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2])
+	uni_3d = fabs(output[3]-output[0])*fabs(output[4]-output[1])*fabs(output[5]-output[2])
+			+ fabs(target[3]-target[0])*fabs(target[4]-target[1])*fabs(target[5]-target[2])
 			- inter_3d;
 	enclose_w = (fmaxf(output[3], target[3]) - fminf(output[0], target[0]));
 	enclose_h = (fmaxf(output[4], target[4]) - fminf(output[1], target[1]));
@@ -1164,8 +1164,8 @@ float DIoU2_fct(float *output, float *target)
 	inter_d = fmaxf(0.0f, fminf(output[5], target[5]) - fmaxf(output[2], target[2]));
 	
 	inter_3d = inter_w * inter_h * inter_d;
-	uni_3d = abs(output[3]-output[0])*abs(output[4]-output[1])*abs(output[5]-output[2])
-			+ abs(target[3]-target[0])*abs(target[4]-target[1])*abs(target[5]-target[2]) - inter_3d;
+	uni_3d = fabs(output[3]-output[0])*fabs(output[4]-output[1])*fabs(output[5]-output[2])
+			+ fabs(target[3]-target[0])*fabs(target[4]-target[1])*fabs(target[5]-target[2]) - inter_3d;
 			
 	enclose_w = (fmaxf(output[3], target[3]) - fminf(output[0], target[0]));
 	enclose_h = (fmaxf(output[4], target[4]) - fminf(output[1], target[1]));
@@ -1740,6 +1740,7 @@ void YOLO_deriv_error_fct
 	
 	int c_nb_area[3];
 	c_nb_area[0] = nb_area_w; c_nb_area[1] = nb_area_h; c_nb_area[2] = nb_area_d;
+	size_t c_total_nb_area = c_nb_area[0]*c_nb_area[1]*c_nb_area[2];
 	
 	#pragma omp parallel
 	#ifdef _OPENMP
@@ -1756,7 +1757,7 @@ void YOLO_deriv_error_fct
 		int *target_cell_mask, *box_locked;
 		float *IoU_table, *dist_prior, *box_in_pix;
 		size_t i, j, k, l, l_o, l_t;
-		size_t f_offset, c_total_nb_area, c_total_nb_area_batch, total_cell_pos_nb_area, total_area_and_cell_offset;
+		size_t f_offset, c_total_nb_area_batch, total_cell_pos_nb_area, total_area_and_cell_offset;
 		int c_batch, output_offset, target_offset, nb_obj_target, s_p_i = 0;
 		int nb_in_cell, id_in_cell, id_in_cell_offset, l_r_b = -1, resp_box = -1, resp_targ = -1, resp_targ_offset, targ_diff_flag = 0;
 		float best_dist, c_dist, max_IoU, current_IoU;
@@ -1765,7 +1766,6 @@ void YOLO_deriv_error_fct
 		float obj_in_offset[6], out_int[6], targ_int[6], targ_size[3];
 		float class_only_IoU = -2.0f;
 		
-		c_total_nb_area = c_nb_area[0]*c_nb_area[1]*c_nb_area[2];
 		c_batch = c_pix / flat_output_size;
 		target = t_target + flat_target_size * c_batch;
 		f_offset = size;
@@ -1920,9 +1920,9 @@ void YOLO_deriv_error_fct
 							}
 							
 							dist_prior[id_in_cell_offset + k] = 
-								 abs(obj_in_offset[3])
-								+abs(obj_in_offset[4])
-								+abs(obj_in_offset[5]);
+								 fabs(obj_in_offset[3])
+								+fabs(obj_in_offset[4])
+								+fabs(obj_in_offset[5]);
 							break;
 					}
 				}
@@ -1934,7 +1934,7 @@ void YOLO_deriv_error_fct
 						if(dist_prior[id_in_cell_offset+k] > 0.0 && dist_prior[id_in_cell_offset+k] < best_dist)
 							best_dist = dist_prior[id_in_cell_offset+k];
 					for(k = 0; k < nb_box; k++) /* Flag the closest theoritical prior (and identical ones if any) */
-						if(abs(dist_prior[id_in_cell_offset+k] - best_dist) < 0.001f )
+						if(fabs(dist_prior[id_in_cell_offset+k] - best_dist) < 0.001f )
 							dist_prior[id_in_cell_offset+k] = -2.0f;
 				}
 			}
@@ -2078,9 +2078,9 @@ void YOLO_deriv_error_fct
 								}
 								
 								dist_prior[resp_targ_offset + k] = 
-									 abs(obj_in_offset[3])
-									+abs(obj_in_offset[4])
-									+abs(obj_in_offset[5]);
+									 fabs(obj_in_offset[3])
+									+fabs(obj_in_offset[4])
+									+fabs(obj_in_offset[5]);
 								break;
 						}
 						if(dist_prior[resp_targ_offset + k] < best_dist)
@@ -2458,6 +2458,7 @@ void YOLO_error_fct
 	
 	int c_nb_area[3];
 	c_nb_area[0] = nb_area_w; c_nb_area[1] = nb_area_h; c_nb_area[2] = nb_area_d;
+	size_t c_total_nb_area = c_nb_area[0]*c_nb_area[1]*c_nb_area[2];
 	
 	#pragma omp parallel
 	#ifdef _OPENMP
@@ -2471,7 +2472,7 @@ void YOLO_error_fct
 		int *target_cell_mask, *box_locked;
 		float *IoU_table, *dist_prior, *box_in_pix, *IoU_monitor;
 		size_t l_o, l_t, i, j, k, l;
-		size_t f_offset, c_total_nb_area, c_total_nb_area_batch, total_cell_pos_nb_area, total_area_and_cell_offset;
+		size_t f_offset, c_total_nb_area_batch, total_cell_pos_nb_area, total_area_and_cell_offset;
 		int c_batch, output_offset, target_offset, nb_obj_target, s_p_i = 0;
 		int nb_in_cell, id_in_cell, id_in_cell_offset, resp_box = -1, resp_targ = -1, resp_targ_offset, targ_diff_flag = 0;
 		float best_dist, c_dist, max_IoU, current_IoU;
@@ -2637,9 +2638,9 @@ void YOLO_error_fct
 							}
 							
 							dist_prior[id_in_cell_offset + k] = 
-								 abs(obj_in_offset[3])
-								+abs(obj_in_offset[4])
-								+abs(obj_in_offset[5]);
+								 fabs(obj_in_offset[3])
+								+fabs(obj_in_offset[4])
+								+fabs(obj_in_offset[5]);
 							break;
 					}
 				}
@@ -2651,7 +2652,7 @@ void YOLO_error_fct
 						if(dist_prior[id_in_cell_offset+k] > 0.0 && dist_prior[id_in_cell_offset+k] < best_dist)
 							best_dist = dist_prior[id_in_cell_offset+k];
 					for(k = 0; k < nb_box; k++) /* Flag the closest theoritical prior (and identical ones if any) */
-						if(abs(dist_prior[id_in_cell_offset+k] - best_dist) < 0.001f )
+						if(fabs(dist_prior[id_in_cell_offset+k] - best_dist) < 0.001f )
 							dist_prior[id_in_cell_offset+k] = -2.0f;
 				}
 			}
@@ -2758,9 +2759,9 @@ void YOLO_error_fct
 								}
 								
 								dist_prior[resp_targ_offset + k] = 
-									 abs(obj_in_offset[3])
-									+abs(obj_in_offset[4])
-									+abs(obj_in_offset[5]);
+									 fabs(obj_in_offset[3])
+									+fabs(obj_in_offset[4])
+									+fabs(obj_in_offset[5]);
 								break;
 						}
 						if(dist_prior[resp_targ_offset + k] < best_dist)
