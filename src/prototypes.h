@@ -115,7 +115,7 @@ int conv_create(network *net, layer *previous, int *f_size, int nb_filters, int 
 void conv_save(FILE *f, layer *current, int f_bin);
 void conv_load(network *net, FILE *f, int f_bin, int skip_layer);
 void get_conv_output_dim(layer *current, int *dim);
-void free_conv();
+void free_conv(layer *current);
 
 
 //pool_layer.c

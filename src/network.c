@@ -64,13 +64,16 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-1.0.1.1 stable build (01/2026), by D.Cornu\n\
+CIANNA V-1.0.1.2 stable build (03/2026), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
 	
 	char string_comp[50]; 
 	int comp_int = C_CUDA;
+	#if defined _OPENMP || BLAS
+	int nb_proc_max, nb_threads_current;
+	#endif
 	#ifdef CUDA
 	int c_mixed_precision = FP32C_FP32A;
 	#endif
@@ -176,6 +179,34 @@ CIANNA V-1.0.1.1 stable build (01/2026), by D.Cornu\n\
 		printf(" If NAIV with single CPU thread is your only option, we recommand the use of the SGD learning scheme, enabled by setting the batch size to 1.\n\n");
 	}
 	is_init = 1;
+	
+	#if defined _OPENMP
+	nb_proc_max = omp_get_num_procs();
+	nb_threads_current = omp_get_max_threads();
+	
+	if(nb_threads_current >= nb_proc_max)
+	{
+		nb_threads_current = fmax(1, nb_proc_max/2);
+		omp_set_num_threads(nb_threads_current);
+		printf(" WARNING: Number of OpenMP threads likely not set by user.\n");
+		printf(" OMP_MAX_THREADS set to %d  (half detected threads)\n", omp_get_max_threads());
+		printf(" We recommend investigating manual configuration through environment variables\n\n");
+	}
+	#endif
+	
+	#ifdef BLAS
+	nb_proc_max = openblas_get_num_procs();
+	nb_threads_current = openblas_get_num_threads();
+	
+	if(nb_threads_current >= nb_proc_max)
+	{
+		nb_threads_current = fmax(1, nb_proc_max/2);
+		openblas_set_num_threads(nb_threads_current);
+		printf(" WARNING: Number of OpenBLAS threads likely not set by user.\n");
+		printf(" OPENBLAS_MAX_THREADS set to %d  (half detected threads)\n", openblas_get_num_threads());
+		printf(" We recommend investigating manual configuration through environment variables\n\n");
+	}
+	#endif
 
 	net->in_dims[0] = u_input_dim[0]; 
 	net->in_dims[1] = u_input_dim[1];

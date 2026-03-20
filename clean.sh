@@ -2,6 +2,8 @@
 
 #Root directory
 rm main
+rm -rf build/
+rm -rf cianna.egg-info
 
 #Compilation files
 cd ./src/

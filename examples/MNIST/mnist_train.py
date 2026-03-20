@@ -5,7 +5,10 @@ import os
 
 #Comment to access system wide install
 import sys, glob
-sys.path.insert(0,glob.glob('../../src/build/lib.*/')[-1])
+if glob.glob('../../src/build/lib.*/'):
+	sys.path.insert(0,glob.glob('../../src/build/lib.*/')[-1]) #if compiled with compile.cp
+if glob.glob('../../build/'):
+	sys.path.insert(0,glob.glob('../../build/')[-1]) #if compiled with cmake
 import CIANNA as cnn
 
 ############################################################################

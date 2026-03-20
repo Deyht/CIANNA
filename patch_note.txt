@@ -1,4 +1,23 @@
 ********************************************
+===== V-1.0.1.2 =====
+ (interface V-1.0)
+
+- Add a new installation method through cmake ! The installation instruction page will be updated accordingly. This new installation approach will greatly simplify the
+  installation process, automatically detecting installation path of CUDA and OpenBLAS, identify CUDA version and GPU compute capability and automatically set the proper flags.
+  This approach also allow us to provide a wider support, with CIANNA now working with intel and clang compilers in addition to GCC, and a verified compatibility with MAC systems
+  (a dedicated blog post will be made about the mac installation).
+  If trying to install the CIANNA python module, one can now simply resort to "pip install -v ." in the main directory, which will automatically try to compile all backend
+  (CUDA, BLAS, NAIV) based on what is available on the system.
+- CIANNA now has a dedicated website:https://cianna.obspm.fr (more details in README.md).
+- A new "experimental" branch has been added. This branch will be used to accumulate new functionalities that have reached a reasonable level of maturity in preparation for
+  the next CIANNA release (more details in README.md).
+- Fix an error in the CPU version of the YOLO_error computation (only affect error display, not training).
+- Fix a bug related to OpenMP. On some systems, not setting OMP_NUM_THREADS manually causes strong performance issues for both OpenBLAS gemm and our custom functions.
+  Now, if OMP_NUM_THREADS = OMP_MAX_THREADS at startup (likely not manually set), we automatically set OMP_NUM_THREADS = OMP_MAX_THREADS/2, fixing the issue for most systems.
+  The same check is done independantly for OpenBLAS in case a version no compiled with OpenMP is used.
+
+
+********************************************
 ===== V-1.0.1.1 =====
  (interface V-1.0)
 
