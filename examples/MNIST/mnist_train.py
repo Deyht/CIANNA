@@ -1,14 +1,13 @@
 
 import numpy as np
-import matplotlib.pyplot as plt
 import os
 
 #Comment to access system wide install
-import sys, glob
-if glob.glob('../../src/build/lib.*/'):
-	sys.path.insert(0,glob.glob('../../src/build/lib.*/')[-1]) #if compiled with compile.cp
-if glob.glob('../../build/'):
-	sys.path.insert(0,glob.glob('../../build/')[-1]) #if compiled with cmake
+#import sys, glob
+#if glob.glob('../../src/build/lib.*/'):
+#	sys.path.insert(0,glob.glob('../../src/build/lib.*/')[-1]) #if compiled with compile.cp
+#if glob.glob('../../build/'):
+#	sys.path.insert(0,glob.glob('../../build/')[-1]) #if compiled with cmake
 import CIANNA as cnn
 
 ############################################################################
@@ -68,22 +67,19 @@ if(load_step > 0):
 else:
 	cnn.conv(f_size=i_ar([5,5]), nb_filters=8 , padding=i_ar([2,2]), activation="LIN")
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
-	#cnn.norm(group_size=2, activation="RELU")
+	
 	cnn.conv(f_size=i_ar([5,5]), nb_filters=16, padding=i_ar([2,2]), activation="LIN")
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
-	#cnn.norm(group_size=4, activation="RELU")
+	
 	cnn.dense(nb_neurons=256, activation="RELU", drop_rate=0.5)
 	cnn.dense(nb_neurons=128, activation="RELU", drop_rate=0.2)
 	cnn.dense(nb_neurons=10, strict_size=1, activation="SMAX")
-	
-	#cnn.load("net_save/net0_s%04d.dat"%(10), iteration=10, nb_skip_layers=3)
 
 #To create a latex table and associated pdf with the current architecture	
 #cnn.print_arch_tex("./arch/", "arch", activation=1)
 
 cnn.train(nb_iter=20, learning_rate=0.004, momentum=0.8, confmat=1, save_every=10)
 cnn.perf_eval()
-
 
 #Uncomment to save network prediction
 #cnn.forward(repeat=1, drop_mode="AVG_MODEL")

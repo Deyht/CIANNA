@@ -2,7 +2,7 @@
 ===== V-1.0.1.2 =====
  (interface V-1.0)
 
-- Add a new installation method through cmake ! The installation instruction page will be updated accordingly. This new installation approach will greatly simplify the
+- Add a new installation method through cmake! The installation instruction page will be updated accordingly. This new installation approach will greatly simplify the
   installation process, automatically detecting installation path of CUDA and OpenBLAS, identify CUDA version and GPU compute capability and automatically set the proper flags.
   This approach also allow us to provide a wider support, with CIANNA now working with intel and clang compilers in addition to GCC, and a verified compatibility with MAC systems
   (a dedicated blog post will be made about the mac installation).

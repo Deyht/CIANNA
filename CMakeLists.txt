@@ -13,7 +13,6 @@ option(BUILD_MODULE "Build CIANNA as a Python module instead of an executable" O
 option(USE_OPENMP "Enable OpenMP parallelism" ON)
 option(USE_BLAS "Enable OpenBLAS acceleration" ON)
 option(USE_CUDA "Enable CUDA acceleration" ON)
-option(PY_INTERF "Build Python module" ON)
 set(ARCH "" CACHE STRING "Manual CUDA architecture override (e.g. 70, 75, 86, 89, 90). If empty, auto-detect from GPU.")
 set(BLAS_PATH "" CACHE PATH "Manual BLAS path override. Must be the root folder containing lib/ and include/.")
 set(CUDA_PATH "" CACHE PATH "Manual CUDA path override. Should point to the CUDA toolkit root (e.g. /usr/local/cuda).")
@@ -61,6 +60,7 @@ set(CIANNA_CUDA "")
 if(USE_BLAS)
 
     set(BLAS_FOUND FALSE)
+    set(HAVE_OPENBLAS 0)
     unset(BLAS_LIBRARIES)
     unset(BLAS_INCLUDE_DIR)
 
@@ -70,6 +70,7 @@ if(USE_BLAS)
         if(NOT IS_DIRECTORY "${BLAS_PATH}")
             message(WARNING "BLAS_PATH must be a root directory containing include/ and lib/ or lib64/: ${BLAS_PATH}")
         else()
+
             find_library(BLAS_MANUAL_LIB
                 NAMES openblas blas
                 PATHS
@@ -77,6 +78,11 @@ if(USE_BLAS)
                     "${BLAS_PATH}/lib64"
                 NO_DEFAULT_PATH
             )
+            if(BLAS_MANUAL_LIB)
+                set(BLAS_LIBRARIES "${BLAS_MANUAL_LIB}")
+            else()
+
+            endif()
 
             find_path(BLAS_MANUAL_INCLUDE
                 NAMES cblas.h blas.h
@@ -84,27 +90,17 @@ if(USE_BLAS)
                     "${BLAS_PATH}/include"
                 NO_DEFAULT_PATH
             )
-
-            if(BLAS_MANUAL_LIB)
-                set(BLAS_LIBRARIES "${BLAS_MANUAL_LIB}")
-            endif()
-
             if(BLAS_MANUAL_INCLUDE)
                 set(BLAS_INCLUDE_DIR "${BLAS_MANUAL_INCLUDE}")
+            else()
+                message(WARNING "No BLAS include directory found under ${BLAS_PATH}/include")
             endif()
+
 
             if(BLAS_LIBRARIES AND BLAS_INCLUDE_DIR)
                 set(BLAS_FOUND TRUE)
                 message(STATUS "Using BLAS library from BLAS_PATH: ${BLAS_LIBRARIES}")
                 message(STATUS "Using BLAS include directory from BLAS_PATH: ${BLAS_INCLUDE_DIR}")
-            else()
-                if(NOT BLAS_LIBRARIES)
-                    message(WARNING "No BLAS library found under ${BLAS_PATH}/lib or ${BLAS_PATH}/lib64")
-                endif()
-
-                if(NOT BLAS_INCLUDE_DIR)
-                    message(WARNING "No BLAS include directory found under ${BLAS_PATH}/include")
-                endif()
             endif()
         endif()
 
@@ -112,10 +108,13 @@ if(USE_BLAS)
         find_package(BLAS)
 
         if(BLAS_FOUND)
-            find_path(BLAS_INCLUDE_DIR
-                NAMES cblas.h blas.h
-            )
+            find_path(BLAS_INCLUDE_DIR NAMES cblas.h blas.h )
+            if (NOT BLAS_INCLUDE_DIR)
+                message(WARNING "BLAS library found but no include directory with cblas.h or blas.h found.")
+                set(BLAS_FOUND FALSE)
+            endif()
         endif()
+
     endif()
 
     if(BLAS_FOUND)
@@ -125,7 +124,13 @@ if(USE_BLAS)
             src/blas/blas_conv_layer.c
         )
 
-        add_definitions(-DBLAS=1)
+        if(BLAS_INCLUDE_DIR AND EXISTS "${BLAS_INCLUDE_DIR}/openblas_config.h")
+            set(HAVE_OPENBLAS 1)
+        else()
+            message(STATUS "Blas library has been found, but it does not seems that it is the openblas implementation, some optimization features dedicated to openblas will be deactivated")
+        endif()
+
+        add_definitions(-DBLAS=1 -DHAVE_OPENBLAS=${HAVE_OPENBLAS})
 
         message(STATUS "BLAS_LIBRARIES = ${BLAS_LIBRARIES}")
         message(STATUS "BLAS_INCLUDE_DIR = ${BLAS_INCLUDE_DIR}")
@@ -454,67 +459,65 @@ endif()
 # Python module
 # ==========================================================
 if(BUILD_MODULE)
-    if(PY_INTERF)
 
-        find_package(Python3 REQUIRED COMPONENTS Interpreter Development NumPy)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development NumPy)
 
-        add_library(cianna_module MODULE
-            src/python_module.c
-            ${CIANNA_CORE}
-            ${CIANNA_NAIV}
-            ${CIANNA_BLAS}
-            ${CIANNA_CUDA}
-        )
+    add_library(cianna_module MODULE
+        src/python_module.c
+        ${CIANNA_CORE}
+        ${CIANNA_NAIV}
+        ${CIANNA_BLAS}
+        ${CIANNA_CUDA}
+    )
 
-        target_include_directories(cianna_module PRIVATE
-            src
-            ${Python3_INCLUDE_DIRS}
-            ${Python3_NumPy_INCLUDE_DIRS}
-        )
+    target_include_directories(cianna_module PRIVATE
+        src
+        ${Python3_INCLUDE_DIRS}
+        ${Python3_NumPy_INCLUDE_DIRS}
+    )
 
-        target_link_libraries(cianna_module PRIVATE
-            Python3::Python
-            m
-        )
+    target_link_libraries(cianna_module PRIVATE
+        Python3::Python
+        m
+    )
 
-        # C compilation flags handling
-        set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-        target_compile_options(cianna_module PRIVATE
-            $<$<COMPILE_LANGUAGE:C>:-O3 -Wall -Werror -Wno-unknown-pragmas>
-            $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
-            $<$<COMPILE_LANGUAGE:CUDA>:-O3>
-        )
-        if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-            target_compile_options(cianna_module PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=2 -Wno-unused-result -Wno-uninitialized>)
-        endif()
-
-        if(USE_BLAS)
-            target_include_directories(cianna_module PRIVATE ${BLAS_INCLUDE_DIR})
-            target_link_libraries(cianna_module PRIVATE ${BLAS_LIBRARIES})
-        endif()
-
-        if(USE_OPENMP)
-            target_link_libraries(cianna_module PRIVATE OpenMP::OpenMP_C)
-        endif()
-
-        if(USE_CUDA)
-            target_compile_definitions(cianna_module PRIVATE
-                $<$<COMPILE_LANGUAGE:C>:CUDA=1>
-                $<$<COMPILE_LANGUAGE:CUDA>:CUDA=1>
-                $<$<COMPILE_LANGUAGE:CUDA>:CUDA_THREADS_PER_BLOCKS=256>
-                $<$<COMPILE_LANGUAGE:CUDA>:comp_CUDA=1>
-                $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_Old_Flag}>
-                $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_GEN_FLAG}>
-            )
-
-            target_include_directories(cianna_module PRIVATE ${CUDA_INCLUDE_DIRS})
-            target_link_libraries(cianna_module PRIVATE ${CUDA_LINK_LIBS})
-        endif()
-
-        set_target_properties(cianna_module PROPERTIES
-            PREFIX ""
-            OUTPUT_NAME "CIANNA"
-        )
-
+    # C compilation flags handling
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    target_compile_options(cianna_module PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:-O3 -Wall -Werror -Wno-unknown-pragmas>
+        $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
+        $<$<COMPILE_LANGUAGE:CUDA>:-O3>
+    )
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(cianna_module PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=2 -Wno-unused-result -Wno-uninitialized>)
     endif()
+
+    if(USE_BLAS)
+        target_include_directories(cianna_module PRIVATE ${BLAS_INCLUDE_DIR})
+        target_link_libraries(cianna_module PRIVATE ${BLAS_LIBRARIES})
+    endif()
+
+    if(USE_OPENMP)
+        target_link_libraries(cianna_module PRIVATE OpenMP::OpenMP_C)
+    endif()
+
+    if(USE_CUDA)
+        target_compile_definitions(cianna_module PRIVATE
+            $<$<COMPILE_LANGUAGE:C>:CUDA=1>
+            $<$<COMPILE_LANGUAGE:CUDA>:CUDA=1>
+            $<$<COMPILE_LANGUAGE:CUDA>:CUDA_THREADS_PER_BLOCKS=256>
+            $<$<COMPILE_LANGUAGE:CUDA>:comp_CUDA=1>
+            $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_Old_Flag}>
+            $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_GEN_FLAG}>
+        )
+
+        target_include_directories(cianna_module PRIVATE ${CUDA_INCLUDE_DIRS})
+        target_link_libraries(cianna_module PRIVATE ${CUDA_LINK_LIBS})
+    endif()
+
+    set_target_properties(cianna_module PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "CIANNA"
+    )
+
 endif()

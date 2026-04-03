@@ -64,7 +64,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-1.0.1.2 stable build (03/2026), by D.Cornu\n\
+CIANNA V-1.0.1.2 stable build (04/2026), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -194,7 +194,7 @@ CIANNA V-1.0.1.2 stable build (03/2026), by D.Cornu\n\
 	}
 	#endif
 	
-	#ifdef BLAS
+	#ifdef HAVE_OPENBLAS
 	nb_proc_max = openblas_get_num_procs();
 	nb_threads_current = openblas_get_num_threads();
 	
@@ -206,6 +206,10 @@ CIANNA V-1.0.1.2 stable build (03/2026), by D.Cornu\n\
 		printf(" OPENBLAS_MAX_THREADS set to %d  (half detected threads)\n", openblas_get_num_threads());
 		printf(" We recommend investigating manual configuration through environment variables\n\n");
 	}
+	#elif BLAS
+	printf(" WARNING: the BLAS library in use is not OpenBLAS.\n");
+	printf(" Using the default number of threads can result in low performances.\n");
+	printf(" We recommend investigating manual configuration through environment variables\n\n");
 	#endif
 
 	net->in_dims[0] = u_input_dim[0]; 
