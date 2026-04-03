@@ -325,6 +325,7 @@ void load_activation_type(layer *current, const char *activ)
 
 void set_linear_param(layer *current)
 {
+	current->activ_param = NULL;
 	current->bias_value = 0.5f;
 }
 
@@ -774,7 +775,8 @@ void logistic_output_error(layer *current)
 //#####################################################
 
 void set_softmax_param(layer *current)
-{	
+{
+	current->activ_param = NULL;
 	current->bias_value = 0.1f;
 }
 

@@ -66,7 +66,8 @@ Initial state of the branch is based on Stable V-1.0.1.1 (commit a24c040)
 - Removed the appended 0 to output prediction and saved values when the last layer is of type FLAT. This zero, resulting from the automatic dense layer bias propagation, is
   still present internally, but is now skipped when writing to file and in the output array.
 - Fix an error in the CPU version of the YOLO_error computation (only affect error display, not training).
-
+- Fix an error in free layer that was causing crash when freeing networks.
+- Also include the new makefile installation from the stable version (updated for the experimental version)
 
 #######  To do  #######
 

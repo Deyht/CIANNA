@@ -32,7 +32,7 @@ static dense_param *d_param;
 int dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias,
 	float drop_rate, int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin)
 {
-	int i, j;
+	int i;
 	size_t flat_in_size = 1, prev_weight_matrix_size = 1;
 	size_t mem_approx = 0;
 	layer* current;
@@ -240,8 +240,7 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 
 void dense_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 {
-	int i, j;
-	float* host_weights = NULL;
+	int i;
 	char layer_type = 'D';
 	int nb_neurons;
 	size_t flat_in_size = 1;
@@ -351,7 +350,8 @@ void free_dense(layer *current)
 		}
 	}
 	
-	free(current->activ_param);
+	if(current->activ_param != NULL)
+		free(current->activ_param);
 	free(current->param);
 	free(current);
 }

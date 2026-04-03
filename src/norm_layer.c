@@ -229,7 +229,6 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 
 void norm_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 {
-	int i;
 	char layer_type = 'N';
 
 	n_param = (norm_param*)current->param;	
@@ -338,7 +337,8 @@ void free_norm(layer *current)
 			free(current->delta_o);
 	}
 	
-	free(current->activ_param);
+	if(current->activ_param != NULL)
+		free(current->activ_param);
 	free(current->param);
 	free(current);
 }

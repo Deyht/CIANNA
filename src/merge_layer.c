@@ -246,11 +246,9 @@ int merge_create(network *net, int previous_id_a, int previous_id_b, int merge_t
 
 void merge_save(FILE *f, layer *current, int f_bin)
 {
-	int i, j;
 	char layer_type = 'M';
 	
 	m_param = (merge_param*)current->param;
-	network *net = current->c_network;
 	
 	if(f_bin)
 	{
@@ -315,7 +313,7 @@ void merge_load(network *net, FILE *f, int f_bin, int skip_layer)
 
 void free_merge(layer *current)
 {
-	free(current->output_dim);
+	//free(current->output_dim);
 		
 	#ifdef CUDA
 	if(current->c_network->compute_method == C_CUDA)
@@ -330,7 +328,8 @@ void free_merge(layer *current)
 			free(current->delta_o);
 	}
 	
-	free(current->activ_param);
+	if(current->activ_param != NULL)
+		free(current->activ_param);
 	free(current->param);
 	free(current);
 }

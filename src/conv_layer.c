@@ -56,7 +56,7 @@ int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, s
 	int *int_padding, int *in_shape, const char *activation, float *bias, float drop_rate, 
 	const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin)
 {
-	size_t i, j, k;
+	size_t i, k;
 	size_t subdim_a, subdim_b;
 	size_t spatial_f_size, prev_nb_channels;
 	size_t chan_per_group_in, chan_per_group_out;
@@ -673,7 +673,8 @@ void free_conv(layer *current)
 		//Global YOLO parameters attached to net (from set_yolo_config) are freed by a specific destructor
 	}
 	
-	free(current->activ_param);
+	if(current->activ_param != NULL)
+		free(current->activ_param);
 	free(current->param);
 	free(current);
 }

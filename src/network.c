@@ -63,7 +63,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
                   ...:^~!?JY5PB~                                                                                             \n\n");
     
 	printf("#######################################################################\n\
-     CIANNA V-1.1.0 /!\\ development build /!\\ (03/2026), by D.Cornu\n\
+     CIANNA V-1.1.0 /!\\ experimental build /!\\ (04/2026), by D.Cornu\n\
 #######################################################################\n\n");
 	}
 	
@@ -201,7 +201,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
 	}
 	#endif
 	
-	#ifdef BLAS
+	#ifdef HAVE_OPENBLAS
 	nb_proc_max = openblas_get_num_procs();
 	nb_threads_current = openblas_get_num_threads();
 	
@@ -213,6 +213,10 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
 		printf(" OPENBLAS_MAX_THREADS set to %d  (half detected threads)\n", openblas_get_num_threads());
 		printf(" We recommend investigating manual configuration through environment variables\n\n");
 	}
+	#elif BLAS
+	printf(" WARNING: the BLAS library in use is not OpenBLAS.\n");
+	printf(" Using the default number of threads can result in low performances.\n");
+	printf(" We recommend investigating manual configuration through environment variables\n\n");
 	#endif
 	
 	net->in_dims[0] = u_input_dim[0]; 
@@ -692,7 +696,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	double total_error = 0.0, batch_error = 0.0;
 	double pos_error = 0.0, size_error = 0.0, prob_error = 0.0;
 	double objectness_error = 0.0, class_error = 0.0, param_error = 0.0;
-	void *output_save = NULL, *output_buffer = NULL;
+	void *output_save = NULL;
 	float *host_target = NULL, *l_result = NULL;
 	float items_per_s = 0.0f;
 	yolo_param *a_param;
@@ -704,7 +708,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	float l_out;
 	
 	#ifdef CUDA
-	void* temp_error = NULL;
+	void *temp_error = NULL;
+	void *output_buffer = NULL;
 	#endif
 
 	FILE *f_save = NULL;
@@ -1295,8 +1300,6 @@ void fprint_layer_params(network *net, FILE *f, void *params, size_t param_size,
 void save_layer_weights(FILE *f, layer *current, size_t param_size, size_t return_dim, 
 	size_t padding, int stay_on_host, int save_optim_state, int f_bin)
 {
-	size_t i, j;
-
 	network *net = current->c_network;
 
 	if(save_optim_state)
@@ -1345,9 +1348,6 @@ void fread_layer_params(network *net, FILE *f, void *params, size_t param_size,
 void load_layer_weights(FILE *f, layer *current, size_t param_size, size_t return_dim, 
 	size_t padding, int load_optim_state, int f_bin)
 {
-	size_t i, j;
-	int load_optim_success;
-
 	network *net = current->c_network;
 	
 	if(!load_optim_state)
@@ -1591,7 +1591,7 @@ void free_network(network *net)
 {	
 	if(net == NULL)
 		return;
-		
+	
 	free_dataset(&net->train);
 	free_dataset(&net->test);
 	free_dataset(&net->valid);

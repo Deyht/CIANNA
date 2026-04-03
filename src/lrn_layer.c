@@ -218,7 +218,8 @@ void free_lrn(layer *current)
 		}
 	}
 	
-	free(current->activ_param);
+	if(current->activ_param != NULL)
+		free(current->activ_param);
 	free(current->param);
 	free(current);
 }

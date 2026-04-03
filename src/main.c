@@ -28,7 +28,7 @@
 int main()
 {
 	FILE *f = NULL;
-	int i, j, k;
+	int i, j;
 	int train_size, test_size, valid_size;
 	int dims[4];
 	float *temp;

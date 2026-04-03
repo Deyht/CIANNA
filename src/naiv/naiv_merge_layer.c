@@ -127,7 +127,6 @@ void forward_merge_layer(layer *current)
 void backward_merge_layer(layer *current)
 {
 	layer *prev_a, *prev_b;
-	network *net = current->c_network;
 	
 	m_param = (merge_param*) current->param;
 	
