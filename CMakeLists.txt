@@ -163,6 +163,7 @@ endif()
 # CUDA
 # ==========================================================
 
+set(CMAKE_BUILD_TYPE "Release")
 set(CUDA_FOUND FALSE)
 set(CUDA_INCLUDE_DIRS "")
 set(CUDA_LINK_LIBS "")
@@ -201,6 +202,7 @@ if(USE_CUDA)
                 find_library(CUDA_CUBLAS_LIBRARY
                     NAMES cublas
                     PATHS
+                        "/usr/lib/x86_64-linux-gnu/"
                         "${CUDA_PATH}/lib64"
                         "${CUDA_PATH}/lib"
                     NO_DEFAULT_PATH
@@ -428,9 +430,9 @@ if(NOT BUILD_MODULE)
     # C compilation flags handling
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     target_compile_options(cianna PRIVATE
-        $<$<COMPILE_LANGUAGE:C>:-O3 -Wall -Werror -Wno-unknown-pragmas>
+        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-unknown-pragmas>
         $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
-        $<$<COMPILE_LANGUAGE:CUDA>:-O3>
+        #$<$<COMPILE_LANGUAGE:CUDA>:-O3>
     )
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
         target_compile_options(cianna PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=2 -Wno-unused-result -Wno-uninitialized>)
@@ -484,9 +486,9 @@ if(BUILD_MODULE)
     # C compilation flags handling
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     target_compile_options(cianna_module PRIVATE
-        $<$<COMPILE_LANGUAGE:C>:-O3 -Wall -Werror -Wno-unknown-pragmas>
+        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-unknown-pragmas>
         $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
-        $<$<COMPILE_LANGUAGE:CUDA>:-O3>
+        #$<$<COMPILE_LANGUAGE:CUDA>:-O3>
     )
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
         target_compile_options(cianna_module PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=2 -Wno-unused-result -Wno-uninitialized>)

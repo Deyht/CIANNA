@@ -74,7 +74,7 @@ class CMakeBuild(build_ext):
 
 setup(
     name="cianna",
-    version="1.0.0.0",
+    version="1.0.1.2",
     description="CIANNA Python bindings",
     long_description="CIANNA Python bindings built with setuptools + CMake",
     ext_modules=[CMakeExtension("CIANNA", sourcedir=".")],
