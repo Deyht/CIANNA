@@ -86,6 +86,7 @@ Fix known errors / unexpected behaviors
 
 New functionalities / reworks (EASY)
 
+- Add manual initial setup of NORM layer gamma (mean) value. Setting gamma to 0 in the last norm layer of a residual block ensure initial identity operation.
 - Work specifically on DENSE/CONV branching in order to add N dense elements directly to the flat im2col representation instead of full channels.
 - Merge with any number of layer.
 - Generalize Norm layer and LRN layer for dense ? Add back a specific implementation for Batch norm or generalize the current norm implementation ?

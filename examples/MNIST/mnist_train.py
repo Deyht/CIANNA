@@ -1,6 +1,5 @@
 
 import numpy as np
-import matplotlib.pyplot as plt
 import os
 
 #Comment to access system wide install
