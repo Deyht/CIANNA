@@ -15,7 +15,11 @@ option(USE_BLAS "Enable OpenBLAS acceleration" ON)
 option(USE_CUDA "Enable CUDA acceleration" ON)
 set(ARCH "" CACHE STRING "Manual CUDA architecture override (e.g. 70, 75, 86, 89, 90). If empty, auto-detect from GPU.")
 set(BLAS_PATH "" CACHE PATH "Manual BLAS path override. Must be the root folder containing lib/ and include/.")
-set(CUDA_PATH "" CACHE PATH "Manual CUDA path override. Should point to the CUDA toolkit root (e.g. /usr/local/cuda).")
+if(DEFINED ENV{CUDA_PATH})
+    set(CUDA_PATH $ENV{CUDA_PATH})
+else()
+    set(CUDA_PATH "" CACHE PATH "Manual CUDA path override. Should point to the CUDA toolkit root (e.g. /usr/local/cuda).")
+endif()
 
 # ==========================================================
 # Global compile options
@@ -36,12 +40,14 @@ set(CIANNA_CORE
     src/pool_layer.c
     src/norm_layer.c
     src/lrn_layer.c
+    src/merge_layer.c
     src/activ_functions.c
     src/weights_initializers.c
     src/vars.c
     src/auxil.c
     src/dataset.c
     src/network.c
+    src/optimizers.c
 )
 
 set(CIANNA_NAIV
@@ -49,6 +55,8 @@ set(CIANNA_NAIV
     src/naiv/naiv_conv_layer.c
     src/naiv/naiv_pool_layer.c
     src/naiv/naiv_norm_layer.c
+    src/naiv/naiv_lrn_layer.c
+    src/naiv/naiv_merge_layer.c
 )
 
 set(CIANNA_BLAS "")
@@ -293,7 +301,9 @@ if(USE_CUDA)
             src/cuda/cuda_pool_layer.cu
             src/cuda/cuda_norm_layer.cu
             src/cuda/cuda_lrn_layer.cu
+            src/cuda/cuda_merge_layer.cu
             src/cuda/cuda_activ_functions.cu
+            src/cuda/cuda_optimizers.cu
         )
 
         if(CUDA_VERSION_STRING AND CUDA_VERSION_STRING VERSION_LESS "11.1")

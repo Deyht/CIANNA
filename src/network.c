@@ -419,7 +419,7 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 				#ifdef CUDA
 				if(net->cu_inst.dynamic_load)
 				{
-					host_only_shuffle(net, net->train);
+					cuda_host_only_shuffle(net, net->train);
 				}
 				else
 				{

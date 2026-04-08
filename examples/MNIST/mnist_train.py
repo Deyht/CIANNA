@@ -4,8 +4,8 @@ import os
 
 #Comment to access system wide install
 import sys, glob
-if glob.glob('../../src/build/lib.*/'):
-	sys.path.insert(0,glob.glob('../../src/build/lib.*/')[-1]) #if compiled with compile.cp
+#if glob.glob('../../src/build/lib.*/'):
+#	sys.path.insert(0,glob.glob('../../src/build/lib.*/')[-1]) #if compiled with compile.cp
 if glob.glob('../../build/'):
 	sys.path.insert(0,glob.glob('../../build/')[-1]) #if compiled with cmake
 import CIANNA as cnn
@@ -51,7 +51,7 @@ print ("Done !", flush=True)
 
 cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10, b_size=16,
 		optimizer=cnn.adam(beta1=0.95), wema=1,
-		comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP32C_FP32A")
+		comp_meth="C_CUDA", dynamic_load=1, mixed_precision="BF16C_FP32A")
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)
@@ -92,7 +92,7 @@ else:
 #cnn.print_arch_tex("./arch/", "arch", activation=1)
 
 
-cnn.train(nb_iter=10, learning_rate=0.0002, weight_decay=0.0001, decoupled_wdecay=1, wema_rate=0.999, confmat=1, save_every=10, save_optim_every=0, save_bin=1)
+cnn.train(nb_iter=10, learning_rate=0.0002, weight_decay=0.0001, decoupled_wdecay=1, wema_rate=0.999, confmat=1, save_every=10, save_optim_every=0, save_bin=1, shuffle_every=0)
 #cnn.perf_eval()
 
 pred = cnn.forward(drop_mode="AVG_MODEL", no_error=0, saving=1, return_output=1)
