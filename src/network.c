@@ -155,15 +155,6 @@ CIANNA V-1.0.1.2 stable build (04/2026), by D.Cornu\n\
 		init_cuda(networks[network_number]);
 	#endif
 	
-	#ifndef CUDA
-	if(comp_int == C_CUDA)
-	{
-		printf("\n ERROR: compute method set to CUDA while CIANNA was not compiled for it.\n");
-		printf(" Install Nvidia CUDA and recompile CIANNA with the appropriate option.\n\n");
-		exit(EXIT_FAILURE);
-	}
-	#endif
-	
 	#ifndef BLAS
 	if(comp_int == C_BLAS)
 	{
