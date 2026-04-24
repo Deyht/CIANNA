@@ -194,7 +194,7 @@ CIANNA V-1.0.1.2 stable build (04/2026), by D.Cornu\n\
 	}
 	#endif
 	
-	#ifdef HAVE_OPENBLAS
+	#if HAVE_OPENBLAS == 1
 	nb_proc_max = openblas_get_num_procs();
 	nb_threads_current = openblas_get_num_threads();
 	
@@ -206,7 +206,7 @@ CIANNA V-1.0.1.2 stable build (04/2026), by D.Cornu\n\
 		printf(" OPENBLAS_MAX_THREADS set to %d  (half detected threads)\n", openblas_get_num_threads());
 		printf(" We recommend investigating manual configuration through environment variables\n\n");
 	}
-	#elif BLAS
+	#elif BLAS == 1
 	printf(" WARNING: the BLAS library in use is not OpenBLAS.\n");
 	printf(" Using the default number of threads can result in low performances.\n");
 	printf(" We recommend investigating manual configuration through environment variables\n\n");
