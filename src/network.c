@@ -71,7 +71,7 @@ CIANNA V-1.0.1.2 stable build (04/2026), by D.Cornu\n\
 	
 	char string_comp[50]; 
 	int comp_int = C_CUDA;
-	#if defined _OPENMP || BLAS
+	#if defined _OPENMP || HAVE_OPENBLAS == 1
 	int nb_proc_max, nb_threads_current;
 	#endif
 	#ifdef CUDA
