@@ -41,7 +41,7 @@ int main()
 	strncpy(compute_method, "C_NAIV", 10);
 	#ifdef CUDA
 	strncpy(compute_method, "C_CUDA", 10);
-	printf(" /!\ Highest backend detected is CUDA. CIANNA will use the C_CUDA compute method. /!\\n");
+	printf(" /!\\ Highest backend detected is CUDA. CIANNA will use the C_CUDA compute method. /!\\\n");
 	#elif BLAS == 1
 	strncpy(compute_method, "C_BLAS", 10);
 	printf(" Highest backend detected is BLAS. CIANNA will use the C_BLAS compute method.\n");
