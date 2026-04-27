@@ -64,12 +64,12 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-1.0.1.2 stable build (04/2026), by D.Cornu\n\
+CIANNA V-1.0.1.3 stable build (04/2026), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
 	
-	char string_comp[50]; 
+	char string_comp[50];
 	int comp_int = C_CUDA;
 	#if defined _OPENMP || HAVE_OPENBLAS == 1
 	int nb_proc_max, nb_threads_current;
@@ -159,16 +159,18 @@ CIANNA V-1.0.1.2 stable build (04/2026), by D.Cornu\n\
 	if(comp_int == C_CUDA)
 	{
 		printf("\n ERROR: compute method set to CUDA while CIANNA was not compiled for it.\n");
-		printf(" Install Nvidia CUDA and recompile CIANNA with the appropriate option.\n\n");
+		printf(" Change compute method in the init function for a supported one\n");
+		printf(" or install CUDA and recompile CIANNA with the appropriate option.\n\n");
 		exit(EXIT_FAILURE);
 	}
 	#endif
 	
-	#ifndef BLAS
+	#if BLAS != 1
 	if(comp_int == C_BLAS)
 	{
 		printf("\n ERROR: compute method set to BLAS while CIANNA was not compiled for it.\n");
-		printf(" Install OpenBLAS and recompile CIANNA with the appropriate option.\n\n");
+		printf(" Change compute method in the init function for a supported one\n");
+		printf(" or install OpenBLAS and recompile CIANNA with the appropriate option.\n\n");
 		exit(EXIT_FAILURE);
 	}
 	#endif

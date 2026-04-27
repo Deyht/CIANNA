@@ -31,30 +31,58 @@ int main()
 	int i, j, k;
 	int train_size, test_size, valid_size;
 	int dims[4];
-	
+	char compute_method[10];
 	int out_dim;
 	network *net;
 
 	train_size = 60000; test_size = 10000; valid_size = 10000;
 	dims[0] = 28; dims[1] = 28; dims[2] = 1; dims[3] = 1; out_dim = 10;
 	
-	init_network(0, dims, out_dim, 0.1, 16, "C_CUDA", 1, "off", 0, 0, 0);
+	strncpy(compute_method, "C_NAIV", 10);
+	#ifdef CUDA
+	strncpy(compute_method, "C_CUDA", 10);
+	printf(" /!\ Highest backend detected is CUDA. CIANNA will use the C_CUDA compute method. /!\\n");
+	#elif BLAS == 1
+	strncpy(compute_method, "C_BLAS", 10);
+	printf(" Highest backend detected is BLAS. CIANNA will use the C_BLAS compute method.\n");
+	#else
+	printf(" Highest backend detected is NAIV. CIANNA will use the C_NAIV compute method.\n");
+	#endif
 	
+	init_network(0, 	/*network_number*/
+		dims, 			/*u_input_dim*/
+		out_dim, 		/*u_output_dim*/
+		0.1, 			/*in_bias*/
+		16, 			/*u_batch_size*/
+		compute_method, /*compute_method_string*/
+		1, 				/*u_dynamic_load*/
+		"off", 			/*cuda_TC_string*/
+		0, 				/*inference_only*/
+		0, 				/*no_logo*/
+		0				/*adv_size*/);
 	
 	net = networks[0];
 	
+	/*Create CIANNA dataset structures*/
 	net->train = create_dataset(net, train_size);
 	net->test  = create_dataset(net, test_size );
 	net->valid = create_dataset(net, valid_size);
 	
+	/*Download the dataset if not available*/
+	if(access("mnist_dat", F_OK) != 0)
+	{
+		system("wget https://share.obspm.fr/s/EkYR5B2Wc2gNis3/download/mnist.tar.gz");
+		system("tar -xvzf mnist.tar.gz");
+	}
 	
-	f = fopen("examples/MNIST/mnist_dat/mnist_input.dat", "rb+");
+	f = fopen("mnist_dat/mnist_input.dat", "rb+");
 	if(f == NULL)
 	{
 		printf("ERROR: Can not open input file ...\n");
 		exit(1);
 	}
 	
+	/*Fill CIANNA datasets*/
 	for(i = 0; i < net->train.nb_batch; i++)
 	{
 		for(j = 0; j < net->batch_size; j++)
@@ -90,7 +118,7 @@ int main()
 	
 	fclose(f);
 	
-	f = fopen("examples/MNIST/mnist_dat/mnist_target.dat", "rb+");
+	f = fopen("mnist_dat/mnist_target.dat", "rb+");
 	if(f == NULL)
 	{
 		printf("ERROR: Can not open input file ...\n");
@@ -135,7 +163,6 @@ int main()
 	
 	//Must be converted if Dynamic load is off !
 	#ifdef CUDA
-	
 	if(net->compute_method == C_CUDA && net->cu_inst.dynamic_load == 0)
 	{
 		cuda_convert_dataset(net, &net->train);
@@ -150,6 +177,7 @@ int main()
 	}
 	#endif
 	
+	/*Generic layer configurations*/
 	int f_size[3]  = {5,5,1};
 	int stride[3]  = {1,1,1};
 	int padding[3] = {2,2,0};
@@ -159,17 +187,121 @@ int main()
 	int pool_padding[3] = {0,0,0};
 	int pool_stride[3] = {2,2,1};
 	
-	conv_create(net, NULL, f_size, 8, stride, padding, int_pad, NULL, "RELU", NULL, 0.0, "xavier", -1.0, NULL, 0);
-	pool_create(net, net->net_layers[net->nb_layers-1], pooling, pool_stride, pool_padding, "MAX", NULL, 0, 0.0);
-	conv_create(net, net->net_layers[net->nb_layers-1], f_size, 16, stride, padding, int_pad, NULL, "RELU", NULL, 0.0, "xavier", -1.0, NULL, 0);
-	pool_create(net, net->net_layers[net->nb_layers-1], pooling, pool_stride, pool_padding, "MAX", NULL, 0, 0.0);
-	dense_create(net, net->net_layers[net->nb_layers-1], 256, "RELU", NULL, 0.5, 0, "xavier", -1.0, NULL, 0);
-	dense_create(net, net->net_layers[net->nb_layers-1], 128, "RELU", NULL, 0.2, 0, "xavier", -1.0, NULL, 0);
-	dense_create(net, net->net_layers[net->nb_layers-1], net->output_dim, "SOFTMAX", NULL, 0.0, 0, "xavier", -1.0, NULL, 0);
+	/*########## Sequential backbone creation ##########*/
+
+	//CONV 1
+	conv_create(net,						/*network*/
+		NULL, 								/*previous_layer*/ 
+		f_size, 							/*f_size*/ 
+		8, 									/*nb_filters*/
+		stride, 							/*stride*/
+		padding, 							/*padding*/
+		int_pad, 							/*int_padding*/
+		NULL, 								/*in_shape*/
+		"RELU", 							/*activation*/
+		NULL, 								/*bias*/
+		0.0, 								/*drop_rate*/
+		"xavier", 							/*init_fct*/
+		-1.0, 								/*init_scaling*/
+		NULL, 								/*file_load*/
+		0 									/*f_bin*/);
+	
+	//POOL 1
+	pool_create(net,						/*network*/
+		net->net_layers[net->nb_layers-1],	/*previous_layer*/
+		pooling, 							/*pool_size*/
+		pool_stride, 						/*stride*/
+		pool_padding, 						/*padding*/
+		"MAX", 								/*char_pool_type*/
+		NULL, 								/*activation*/
+		0, 									/*global*/
+		0.0									/*drop_rate*/);
+	
+	//CONV 2
+	conv_create(net,						/*network*/
+		net->net_layers[net->nb_layers-1],	/*previous_layer*/ 
+		f_size, 							/*f_size*/ 
+		16, 								/*nb_filters*/
+		stride, 							/*stride*/
+		padding, 							/*padding*/
+		int_pad, 							/*int_padding*/
+		NULL, 								/*in_shape*/
+		"RELU", 							/*activation*/
+		NULL, 								/*bias*/
+		0.0, 								/*drop_rate*/
+		"xavier", 							/*init_fct*/
+		-1.0, 								/*init_scaling*/
+		NULL, 								/*file_load*/
+		0 									/*f_bin*/);
+	
+	//POOL 2
+	pool_create(net,						/*network*/
+		net->net_layers[net->nb_layers-1],	/*previous_layer*/
+		pooling, 							/*pool_size*/
+		pool_stride, 						/*stride*/
+		pool_padding, 						/*padding*/
+		"MAX", 								/*char_pool_type*/
+		NULL, 								/*activation*/
+		0, 									/*global*/
+		0.0									/*drop_rate*/);
+	
+	//DENSE 1
+	dense_create(net, 						/*network*/
+		net->net_layers[net->nb_layers-1],	/*previous_layer*/
+		256, 								/*nb_neurons*/
+		"RELU", 							/*activation*/
+		NULL, 								/*bias*/
+		0.5,  								/*drop_rate*/
+		0,  								/*strict_size*/
+		"xavier",  							/*init_fct*/
+		-1.0,  								/*init_scaling*/
+		NULL,  								/*f_load*/
+		0 									/*f_bin*/);
+	
+	dense_create(net, 						/*network*/
+		net->net_layers[net->nb_layers-1],	/*previous_layer*/
+		128, 								/*nb_neurons*/
+		"RELU", 							/*activation*/
+		NULL, 								/*bias*/
+		0.2,  								/*drop_rate*/
+		0,  								/*strict_size*/
+		"xavier",  							/*init_fct*/
+		-1.0,  								/*init_scaling*/
+		NULL,  								/*f_load*/
+		0 									/*f_bin*/);
+	
+	dense_create(net, 						/*network*/
+		net->net_layers[net->nb_layers-1],	/*previous_layer*/
+		net->output_dim,					/*nb_neurons*/
+		"SMAX", 							/*activation*/
+		NULL, 								/*bias*/
+		0.0,  								/*drop_rate*/
+		1,  								/*strict_size*/
+		"xavier",  							/*init_fct*/
+		-1.0,  								/*init_scaling*/
+		NULL,  								/*f_load*/
+		0 									/*f_bin*/);
+	
+	/*##################################################*/
 	
 	printf("Start learning phase ...\n");
 	
-	train_network(net, 10, 1, 0.0002, 0.0, 0.9, 0.0, 0.0, 1, 5, 0, 1, 1, 1.0, 0);
+	/*Fit the model */
+	train_network(net,	/*network*/
+		5, 				/*nb_iter*/
+		1, 				/*control_interv*/
+		0.001,  		/*u_begin_learning_rate*/
+		0.0,  			/*u_end_learning_rate*/
+		0.9,  			/*u_momentum*/
+		0.0,  			/*u_decay*/
+		0.0,  			/*u_weight_decay*/
+		1,  			/*show_confmat*/
+		5,  			/*save_every*/
+		0,  			/*save_bin*/
+		1,  			/*shuffle_gpu*/
+		1,  			/*shuffle_every*/
+		1.0,  			/*c_TC_scale_factor*/
+		0); 			/*silent*/
 
 	exit(EXIT_SUCCESS);
 }
