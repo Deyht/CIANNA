@@ -430,7 +430,7 @@ if(NOT BUILD_MODULE)
     # C compilation flags handling
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     target_compile_options(cianna PRIVATE
-        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-unknown-pragmas>
+        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-deprecated-declarations -Wno-unknown-pragmas>
         $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
         #$<$<COMPILE_LANGUAGE:CUDA>:-O3>
     )
@@ -486,7 +486,7 @@ if(BUILD_MODULE)
     # C compilation flags handling
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     target_compile_options(cianna_module PRIVATE
-        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-unknown-pragmas>
+        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-deprecated-declarations -Wno-unknown-pragmas>
         $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
         #$<$<COMPILE_LANGUAGE:CUDA>:-O3>
     )
