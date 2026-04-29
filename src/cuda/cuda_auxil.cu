@@ -1142,6 +1142,7 @@ void init_cuda(network* net)
 	cuda_pool_init(net);
 	cuda_norm_init(net);
 	cuda_lrn_init(net);
+	cuda_grn_init(net);
 	cuda_merge_init(net);
 }
 

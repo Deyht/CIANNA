@@ -60,6 +60,28 @@ __global__ void cuda_flat_dense_##name																											\
 }
 
 
+#define cuda_flat_dense_back(name, type) 																										\
+__global__ void cuda_flat_dense_back_##name																										\
+	(void* i_in, void* i_out, int map_size, int flatten_size, int nb_map, int batch_size, size_t size)											\
+{																																				\
+	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
+	int map_id, image_id, pos;																													\
+																																				\
+	type* in = (type*) i_in;																													\
+	type* out = (type*) i_out;																													\
+																																				\
+	if(i < size)																																\
+	{																																			\
+		image_id = i / flatten_size;																											\
+		map_id = (i % flatten_size)/map_size;																									\
+		pos = (i % flatten_size)%map_size;																										\
+																																				\
+		if(map_id < nb_map)																														\
+			out[i] += in[map_id*(map_size*batch_size) + image_id*map_size + pos];																\
+	}																																			\
+}
+
+
 #define cuda_reroll_batch(name, type) 																											\
 __global__ void cuda_reroll_batch_##name																										\
 	(void* i_in, void* i_out, int map_size, int flatten_size, int nb_map, int batch_size, size_t size)											\
@@ -128,6 +150,7 @@ __global__ void cuda_set_input_bias_dense_##name(void* i_table, size_t unbiased_
 }
 
 cuda_flat_dense(FP32, float);
+cuda_flat_dense_back(FP32, float);
 cuda_reroll_batch(FP32, float);
 cuda_dropout_apply_dense(FP32, float);
 cuda_dropout_scale_dense(FP32, float);
@@ -135,6 +158,7 @@ cuda_set_input_bias_dense(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 cuda_flat_dense(FP16, half);
+cuda_flat_dense_back(FP16, half);
 cuda_reroll_batch(FP16, half);
 cuda_dropout_apply_dense(FP16, half);
 cuda_dropout_scale_dense(FP16, half);
@@ -143,6 +167,7 @@ cuda_set_input_bias_dense(FP16, half);
 
 #if defined (GEN_AMPERE)
 cuda_flat_dense(BF16, nv_bfloat16);
+cuda_flat_dense_back(BF16, nv_bfloat16);
 cuda_reroll_batch(BF16, nv_bfloat16);
 cuda_dropout_apply_dense(BF16, nv_bfloat16);
 cuda_dropout_scale_dense(BF16, nv_bfloat16);
@@ -159,6 +184,7 @@ void cuda_dense_init(network *net)
 		case FP32C_FP32A:
 		case TF32C_FP32A:
 			net->cu_inst.cu_dense_fcts.flat_dense_fct = cuda_flat_dense_FP32;
+			net->cu_inst.cu_dense_fcts.flat_dense_back_fct = cuda_flat_dense_back_FP32;
 			net->cu_inst.cu_dense_fcts.reroll_fct = cuda_reroll_batch_FP32;
 			net->cu_inst.cu_dense_fcts.drop_apply_fct = cuda_dropout_apply_dense_FP32;
 			net->cu_inst.cu_dense_fcts.drop_scale_fct = cuda_dropout_scale_dense_FP32;
@@ -169,6 +195,7 @@ void cuda_dense_init(network *net)
 		case FP16C_FP16A:
 			#if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 			net->cu_inst.cu_dense_fcts.flat_dense_fct = cuda_flat_dense_FP16;
+			net->cu_inst.cu_dense_fcts.flat_dense_back_fct = cuda_flat_dense_back_FP16;
 			net->cu_inst.cu_dense_fcts.reroll_fct = cuda_reroll_batch_FP16;
 			net->cu_inst.cu_dense_fcts.drop_apply_fct = cuda_dropout_apply_dense_FP16;
 			net->cu_inst.cu_dense_fcts.drop_scale_fct = cuda_dropout_scale_dense_FP16;
@@ -182,6 +209,7 @@ void cuda_dense_init(network *net)
 		case BF16C_FP32A:
 			#if defined (GEN_AMPERE)
 			net->cu_inst.cu_dense_fcts.flat_dense_fct = cuda_flat_dense_BF16;
+			net->cu_inst.cu_dense_fcts.flat_dense_back_fct = cuda_flat_dense_back_BF16;
 			net->cu_inst.cu_dense_fcts.reroll_fct = cuda_reroll_batch_BF16;
 			net->cu_inst.cu_dense_fcts.drop_apply_fct = cuda_dropout_apply_dense_BF16;
 			net->cu_inst.cu_dense_fcts.drop_scale_fct = cuda_dropout_scale_dense_BF16;
@@ -336,7 +364,7 @@ void cuda_forward_dense_layer(layer *current)
 	
 	ref_input = current->input;
 	
-	if(net->is_inference == 1 && net->use_wema)
+	if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 	{
 		if(current->FP32_weights == current->weights) //Equivalent to test if mixed precision is off or FP32C_FP32A
 			l_weights = (void*) current->ema_weights;

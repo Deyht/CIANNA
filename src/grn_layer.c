@@ -22,35 +22,18 @@
 #include "prototypes.h"
 
 // Local variables
-static norm_param *n_param;
+static grn_param *n_param;
 
 // Public are in prototypes.h
 
 // Private prototypes
-void print_norm_type(FILE *f, layer *current, int f_bin);
 
 
-void print_norm_type(FILE *f, layer *current, int f_bin)
-{
-	char temp_string[40];
-	n_param = (norm_param*)current->param;
-		
-	sprintf(temp_string, "GN");
-	
-	if(f_bin)
-		fwrite(temp_string, sizeof(char), 40, f);
-	else
-		fprintf(f, "%s ", temp_string);
-}
-
-
-int norm_create(network *net, layer *previous, const char *norm_type, const char *activation, int group_size, 
-	float gamma_init, FILE *f_load, int load_optim_state, int f_bin)
+int grn_create(network *net, layer *previous, const char *activation, int residual, float gamma_init, FILE *f_load, int load_optim_state, int f_bin)
 {
 	size_t i;
 	size_t flat_output_dim = 1, nb_features;
 	long long int mem_approx = 0;
-	float eps = 0.000001f;
 	layer *current;
 	
 	current = (layer*) malloc(sizeof(layer));
@@ -58,22 +41,24 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	current->c_network = net;
 	net->nb_layers++;
 	
-	printf("L:%d - CREATING NORMALIZATION LAYER ...\n", net->nb_layers);
+	printf("L:%d - CREATING GLOBAL RESPONSE NORMALIZATION LAYER ...\n", net->nb_layers);
 	
-	current->type = NORM;
+	current->type = GRN;
 	current->frozen = 0;
 	current->wema_replace_signal = 0;
-	current->dropout_rate = 0.0f;
+	current->dropout_rate = 0.0f; //no dropout authorized here
 	current->previous = previous;
 	
 	if(previous == NULL)
 	{
-		printf("\n ERROR: Normalization layer is not autorized as first layer.\n");
+		printf("\n ERROR: GRN layer is not autorized as first layer.\n");
 		exit(EXIT_FAILURE);
 	}
 	
-	n_param = (norm_param*) malloc(sizeof(norm_param));
+	n_param = (grn_param*) malloc(sizeof(grn_param));
 	current->param = n_param;
+	
+	n_param->residual = residual;
 	
 	current->input = previous->output;
 	current->output_type = previous->output_type;
@@ -103,42 +88,22 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 		current->a_offset     = 1;
 	}
 	
-	n_param->group_size = group_size;
+	n_param->feature_norm = (float*) calloc(nb_features*net->batch_size, sizeof(float));
+	n_param->relative_importance = (float*) calloc(nb_features*net->batch_size, sizeof(float));
+	mem_approx += 2 * nb_features * net->batch_size * sizeof(float);
 	
-	if(n_param->group_size <= 0)
-	{
-		printf(" WARNING: Group Normalization cannot be set with group size <= 0, setting it to 1.\n");
-		n_param->group_size = 1;
-	}
-	if(n_param->group_size > nb_features)
-	{
-		printf(" WARNING: Group size is larger than the number of input dimensions, falling back to layer normalization.\n");
-		n_param->group_size = nb_features;
-	}
+	//Only useful for th GPU implementation but allocated anyway
+	n_param->mean = (float*) calloc(net->batch_size, sizeof(float));
+	mem_approx += net->batch_size * sizeof(float);
 	
-	if(nb_features%n_param->group_size == 0)
-		n_param->nb_group = nb_features/n_param->group_size;
-	else
-	{
-		printf(" ERROR: In Group Norm layer, the number of features must be a multiple of number of groups!\n");
-		exit(EXIT_FAILURE);
-	}
-	
-	current->weights = (float*) calloc(2*nb_features, sizeof(float));
+	current->weights = (float*) calloc(2 * nb_features, sizeof(float));
 	current->FP32_weights = current->weights;
 	n_param->gamma = current->weights;
 	n_param->beta  = ((float*)current->weights) + nb_features;
-	mem_approx += 2*nb_features*sizeof(float);
+	mem_approx += 2 * nb_features * sizeof(float);
 	
 	for(i = 0; i < nb_features; i++)
-		n_param->gamma[i] = gamma_init; //default should be 1.0f, from python interface
-	
-	n_param->mean = (float*) calloc(n_param->nb_group * net->batch_size, sizeof(float));
-	n_param->var  = (float*) malloc(n_param->nb_group * net->batch_size * sizeof(float));
-	for(i = 0; i < n_param->nb_group * net->batch_size; i++)
-		n_param->var[i] = (1.0f-eps);
-	
-	mem_approx += 2 * n_param->nb_group * net->batch_size * sizeof(float);
+		n_param->gamma[i] = gamma_init;
 	
 	current->output = (float*) calloc(current->a_size, sizeof(float));
 	mem_approx += current->a_size * sizeof(float);
@@ -162,10 +127,6 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 		n_param->d_beta  = (float*) calloc(nb_features * net->batch_size, sizeof(float));
 		mem_approx += 2 * nb_features * net->batch_size * sizeof(float);
 		
-		n_param->temp_A = (float*) calloc(n_param->nb_group * net->batch_size, sizeof(float));
-		n_param->temp_B = (float*) calloc(n_param->nb_group * net->batch_size, sizeof(float));
-		mem_approx += 2 * n_param->nb_group * net->batch_size * sizeof(float);
-		
 		current->delta_o = (float*) calloc(current->a_size, sizeof(float));
 		mem_approx += current->a_size * sizeof(float);
 		
@@ -184,15 +145,15 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	{
 		case C_CUDA:
 			#ifdef CUDA
-			cuda_norm_define(current);
-			mem_approx = cuda_convert_norm_layer(current);
-			//optim is done on CPU for GNorm for the moment
+			cuda_grn_define(current);
+			mem_approx = cuda_convert_grn_layer(current);
+			//optim is done on CPU for GRN for the moment
 			cuda_define_activation_fct(current);
 			#endif
 			break;
 		case C_BLAS:
 		case C_NAIV:
-			norm_define(current);
+			grn_define(current);
 			define_activation_fct(current);
 			break;
 		default:
@@ -202,11 +163,10 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 	char activ[40];
 	fill_string_activ_param(current, activ,0);
 	
-	printf("      Group size: %d, Nb. groups: %d, Activation: %s\n\
+	printf("      N. features %ld, Activation: %s\n\
       Nb. params: %ld, Approx layer RAM/VRAM requirement: %d MB\n",
-		n_param->group_size, n_param->nb_group,
-		activ, 2*nb_features,(int)(mem_approx/1000000));
-	net->total_nb_param += 2*nb_features;
+		nb_features, activ, current->nb_params,(int)(mem_approx/1000000));
+	net->total_nb_param += current->nb_params;
 	net->memory_footprint += mem_approx;
 	
 	return net->nb_layers - 1;
@@ -214,26 +174,23 @@ int norm_create(network *net, layer *previous, const char *norm_type, const char
 
 
 
-void norm_save(FILE *f, layer *current, int save_optim_state, int f_bin)
+void grn_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 {
-	char layer_type = 'N';
+	char layer_type = 'G';
 	size_t nb_features;
 
-	n_param = (norm_param*)current->param;	
+	n_param = (grn_param*)current->param;	
 	nb_features = current->output_dim[3];
 	
 	if(f_bin)
 	{
 		fwrite(&layer_type, sizeof(char), 1, f);
-		print_norm_type(f, current, f_bin);
-		fwrite(&n_param->group_size, sizeof(int), 1, f);
+		fwrite(&n_param->residual, sizeof(int), 1, f);
 		print_activ_param(f, current, f_bin);
 	}
 	else
 	{
-		fprintf(f,"N ");
-		print_norm_type(f, current, f_bin);
-		fprintf(f, "S%d_", n_param->group_size);
+		fprintf(f,"G res_%d ", n_param->residual);
 		print_activ_param(f, current, f_bin);
 		fprintf(f,"\n");
 	}
@@ -241,26 +198,24 @@ void norm_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 	save_layer_weights(f, current, 2*nb_features, nb_features, 0, 0, save_optim_state, f_bin);
 }
 
-void norm_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer)
+void grn_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer)
 {
-	int group_size, nb_group;
+	int residual, nb_features;
 	float temp_read;
-	char norm[40];
 	char activ_type[40];
 	layer *previous;
 	
 	if(!skip_layer)
-		printf("Loading norm layer, L:%d\n", net->nb_layers+1);
+		printf("Loading GRN layer, L:%d\n", net->nb_layers+1);
 	
 	if(f_bin)
 	{
-		fread(norm, sizeof(char), 40, f);
-		fread(&group_size, sizeof(int), 1, f);
+		fread(&residual, sizeof(int), 1, f);
 		fread(activ_type, sizeof(char), 40, f);
 	}
 	else
 	{
-		fscanf(f, " %s S%d_%s\n", norm, &group_size, activ_type);
+		fscanf(f, " res_%d %s\n", &residual, activ_type);
 	}
 
 	if(!skip_layer)
@@ -270,59 +225,53 @@ void norm_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_
 		else
 			previous = net->net_layers[net->nb_layers-1];
 		
-		norm_create(net, previous, norm, activ_type, group_size, 1.0f, f, load_optim_state, f_bin);
+		grn_create(net, previous, activ_type, residual, 1.0f, f, load_optim_state, f_bin);
 	}
 	else
 	{
-		if(net->skip_in_dims[3]%group_size == 0)
-			nb_group = net->skip_in_dims[3]/group_size;
-		else
-			nb_group = net->skip_in_dims[3]/group_size + 1;
-	
+		nb_features = net->skip_in_dims[3];
+		
 		if(f_bin)
-			fseek(f, nb_group*2, SEEK_CUR);
+			fseek(f, nb_features*2, SEEK_CUR);
 		else
-			for(int i = 0; i < nb_group*2; i++)
+			for(int i = 0; i < nb_features*2; i++)
 				fscanf(f, "%f", &temp_read);
 	}
 }
 
 
-void free_norm(layer *current)
+void free_grn(layer *current)
 {
-	n_param = (norm_param*)current->param;
+	n_param = (grn_param*)current->param;
 	
-	free(current->weights);
-	
-	if(!current->c_network->inference_only)
-	{
-		if(current->c_network->use_wema)
-			free(current->ema_weights);
-		free(n_param->d_gamma);
-		free(n_param->d_beta);
-		
-		free(current->gradient);
-		
-		free_optimizer_var(current);
-	}
 	
 	#ifdef CUDA
 	if(current->c_network->compute_method == C_CUDA)
 	{	
-		cuda_free_norm(current);
+		cuda_free_grn(current);
 	}
 	else
 	#endif
 	{
+		free(current->weights); //gamma and beta
 		free(current->output);
 		
+		free(n_param->feature_norm);
+		free(n_param->relative_importance);
 		free(n_param->mean);
-		free(n_param->var);
-		free(n_param->temp_A);
-		free(n_param->temp_B);
 		
 		if(!current->c_network->inference_only)
+		{
+			if(current->c_network->use_wema)
+				free(current->ema_weights);
+			free(current->gradient);
 			free(current->delta_o);
+			
+			free(n_param->d_gamma);
+			free(n_param->d_beta);
+			
+			free_optimizer_var(current);
+		}
 	}
 	
 	if(current->activ_param != NULL)

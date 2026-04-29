@@ -29,7 +29,7 @@
 //            Various Enumerations
 //############################################
 
-enum layer_type_enum{CONV, POOL, DENSE, NORM, LRN, MERGE};
+enum layer_type_enum{CONV, POOL, DENSE, NORM, LRN, GRN, MERGE};
 enum output_type_enum{SPATIAL, FLAT};
 enum activation_functions_enum{RELU, LOGISTIC, SOFTMAX, YOLO, LINEAR};
 enum optimizer_enum{SGD, ADAM, RMS_PROP};
@@ -53,6 +53,7 @@ typedef struct conv_param conv_param;
 typedef struct pool_param pool_param;
 typedef struct norm_param norm_param;
 typedef struct lrn_param lrn_param;
+typedef struct grn_param grn_param;
 typedef struct merge_param merge_param;
 
 typedef struct linear_param linear_param;
@@ -86,6 +87,7 @@ typedef struct cuda_conv_fcts cuda_conv_fcts;
 typedef struct cuda_pool_fcts cuda_pool_fcts;
 typedef struct cuda_norm_fcts cuda_norm_fcts;
 typedef struct cuda_lrn_fcts cuda_lrn_fcts;
+typedef struct cuda_grn_fcts cuda_grn_fcts;
 typedef struct cuda_merge_fcts cuda_merge_fcts;
 
 typedef struct cuda_linear_activ_fcts cuda_linear_activ_fcts;
@@ -139,6 +141,7 @@ struct cuda_optimizer_fcts
 struct cuda_dense_fcts
 {
 	void (*flat_dense_fct)(void *i_in, void *i_out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, size_t size);
+	void (*flat_dense_back_fct)(void* i_in, void* i_out, int map_size, int flatten_size, int nb_map, int batch_size, size_t size);
 	void (*reroll_fct)(void *in, void *out, int map_size, int flatten_size, int nb_map, int batch_size, size_t size);
 	void (*drop_apply_fct)(void *i_table, float *mask, size_t size, int biased_dim, float drop_rate);
 	void (*drop_scale_fct)(void *i_table, float *mask, size_t size, int biased_dim, float drop_rate);
@@ -208,18 +211,22 @@ struct cuda_pool_fcts
 struct cuda_norm_fcts
 {
 	void (*cu_reduce_group_mean_conv_kernel)(void *idata, float *group_mean,
-		size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, int sum_div, size_t sum_size);
+		size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, size_t sum_div, size_t sum_size);
 	void (*cu_reduce_group_var_conv_kernel)(void *idata, float *group_var, float *group_mean,
 		size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, size_t sum_div, size_t sum_size);
-	void (*cu_reduce_group_dgamma_conv_kernel)(void *idata, void *d_output, float *d_gamma,
+	void (*cu_reduce_norm_dbeta_conv_kernel)(void *i_d_output, void *i_d_beta,
+		size_t nb_features, size_t flat_a_size, size_t batch_size, size_t sum_size);
+	void (*cu_reduce_group_dgamma_conv_kernel)(void *idata, void *d_output, void *i_d_gamma,
 		float *group_var, float *group_mean, size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, size_t sum_size);
+	void (*cu_reduce_norm_AB_kernel)(void *i_d_gamma, void *i_d_beta, float *gamma, 
+		float *A, float *B, size_t group_size, size_t nb_group);
+	void (*cu_reduce_norm_param_grads_kernel)(void *i_d_gamma, void *i_d_beta, 
+		void *i_gamma_grad, void *i_beta_grad, size_t nb_features, size_t batch_size);
 	void (*cu_group_normalization_conv_kernel)(void *i_output, void *i_input, float *gamma, float *beta, float *group_mean,
-		float *group_var, size_t b_length, size_t b_size, size_t group_size, size_t nb_group, int nb_filters, size_t flat_a_size, size_t set_off);
-	void (*cu_group_normalization_conv_back_kernel)(
-		void *i_input, void *i_delta_output, void *i_delta_input, float *gamma, float *beta, float *d_gamma, float * d_beta, float *group_mean,
-		float *group_var, size_t b_length, size_t b_size, size_t group_size, size_t nb_group, int nb_filters, size_t flat_a_size, size_t set_off);
-	void (*cu_group_normalization_dense_kernel)(void *i_tab, int b_length, int b_size, int dim, int biased_dim, int group_size, int nb_group);
-	void (*cu_group_normalization_dense_back_kernel)(void *i_tab, int b_length, int b_size, int dim, int biased_dim, int group_size, int nb_group);
+		float *group_var, size_t b_length, size_t b_size, size_t group_size, size_t nb_group, size_t nb_filters, size_t flat_a_size);
+	void (*cu_group_normalization_conv_back_kernel)(void *i_input, void *i_d_output, 
+		void *i_d_input, float *gamma, float *A, float *B, float *group_mean,
+		float *group_var, size_t b_length, size_t b_size, size_t group_size, size_t nb_group, size_t nb_filters, size_t flat_a_size);
 };
 
 
@@ -227,8 +234,26 @@ struct cuda_lrn_fcts
 {
 	void (*cu_lrn_conv_kernel)(void *i_output, void *i_input, float *local_scale, int range, 
 		float k, float alpha, float beta, int b_size, int nb_channel, size_t flat_a_size);
-	void (*cu_lrn_conv_back_kernel)(void *i_output, void *i_input, void *i_delta_output, void *i_delta_input,
+	void (*cu_lrn_conv_back_kernel)(void *i_output, void *i_input, void *i_d_output, void *i_d_input,
 		float *local_scale, int range, float k, float alpha, float beta, int b_size, int nb_channel, size_t flat_a_size);
+};
+
+
+struct cuda_grn_fcts
+{
+	void (*cu_reduce_l2norm_conv_kernel)(void *idata, float *group_l2norm,
+		size_t nb_features, size_t flat_a_size, size_t batch_size, size_t sum_size);
+	void (*cu_reduce_grn_dgamma_conv_kernel)(void *idata, void *i_d_output, void *d_gamma,
+		size_t nb_features, size_t flat_a_size, size_t batch_size, size_t sum_size);
+	void (*cu_reduce_grn_param_grads_kernel)(void *i_d_gamma, void *i_d_beta, float *relative_importance, 
+		void *i_gamma_grad, void *i_beta_grad, size_t nb_features, size_t batch_size);
+	void (*cu_reduce_grn_dbeta_conv_kernel)(void *i_d_output, void *i_d_beta, size_t nb_features, 
+		size_t flat_a_size, size_t batch_size, size_t sum_size);
+	void (*cu_grn_conv_kernel)(void *i_output, void *i_input, float *gamma, float *beta,
+		float *relative_importance, int residual, size_t b_length, size_t b_size, size_t nb_features, size_t flat_a_size);
+	void (*cu_grn_conv_back_kernel)(void *i_input, void *i_d_output, void *i_d_input,
+		float *gamma, void *i_d_gamma, float *feature_norm, float *relative_importance, int residual,
+		size_t b_length, size_t b_size, size_t nb_features, size_t flat_a_size);
 };
 
 
@@ -303,6 +328,7 @@ struct cuda_net_instance
 	cuda_pool_fcts cu_pool_fcts;
 	cuda_norm_fcts cu_norm_fcts;
 	cuda_lrn_fcts cu_lrn_fcts;
+	cuda_grn_fcts cu_grn_fcts;
 	cuda_merge_fcts cu_merge_fcts;
 	
 	cuda_linear_activ_fcts cu_linear_activ_fcts;
@@ -488,22 +514,18 @@ struct pool_param
 struct norm_param
 {
 	int group_size;
-	int set_off;
 	int nb_group;
 	
 	float *mean;
 	float *var;
 	float *gamma;
 	float *beta;
-	float *gamma_update;
-	float *beta_update;
-	float *d_gamma;
-	float *d_beta;
-	
-	float *gamma_gpu;
-	float *beta_gpu;
-	float *d_gamma_gpu;
-	float *d_beta_gpu;
+	void *gamma_grad;
+	void *beta_grad;
+	void *d_gamma;
+	void *d_beta;
+	float *temp_A;
+	float *temp_B;
 };
 
 
@@ -515,6 +537,23 @@ struct lrn_param
 	float beta;
 	
 	float *local_scale;
+};
+
+
+struct grn_param
+{
+	int residual;
+	float *feature_norm;
+	float *relative_importance;
+	float *mean;
+	
+	float *gamma;
+	float *beta;
+	void *gamma_grad;
+	void *beta_grad;
+	void *d_gamma;
+	void *d_beta;
+	
 };
 
 

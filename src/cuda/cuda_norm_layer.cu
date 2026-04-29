@@ -28,27 +28,13 @@ static norm_param *n_param;
 // Public are in "prototypes.h"
 
 // Private prototypes
-__device__ int cuda_id_to_conv_fmt(int id, int block_id, size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size);
-__device__ void warpReduce(volatile float *sdata, size_t blockSize, unsigned int tid);
 void cuda_forward_norm_layer(layer *current);
 void cuda_backward_norm_layer(layer *current);
 
 // Functions that result from templates are not listed here but at the end of the file instead
 
 
-__device__ int cuda_id_to_conv_fmt(int id, int block_id, size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size)
-{
-	size_t group_id = block_id % nb_group;
-	size_t batch_id = block_id / nb_group;
-	
-	size_t in_group_id = id / flat_a_size;
-	size_t map_pos_id = id % flat_a_size;
-	
-	return batch_id*flat_a_size + (group_id*group_size + in_group_id)*flat_a_size*batch_size + map_pos_id;
-}
-
-
-__device__ void warpReduce(volatile float *sdata, size_t blockSize, unsigned int tid) 
+inline __device__ void warpReduce(volatile float *sdata, size_t blockSize, unsigned int tid) 
 {
 	if (blockSize >= 64)
 		sdata[tid] += sdata[tid + 32];
@@ -67,21 +53,31 @@ __device__ void warpReduce(volatile float *sdata, size_t blockSize, unsigned int
 
 #define reduce_group_mean_conv_kernel(name, type) 																								\
 __global__ void reduce_group_mean_conv_kernel_##name(void *idata, float *group_mean, 															\
-	size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, int sum_div, size_t sum_size) 									\
+	size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, size_t sum_div, size_t sum_size) 								\
 {																																				\
 	__shared__ float sdata[256];																												\
 	type* input = (type*) idata;																												\
-	int tid = threadIdx.x;																														\
-	int block_id = blockIdx.x;																													\
+	size_t tid = threadIdx.x;																													\
+	size_t block_id = blockIdx.x;																												\
 	size_t blockSize = blockDim.x;																												\
-	int i = tid;																																\
-	sdata[tid] = 0;																																\
+	size_t i = tid;																																\
+	size_t conv_id, group_id, batch_id, in_group_id, map_pos_id;																				\
+	double sum = 0.0f;																															\
+																																				\
+	group_id = block_id % nb_group;																												\
+	batch_id = block_id / nb_group;																												\
 																																				\
 	while (i < sum_size)																														\
 	{																																			\
-		sdata[tid] += (float)input[cuda_id_to_conv_fmt(i, block_id, group_size, nb_group, flat_a_size, batch_size)];							\
+		in_group_id = i / flat_a_size;																											\
+		map_pos_id  = i % flat_a_size;																											\
+		conv_id     = batch_id*flat_a_size + (group_id*group_size + in_group_id)*flat_a_size*batch_size + map_pos_id;							\
+																																				\
+		sum += (float)input[conv_id];																											\
 		i += blockSize;																															\
 	}																																			\
+	sdata[tid] = sum;																															\
+																																				\
 	__syncthreads();																															\
 	if (blockSize >= 256)																														\
 	{																																			\
@@ -98,7 +94,7 @@ __global__ void reduce_group_mean_conv_kernel_##name(void *idata, float *group_m
 	if (tid < 32) 																																\
 		warpReduce(sdata, blockSize, tid);																										\
 	if (tid == 0) 																																\
-		group_mean[block_id] = sdata[0]/(sum_div);																								\
+		group_mean[block_id] = sdata[0]/sum_div;																								\
 }
 
 
@@ -112,16 +108,25 @@ __global__ void reduce_group_var_conv_kernel_##name(void *idata, float *group_va
 	size_t block_id = blockIdx.x;																												\
 	size_t blockSize = blockDim.x;																												\
 	size_t i = tid;																																\
+	size_t conv_id, group_id, batch_id, in_group_id, map_pos_id;																				\
 	float l_val;																																\
-	sdata[tid] = 0;																																\
+	double sum = 0.0f;																															\
+																																				\
+	group_id = block_id % nb_group;																												\
+	batch_id = block_id / nb_group;																												\
 																																				\
 	while (i < sum_size)																														\
 	{																																			\
-		l_val = (float)input[cuda_id_to_conv_fmt(i, block_id, group_size, nb_group, flat_a_size, batch_size)];									\
-		sdata[tid] += (l_val - group_mean[block_id])*(l_val - group_mean[block_id]);															\
+		in_group_id = i / flat_a_size;																											\
+		map_pos_id  = i % flat_a_size;																											\
+		conv_id     = batch_id * flat_a_size + (group_id * group_size + in_group_id) * flat_a_size * batch_size + map_pos_id;					\
 																																				\
+		l_val = (float)input[conv_id];																											\
+		sum += (l_val - group_mean[block_id])*(l_val - group_mean[block_id]);																	\
 		i += blockSize;																															\
 	}																																			\
+	sdata[tid] = sum;																															\
+																																				\
 	__syncthreads();																															\
 	if (blockSize >= 256)																														\
 	{																																			\
@@ -138,30 +143,84 @@ __global__ void reduce_group_var_conv_kernel_##name(void *idata, float *group_va
 	if (tid < 32) 																																\
 		warpReduce(sdata, blockSize, tid);																										\
 	if (tid == 0) 																																\
-		group_var[block_id] = sdata[0]/(sum_div);																								\
+		group_var[block_id] = sdata[0]/sum_div;																									\
+}
+
+#define reduce_norm_dbeta_conv_kernel(name, type) 																								\
+__global__ void reduce_norm_dbeta_conv_kernel_##name(void *i_d_output, void *i_d_beta,															\
+	size_t nb_features, size_t flat_a_size, size_t batch_size, size_t sum_size)																	\
+{																																				\
+	__shared__ float sdata[256];																												\
+	type* d_output = (type*) i_d_output;																										\
+	type* d_beta = (type*) i_d_beta;																											\
+	size_t tid = threadIdx.x;																													\
+	size_t block_id = blockIdx.x;																												\
+	size_t blockSize = blockDim.x;																												\
+	size_t i = tid;																																\
+	size_t feature_id, batch_id, conv_id;																										\
+	float sum = 0.0f;																															\
+																																				\
+	feature_id = block_id % nb_features;																										\
+	batch_id   = block_id / nb_features;																										\
+	conv_id    = batch_id * flat_a_size + feature_id * flat_a_size * batch_size;																\
+																																				\
+	while(i < sum_size)																															\
+	{																																			\
+		sum += (float)d_output[conv_id + i];																									\
+		i += blockSize;																															\
+	}																																			\
+	sdata[tid] = sum;																															\
+																																				\
+	__syncthreads();																															\
+	if (blockSize >= 256)																														\
+	{																																			\
+		if (tid < 128)																															\
+			sdata[tid] += sdata[tid + 128];																										\
+		__syncthreads();																														\
+	}																																			\
+	if (blockSize >= 128)																														\
+	{																																			\
+		if (tid < 64)																															\
+			sdata[tid] += sdata[tid + 64];																										\
+		__syncthreads();																														\
+	}																																			\
+	if (tid < 32)																																\
+		warpReduce(sdata, blockSize, tid);																										\
+	if (tid == 0)																																\
+		d_beta[block_id] = (type) sdata[0];																										\
 }
 
 
 #define reduce_group_dgamma_conv_kernel(name, type) 																							\
-__global__ void reduce_group_dgamma_conv_kernel_##name(void *idata, void *d_output, float *d_gamma,												\
+__global__ void reduce_group_dgamma_conv_kernel_##name(void *idata, void *i_d_output, void *i_d_gamma,											\
 	float *group_var, float *group_mean, size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, size_t sum_size) 			\
 {																																				\
 	__shared__ float sdata[256];																												\
 	type* input = (type*) idata;																												\
-	type* delta_output = (type*) d_output;																										\
+	type* d_output = (type*) i_d_output;																										\
+	type* d_gamma = (type*) i_d_gamma;																											\
 	size_t tid = threadIdx.x;																													\
 	size_t block_id = blockIdx.x;																												\
 	size_t blockSize = blockDim.x;																												\
 	size_t i = tid;																																\
 	float eps = 0.000001f;																														\
-	sdata[tid] = 0;																																\
+	size_t nb_features = group_size * nb_group;																									\
+	size_t conv_id, feature_id, batch_id, group_id, group_pos;																					\
+	double sum = 0.0f;																															\
+																																				\
+	feature_id = block_id % nb_features;																										\
+	batch_id   = block_id / nb_features;																										\
+	group_id   = feature_id / group_size;																										\
+	group_pos  = batch_id * nb_group + group_id;																								\
+	conv_id    = batch_id * flat_a_size + feature_id * flat_a_size * batch_size;																\
 																																				\
 	while (i < sum_size)																														\
 	{																																			\
-		sdata[tid] += ((float)delta_output[cuda_id_to_conv_fmt(i, block_id, group_size, nb_group, flat_a_size, batch_size)] 					\
-			* ((float)input[cuda_id_to_conv_fmt(i, block_id, group_size, nb_group, flat_a_size, batch_size)] - group_mean[block_id]));			\
+		sum += (float)d_output[conv_id + i] * ((float)input[conv_id + i] - group_mean[group_pos]);												\
 		i += blockSize;																															\
 	}																																			\
+	sdata[tid] = sum;																															\
+																																				\
 	__syncthreads();																															\
 	if (blockSize >= 256)																														\
 	{																																			\
@@ -178,13 +237,139 @@ __global__ void reduce_group_dgamma_conv_kernel_##name(void *idata, void *d_outp
 	if (tid < 32) 																																\
 		warpReduce(sdata, blockSize, tid);																										\
 	if (tid == 0) 																																\
-		d_gamma[block_id] = sdata[0]*(1.0f/sqrt(group_var[block_id]+eps));																		\
+		d_gamma[block_id] = (type) (sdata[0]*(1.0f/sqrt(group_var[group_pos]+eps)));															\
+}
+
+
+#define reduce_norm_AB_kernel(name, type) 																										\
+__global__ void reduce_norm_AB_kernel_##name(void *i_d_gamma, void *i_d_beta, 																	\
+	float *gamma, float *A, float *B, size_t group_size, size_t nb_group)																		\
+{																																				\
+	__shared__ float sdata_A[256];																												\
+	__shared__ float sdata_B[256];																												\
+	type* d_gamma = (type*) i_d_gamma;																											\
+	type* d_beta  = (type*) i_d_beta;																											\
+	size_t tid = threadIdx.x;																													\
+	size_t block_id = blockIdx.x;																												\
+	size_t blockSize = blockDim.x;																												\
+	size_t i = tid;																																\
+	size_t batch_id, group_id, feature_id, nb_features, grad_id;																				\
+	double sum_A = 0.0f;																														\
+	double sum_B = 0.0f;																														\
+																																				\
+	nb_features = group_size * nb_group;																										\
+	group_id = block_id % nb_group;																												\
+	batch_id = block_id / nb_group;																												\
+																																				\
+	while(i < group_size)																														\
+	{																																			\
+		feature_id = group_id * group_size + i;																									\
+		grad_id = batch_id * nb_features + feature_id;																							\
+																																				\
+		sum_A += gamma[feature_id] * (float)d_beta[grad_id];																					\
+		sum_B += gamma[feature_id] * (float)d_gamma[grad_id];																					\
+		i += blockSize;																															\
+	}																																			\
+	sdata_A[tid] = sum_A;																														\
+	sdata_B[tid] = sum_B;																														\
+																																				\
+	__syncthreads();																															\
+	if (blockSize >= 256)																														\
+	{																																			\
+		if (tid < 128)																															\
+		{																																		\
+			sdata_A[tid] += sdata_A[tid + 128];																									\
+			sdata_B[tid] += sdata_B[tid + 128];																									\
+		}																																		\
+		__syncthreads();																														\
+	}																																			\
+	if (blockSize >= 128)																														\
+	{																																			\
+		if (tid < 64)																															\
+		{																																		\
+			sdata_A[tid] += sdata_A[tid + 64];																									\
+			sdata_B[tid] += sdata_B[tid + 64];																									\
+		}																																		\
+		__syncthreads();																														\
+	}																																			\
+	if (tid < 32)																																\
+	{																																			\
+		warpReduce(sdata_A, blockSize, tid);																									\
+		warpReduce(sdata_B, blockSize, tid);																									\
+	}																																			\
+																																				\
+	if (tid == 0)																																\
+	{																																			\
+		A[block_id] = sdata_A[0];																												\
+		B[block_id] = sdata_B[0];																												\
+	}																																			\
+}
+
+
+#define reduce_norm_param_grads_kernel(name, type) 																								\
+__global__ void reduce_norm_param_grads_kernel_##name(void *i_d_gamma, void *i_d_beta, void *i_gamma_grad, void *i_beta_grad,					\
+	size_t nb_features, size_t batch_size)																										\
+{																																				\
+	__shared__ float sdata_gamma[256];																											\
+	__shared__ float sdata_beta[256];																											\
+	type* d_gamma = (type*) i_d_gamma;																											\
+	type* d_beta  = (type*) i_d_beta;																											\
+	type* gamma_grad = (type*) i_gamma_grad;																									\
+	type* beta_grad = (type*) i_beta_grad;																										\
+	size_t tid = threadIdx.x;																													\
+	size_t feature_id = blockIdx.x;																												\
+	size_t blockSize = blockDim.x;																												\
+	size_t i = tid;																																\
+	size_t l_id;																																\
+	double sum_gamma = 0.0f;																													\
+	double sum_beta  = 0.0f;																													\
+																																				\
+	while(i < batch_size)																														\
+	{																																			\
+		l_id = i*nb_features + feature_id;																										\
+		sum_gamma += (float)d_gamma[l_id];																										\
+		sum_beta  += (float)d_beta[l_id];																										\
+		i += blockSize;																															\
+	}																																			\
+	sdata_gamma[tid] = sum_gamma;																												\
+	sdata_beta[tid]  = sum_beta;																												\
+																																				\
+	__syncthreads();																															\
+	if (blockSize >= 256)																														\
+	{																																			\
+		if (tid < 128)																															\
+		{																																		\
+			sdata_gamma[tid] += sdata_gamma[tid + 128];																							\
+			sdata_beta[tid]  += sdata_beta[tid + 128];																							\
+		}																																		\
+		__syncthreads();																														\
+	}																																			\
+	if (blockSize >= 128)																														\
+	{																																			\
+		if (tid < 64)																															\
+		{																																		\
+			sdata_gamma[tid] += sdata_gamma[tid + 64];																							\
+			sdata_beta[tid]  += sdata_beta[tid + 64];																							\
+		}																																		\
+		__syncthreads();																														\
+	}																																			\
+	if (tid < 32)																																\
+	{																																			\
+		warpReduce(sdata_gamma, blockSize, tid);																								\
+		warpReduce(sdata_beta,  blockSize, tid);																								\
+	}																																			\
+																																				\
+	if (tid == 0)																																\
+	{																																			\
+		gamma_grad[feature_id] = sdata_gamma[0];																								\
+		beta_grad[feature_id]  = sdata_beta[0];																									\
+	}																																			\
 }
 
 
 #define group_normalization_conv_kernel(name, type) 																							\
 __global__ void group_normalization_conv_kernel_##name(void *i_output, void *i_input, float *gamma, float *beta, float *group_mean,				\
-	float *group_var, size_t b_length, size_t b_size, size_t group_size, size_t nb_group, int nb_filters, size_t flat_a_size, size_t set_off)	\
+	float *group_var, size_t b_length, size_t b_size, size_t group_size, size_t nb_group, size_t nb_filters, size_t flat_a_size)				\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	size_t j = blockIdx.y*blockDim.y + threadIdx.y;																								\
@@ -193,18 +378,17 @@ __global__ void group_normalization_conv_kernel_##name(void *i_output, void *i_i
 	float l_val, eps = 0.000001f;																												\
 	float mean = 0.0f, var = 0.0f;																												\
 	size_t filter_offset = flat_a_size*b_size;																									\
-	size_t group_id, batch_id;																													\
+	size_t group_id, batch_id, feature_id;																										\
 	size_t in_group_id, map_pos_id, conv_id;																									\
 																																				\
 	if(i < flat_a_size*group_size && j < nb_group*b_size)																						\
 	{																																			\
-		group_id = j % nb_group;																												\
-		batch_id = j / nb_group;																												\
-																																				\
+		group_id    = j % nb_group;																												\
+		batch_id    = j / nb_group;																												\
 		in_group_id = i / flat_a_size; 																											\
-		map_pos_id = i % flat_a_size;																											\
-																																				\
-		conv_id = batch_id*flat_a_size + (group_id*group_size + in_group_id)*filter_offset + map_pos_id;										\
+		map_pos_id  = i % flat_a_size;																											\
+		feature_id  = group_id * group_size + in_group_id;																						\
+		conv_id     = batch_id * flat_a_size + (group_id * group_size + in_group_id) * filter_offset + map_pos_id;								\
 																																				\
 		if(batch_id < b_length)																													\
 		{																																		\
@@ -212,10 +396,7 @@ __global__ void group_normalization_conv_kernel_##name(void *i_output, void *i_i
 			var  = group_var[batch_id*nb_group + group_id];																						\
 																																				\
 			l_val = (float)input[conv_id];																										\
-			if(group_id < nb_group - set_off)																									\
-				output[conv_id] = (type)(gamma[group_id]*((l_val - mean)/sqrt(var + eps)) + beta[group_id]);									\
-			else																																\
-				output[conv_id] = input[conv_id];																								\
+			output[conv_id] = (type)(gamma[feature_id]*((l_val - mean)/sqrt(var + eps)) + beta[feature_id]);									\
 		}																																		\
 		else																																	\
 			output[conv_id] = (type) 0.0f;																										\
@@ -225,61 +406,61 @@ __global__ void group_normalization_conv_kernel_##name(void *i_output, void *i_i
 
 #define group_normalization_conv_back_kernel(name, type) 																						\
 __global__ void group_normalization_conv_back_kernel_##name(																					\
-	void *i_input, void *i_delta_output, void *i_delta_input, float *gamma, float *beta, float *d_gamma, float * d_beta, float *group_mean,		\
-	float *group_var, size_t b_length, size_t b_size, size_t group_size, size_t nb_group, int nb_filters, size_t flat_a_size, size_t set_off)	\
+	void *i_input, void *i_d_output, void *i_d_input, float *gamma, float *A, float *B, float *group_mean,										\
+	float *group_var, size_t b_length, size_t b_size, size_t group_size, size_t nb_group, size_t nb_filters, size_t flat_a_size)				\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
 	size_t j = blockIdx.y*blockDim.y + threadIdx.y;																								\
 	type* input = (type*) i_input;																												\
-	type* delta_input = (type*) i_delta_input;																									\
-	type* delta_output = (type*) i_delta_output;																								\
+	type* d_input = (type*) i_d_input;																											\
+	type* d_output = (type*) i_d_output;																										\
 	float eps = 0.000001f;																														\
 	float mean = 0.0f, var = 0.0f;																												\
-	float l_d_gamma, l_d_beta;																													\
+	float l_A, l_B;																																\
 	size_t filter_offset = flat_a_size*b_size;																									\
-	size_t group_id, batch_id;																													\
+	size_t group_id, batch_id, feature_id;																										\
 	size_t in_group_id, map_pos_id, conv_id;																									\
 																																				\
 	if(i < flat_a_size*group_size && j < nb_group*b_size)																						\
 	{																																			\
-		group_id = j % nb_group;																												\
-		batch_id = j / nb_group;																												\
-																																				\
+		group_id    = j % nb_group;																												\
+		batch_id    = j / nb_group;																												\
 		in_group_id = i / flat_a_size; 																											\
-		map_pos_id = i % flat_a_size;																											\
-																																				\
-		conv_id = batch_id*flat_a_size + (group_id*group_size + in_group_id)*filter_offset + map_pos_id;										\
+		map_pos_id  = i % flat_a_size;																											\
+		feature_id  = group_id * group_size + in_group_id;																						\
+		conv_id     = batch_id * flat_a_size + (group_id * group_size + in_group_id) * filter_offset + map_pos_id;								\
 																																				\
 		if(batch_id < b_length)																													\
 		{																																		\
 			mean = group_mean[batch_id*nb_group + group_id];																					\
 			var  = group_var[batch_id*nb_group + group_id];																						\
-			l_d_gamma = d_gamma[batch_id*nb_group + group_id];																					\
-			l_d_beta  = d_beta[batch_id*nb_group + group_id];																					\
+			l_A = A[batch_id*nb_group + group_id];																								\
+			l_B = B[batch_id*nb_group + group_id];																								\
 																																				\
-			if(group_id < nb_group - set_off)																									\
-				delta_input[conv_id] += (type)((1.0f/(group_size*flat_a_size)) * gamma[group_id] * (1.0f/sqrt(var + eps))						\
-					* (group_size*flat_a_size*(float)delta_output[conv_id] - l_d_beta															\
-					- ((float)input[conv_id] - mean) * (1.0f/sqrt(var + eps))*l_d_gamma));														\
-			else																																\
-				delta_input[conv_id] += delta_output[conv_id];																					\
+			d_input[conv_id] += (type)((1.0f/(group_size*flat_a_size)) * (1.0f/sqrt(var + eps))													\
+				* (gamma[feature_id]*group_size*flat_a_size*(float)d_output[conv_id] - l_A														\
+				- ((float)input[conv_id] - mean) * (1.0f/sqrt(var + eps)) * l_B));																\
 		}																																		\
-		else																																	\
-			delta_input[conv_id] += (type) 0.0f;																								\
 	}																																			\
 }
 
 
 reduce_group_mean_conv_kernel(FP32, float);
 reduce_group_var_conv_kernel(FP32, float);
+reduce_norm_dbeta_conv_kernel(FP32, float);
 reduce_group_dgamma_conv_kernel(FP32, float);
+reduce_norm_AB_kernel(FP32, float);
+reduce_norm_param_grads_kernel(FP32, float);
 group_normalization_conv_kernel(FP32, float);
 group_normalization_conv_back_kernel(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE)
 reduce_group_mean_conv_kernel(FP16, half);
 reduce_group_var_conv_kernel(FP16, half);
+reduce_norm_dbeta_conv_kernel(FP16, half);
 reduce_group_dgamma_conv_kernel(FP16, half);
+reduce_norm_AB_kernel(FP16, half);
+reduce_norm_param_grads_kernel(FP16, half);
 group_normalization_conv_kernel(FP16, half);
 group_normalization_conv_back_kernel(FP16, half);
 #endif
@@ -287,7 +468,10 @@ group_normalization_conv_back_kernel(FP16, half);
 #if defined (GEN_AMPERE)
 reduce_group_mean_conv_kernel(BF16, nv_bfloat16);
 reduce_group_var_conv_kernel(BF16, nv_bfloat16);
+reduce_norm_dbeta_conv_kernel(BF16, nv_bfloat16);
 reduce_group_dgamma_conv_kernel(BF16, nv_bfloat16);
+reduce_norm_AB_kernel(BF16, nv_bfloat16);
+reduce_norm_param_grads_kernel(BF16, nv_bfloat16);
 group_normalization_conv_kernel(BF16, nv_bfloat16);
 group_normalization_conv_back_kernel(BF16, nv_bfloat16);
 #endif
@@ -300,9 +484,12 @@ void cuda_norm_init(network* net)
 		default:
 		case FP32C_FP32A:
 		case TF32C_FP32A:
-			net->cu_inst.cu_norm_fcts.cu_reduce_group_mean_conv_kernel = reduce_group_mean_conv_kernel_FP32; 
+			net->cu_inst.cu_norm_fcts.cu_reduce_group_mean_conv_kernel = reduce_group_mean_conv_kernel_FP32;
 			net->cu_inst.cu_norm_fcts.cu_reduce_group_var_conv_kernel = reduce_group_var_conv_kernel_FP32;
+			net->cu_inst.cu_norm_fcts.cu_reduce_norm_dbeta_conv_kernel = reduce_norm_dbeta_conv_kernel_FP32;
 			net->cu_inst.cu_norm_fcts.cu_reduce_group_dgamma_conv_kernel = reduce_group_dgamma_conv_kernel_FP32;
+			net->cu_inst.cu_norm_fcts.cu_reduce_norm_AB_kernel = reduce_norm_AB_kernel_FP32;
+			net->cu_inst.cu_norm_fcts.cu_reduce_norm_param_grads_kernel = reduce_norm_param_grads_kernel_FP32;
 			net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_kernel = group_normalization_conv_kernel_FP32;
 			net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_back_kernel = group_normalization_conv_back_kernel_FP32;
 			break;
@@ -312,7 +499,10 @@ void cuda_norm_init(network* net)
 			#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
 			net->cu_inst.cu_norm_fcts.cu_reduce_group_mean_conv_kernel = reduce_group_mean_conv_kernel_FP16; 
 			net->cu_inst.cu_norm_fcts.cu_reduce_group_var_conv_kernel = reduce_group_var_conv_kernel_FP16;
+			net->cu_inst.cu_norm_fcts.cu_reduce_norm_dbeta_conv_kernel = reduce_norm_dbeta_conv_kernel_FP16;
 			net->cu_inst.cu_norm_fcts.cu_reduce_group_dgamma_conv_kernel = reduce_group_dgamma_conv_kernel_FP16;
+			net->cu_inst.cu_norm_fcts.cu_reduce_norm_AB_kernel = reduce_norm_AB_kernel_FP16;
+			net->cu_inst.cu_norm_fcts.cu_reduce_norm_param_grads_kernel = reduce_norm_param_grads_kernel_FP16;
 			net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_kernel = group_normalization_conv_kernel_FP16;
 			net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_back_kernel = group_normalization_conv_back_kernel_FP16;
 			#else
@@ -325,7 +515,10 @@ void cuda_norm_init(network* net)
 			#if defined (GEN_AMPERE)
 			net->cu_inst.cu_norm_fcts.cu_reduce_group_mean_conv_kernel = reduce_group_mean_conv_kernel_BF16; 
 			net->cu_inst.cu_norm_fcts.cu_reduce_group_var_conv_kernel = reduce_group_var_conv_kernel_BF16;
+			net->cu_inst.cu_norm_fcts.cu_reduce_norm_dbeta_conv_kernel = reduce_norm_dbeta_conv_kernel_BF16;
 			net->cu_inst.cu_norm_fcts.cu_reduce_group_dgamma_conv_kernel = reduce_group_dgamma_conv_kernel_BF16;
+			net->cu_inst.cu_norm_fcts.cu_reduce_norm_AB_kernel = reduce_norm_AB_kernel_BF16;
+			net->cu_inst.cu_norm_fcts.cu_reduce_norm_param_grads_kernel = reduce_norm_param_grads_kernel_BF16;
 			net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_kernel = group_normalization_conv_kernel_BF16;
 			net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_back_kernel = group_normalization_conv_back_kernel_BF16;
 			#else
@@ -339,24 +532,41 @@ void cuda_norm_init(network* net)
 
 size_t cuda_convert_norm_layer(layer *current)
 {
-	size_t vram_approx = 0;
+	size_t vram_approx = 0, temp_allocated_size = 0;
+	size_t nb_features;
 	n_param = (norm_param*)current->param;
 	network* net = current->c_network;
 
+	nb_features = current->output_dim[3];
+
 	vram_approx += cuda_convert_table(net, &(current->output), current->a_size, 0);
 	
-	vram_approx += cuda_convert_table_FP32((void**)&(n_param->gamma_gpu), n_param->nb_group, 0);
-	vram_approx += cuda_convert_table_FP32((void**)&(n_param->beta_gpu) , n_param->nb_group, 0);
+	vram_approx += cuda_convert_table_FP32((void**)&(current->weights), 2*nb_features, 0);
+	current->FP32_weights = (float*)current->weights;
+	n_param->gamma = (float*) current->weights;
+	n_param->beta = ((float*) current->weights) + nb_features;
 	
 	vram_approx += cuda_convert_table_FP32((void**)&(n_param->mean), n_param->nb_group*net->batch_size, 0);
 	vram_approx += cuda_convert_table_FP32((void**)&(n_param->var) , n_param->nb_group*net->batch_size, 0);
 	
 	if(!net->inference_only)
-	{		
+	{
+		if(net->use_wema)
+			vram_approx += cuda_convert_table_FP32((void**)&(current->ema_weights), 2*nb_features, 0);
 		vram_approx += cuda_convert_table(net, &(current->delta_o), current->a_size, 0);
 		
-		vram_approx += cuda_convert_table_FP32((void**)&(n_param->d_gamma_gpu), n_param->nb_group*net->batch_size, 0);
-		vram_approx += cuda_convert_table_FP32((void**)&(n_param->d_beta_gpu), n_param->nb_group*net->batch_size, 0);
+		temp_allocated_size = cuda_convert_table(net, (void**)&(current->gradient), 2*nb_features, 0);
+		n_param->gamma_grad = current->gradient;
+		n_param->beta_grad = (void*)((unsigned char *)current->gradient + temp_allocated_size/2);	
+		vram_approx += temp_allocated_size;
+		
+		vram_approx += cuda_convert_table(net, (void**)&(n_param->d_gamma), nb_features*net->batch_size, 0);
+		vram_approx += cuda_convert_table(net, (void**)&(n_param->d_beta) , nb_features*net->batch_size, 0);
+		
+		vram_approx += cuda_convert_table_FP32((void**)&(n_param->temp_A), n_param->nb_group * net->batch_size, 0);
+		vram_approx += cuda_convert_table_FP32((void**)&(n_param->temp_B) , n_param->nb_group * net->batch_size, 0);
+	
+		vram_approx += cuda_convert_optimizer_var(current, 2*nb_features);
 	}
 	
 	return vram_approx;
@@ -367,29 +577,35 @@ void cuda_free_norm(layer *current)
 {
 	n_param = (norm_param*)current->param;
 	
+	cudaFree(current->weights);
 	cudaFree(current->output);
 
 	cudaFree(n_param->mean);
 	cudaFree(n_param->var);
 	
-	cudaFree(n_param->gamma_gpu);
-	cudaFree(n_param->beta_gpu);
-	
 	if(!current->c_network->inference_only)
 	{
+		if(current->c_network->use_wema)
+			cudaFree(current->ema_weights);
+		
 		cudaFree(current->delta_o);
-		cudaFree(n_param->d_gamma_gpu);
-		cudaFree(n_param->d_beta_gpu);
-	
-		//no cuda_free_optimizer_var as optim is done on CPU for norm layers
+		cudaFree(current->gradient);
+		
+		cudaFree(n_param->d_gamma);
+		cudaFree(n_param->d_beta);
+		
+		cudaFree(n_param->temp_A);
+		cudaFree(n_param->temp_B);
+		
+		cuda_free_optimizer_var(current);
 	}
 }
 
 
 void cuda_forward_norm_layer(layer *current)
 {
-	size_t i;
-	size_t dim_offset = 1, flat_output_dim = 1;
+	int i;
+	size_t dim_offset = 1, nb_features;
 	float *l_gamma, *l_beta;
 	
 	network* net = current->c_network;
@@ -401,21 +617,18 @@ void cuda_forward_norm_layer(layer *current)
 	{
 		for(i = 0; i < 3; i++)
 			dim_offset *= current->output_dim[i];
-		flat_output_dim = dim_offset * current->output_dim[3];
+		nb_features = current->output_dim[3];
 		
-		if(net->is_inference == 1 && net->use_wema)
+		if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 		{
-			l_gamma = current->ema_weights;
-			l_beta = ((float*)current->ema_weights) + n_param->nb_group;
+			l_gamma = (float*)current->ema_weights;
+			l_beta = ((float*)current->ema_weights) + nb_features;
 		}
 		else
 		{
 			l_gamma = n_param->gamma;
 			l_beta = n_param->beta;
 		}
-		
-		cuda_put_table_FP32(n_param->gamma_gpu, l_gamma, n_param->nb_group);
-		cuda_put_table_FP32(n_param->beta_gpu, l_beta, n_param->nb_group);
 		
 		cu_blocks = n_param->nb_group*net->batch_size;
 		
@@ -427,27 +640,27 @@ void cuda_forward_norm_layer(layer *current)
 			n_param->mean, n_param->group_size, n_param->nb_group, dim_offset, net->batch_size,
 			dim_offset*n_param->group_size, dim_offset*n_param->group_size);
 		
+		
 		dim3 threadsPerBlock(32, 8);
 		dim3 numBlocks((dim_offset*n_param->group_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
 				(n_param->nb_group*net->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
 		
 		net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_kernel<<<numBlocks,threadsPerBlock>>>(
-			current->output, current->input, n_param->gamma_gpu, n_param->beta_gpu, n_param->mean, n_param->var, net->length, 
-			net->batch_size, n_param->group_size, n_param->nb_group, current->output_dim[3], dim_offset, n_param->set_off);
+			current->output, current->input, l_gamma, l_beta, n_param->mean, n_param->var, net->length, 
+			net->batch_size, n_param->group_size, n_param->nb_group, nb_features, dim_offset);
 	}
 	
 	current->activation(current);
 	
 	if(!net->inference_only)
-		net->cu_inst.cu_auxil_fcts.cu_typed_memset_fct(current->delta_o, 0, flat_output_dim * net->batch_size);
+		net->cu_inst.cu_auxil_fcts.cu_typed_memset_fct(current->delta_o, 0, current->a_size);
 }
 
 
 void cuda_backward_norm_layer(layer *current)
 {
-	int i, j;
-	size_t dim_offset = 1;
-	float sum_dgamma = 0.0f, sum_dbeta = 0.0f;
+	int i;
+	size_t dim_offset = 1, nb_features;
 	
 	network* net = current->c_network;
 	n_param = (norm_param*)current->param;	
@@ -459,55 +672,44 @@ void cuda_backward_norm_layer(layer *current)
 	{
 		for(i = 0; i < 3; i++)
 			dim_offset *= current->output_dim[i];
+		nb_features = current->output_dim[3];
 		
-		cuda_put_table_FP32(n_param->gamma_gpu, n_param->gamma, n_param->nb_group);
-		cuda_put_table_FP32(n_param->beta_gpu, n_param->beta, n_param->nb_group);
+		cu_blocks = nb_features * net->batch_size;
 		
-		cu_blocks = n_param->nb_group*net->batch_size;
+		net->cu_inst.cu_norm_fcts.cu_reduce_norm_dbeta_conv_kernel<<<cu_blocks, 256>>>(
+			current->delta_o, n_param->d_beta, nb_features, dim_offset, net->batch_size, dim_offset);
 		
-		net->cu_inst.cu_norm_fcts.cu_reduce_group_mean_conv_kernel<<<cu_blocks, 256>>>(current->delta_o, 
-			n_param->d_beta_gpu, n_param->group_size, n_param->nb_group, dim_offset, net->batch_size, 1, 
-			dim_offset*n_param->group_size);
-			
-		net->cu_inst.cu_norm_fcts.cu_reduce_group_dgamma_conv_kernel<<<cu_blocks, 256>>>(current->input, current->delta_o,
-			n_param->d_gamma_gpu, n_param->var, n_param->mean, n_param->group_size, n_param->nb_group, dim_offset, net->batch_size,
-			dim_offset*n_param->group_size);
+		net->cu_inst.cu_norm_fcts.cu_reduce_group_dgamma_conv_kernel<<<cu_blocks, 256>>>(
+			current->input, current->delta_o, n_param->d_gamma, n_param->var, n_param->mean, 
+			n_param->group_size, n_param->nb_group, dim_offset, net->batch_size, dim_offset);
+		
+		cu_blocks = n_param->nb_group * net->batch_size;
+		
+		net->cu_inst.cu_norm_fcts.cu_reduce_norm_AB_kernel<<<cu_blocks, 256>>>(n_param->d_gamma, n_param->d_beta,
+			n_param->gamma, n_param->temp_A, n_param->temp_B, n_param->group_size, n_param->nb_group);
 		
 		dim3 threadsPerBlock(32, 8);
 		dim3 numBlocks((dim_offset*n_param->group_size + threadsPerBlock.x - 1) / threadsPerBlock.x,
 				(n_param->nb_group*net->batch_size + threadsPerBlock.y - 1) / threadsPerBlock.y);
 			
 		net->cu_inst.cu_norm_fcts.cu_group_normalization_conv_back_kernel<<<numBlocks, threadsPerBlock>>>(
-			current->input, current->delta_o, current->previous->delta_o, n_param->gamma_gpu, n_param->beta_gpu, 
-			n_param->d_gamma_gpu, n_param->d_beta_gpu, n_param->mean, n_param->var, net->length, net->batch_size, 
-			n_param->group_size, n_param->nb_group, current->output_dim[3], dim_offset, n_param->set_off);
+			current->input, current->delta_o, current->previous->delta_o, n_param->gamma, 
+			n_param->temp_A, n_param->temp_B, n_param->mean, n_param->var, net->length, net->batch_size, 
+			n_param->group_size, n_param->nb_group, current->output_dim[3], dim_offset);
 	}
 	
 	if(!current->frozen)
 	{
-		cuda_get_table_FP32(n_param->d_gamma_gpu, n_param->d_gamma, n_param->nb_group*net->batch_size);
-		cuda_get_table_FP32(n_param->d_beta_gpu, n_param->d_beta, n_param->nb_group*net->batch_size);
-	
-		for(j = 0; j < n_param->nb_group - n_param->set_off; j++)
-		{
-			sum_dgamma = 0.0f;
-			sum_dbeta = 0.0f;
-			for(i = 0; i < net->batch_size; i++)
-			{
-				sum_dgamma += n_param->d_gamma[i*n_param->nb_group + j];
-				sum_dbeta  += n_param->d_beta[i*n_param->nb_group + j];
-			}
-			n_param->gamma_update[j] = sum_dgamma;
-			n_param->beta_update[j] = sum_dbeta;
-		}
+		cu_blocks = nb_features;
+		net->cu_inst.cu_norm_fcts.cu_reduce_norm_param_grads_kernel<<<cu_blocks, 256>>>(
+			n_param->d_gamma, n_param->d_beta, n_param->gamma_grad, n_param->beta_grad, nb_features, net->batch_size);
 		
-		net->optim_update_fct(current, 0, 2*n_param->nb_group, 2*n_param->nb_group);
+		net->optim_update_fct_gpu(current, 0, 2*nb_features, 2*nb_features);
 		//No decay for gamma and beta
 	
 		if(current->wema_replace_signal > 0)
 		{
-			for(i = 0; i < 2*n_param->nb_group; i++)
-				current->FP32_weights[i] = current->ema_weights[i];
+			cudaMemcpy(current->FP32_weights, current->ema_weights, nb_features*2*sizeof(float), cudaMemcpyDeviceToDevice);
 			current->wema_replace_signal = 0;
 		}
 	}
@@ -519,5 +721,10 @@ void cuda_norm_define(layer *current)
 	current->forward = cuda_forward_norm_layer;
 	current->backprop = cuda_backward_norm_layer;
 }
+
+
+
+
+
 
 

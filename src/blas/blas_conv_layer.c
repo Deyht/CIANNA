@@ -100,7 +100,7 @@ void blas_forward_conv_layer(layer *current)
 		f_im2col_input = (float*)c_param->im2col_input + g * subdim_K*subdim_M;
 		f_output       = (float*)current->output       + g * subdim_M*subdim_N;
 				
-		if(net->is_inference == 1 && net->use_wema)
+		if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 			f_filters = current->ema_weights  + g * subdim_K*subdim_N;
 		else
 			f_filters = current->FP32_weights + g * subdim_K*subdim_N;
@@ -207,8 +207,11 @@ void blas_backward_conv_layer(layer *current)
 			/*out_size*/  current->prev_dim[0]    ,    current->prev_dim[1]    ,    current->prev_dim[2]    ,
 			nb_filters, chan_per_group_out, nb_regions_out, in_image_offset, in_channel_offset,
 			subdim_K*nb_regions_in, subdim_K*subdim_M, net->batch_size, 0);
-
+		
 		//####### Im2col_delta_o_T(M,K) x dw_rot_weights(K,N) #######
+		
+		if(current->previous->output_type == FLAT)
+			memset(c_param->temp_delta_o, 0, nb_groups*subdim_M*subdim_N*sizeof(float));
 		
 		for(g = 0; g < nb_groups; g++)
 		{
@@ -230,7 +233,7 @@ void blas_backward_conv_layer(layer *current)
 		
 		if(current->previous->output_type == FLAT)
 		{	
-			flat_dense(c_param->temp_delta_o, current->previous->delta_o, 0, nb_regions_in,
+			flat_dense_back(c_param->temp_delta_o, current->previous->delta_o, nb_regions_in,
 				(nb_regions_in * prev_nb_channels + 1), prev_nb_channels, net->batch_size,
 				(nb_regions_in * prev_nb_channels + 1) * net->batch_size);
 		}
@@ -248,8 +251,8 @@ void blas_backward_conv_layer(layer *current)
 		for(g = 0; g < nb_groups; g++)
 		{
 			f_im2col_input = (float*) c_param->im2col_input + g * subdim_K*subdim_M;
-			f_delta_o      = (float*) current->delta_o        + g * subdim_K*subdim_N;
-			f_gradient     = (float*) current->gradient       + g * subdim_M*subdim_N;
+			f_delta_o      = (float*) current->delta_o      + g * subdim_K*subdim_N;
+			f_gradient     = (float*) current->gradient     + g * subdim_M*subdim_N;
 			
 			cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, 
 				subdim_M, subdim_N, subdim_K, 1.0f, 

@@ -61,20 +61,22 @@ cnn.create_dataset("TEST" , size=10000, input=data_test, target=target_test)
 a_relu = cnn.relu(leaking=0.1, saturation=640000.0)
 
 def conv_res_block(nb_filters):
-	cnn.norm(group_size=4, activation=a_relu)
-	cnn.conv(f_size=i_ar([3,3]), nb_filters=nb_filters, nb_groups=4, stride=i_ar([1,1]), padding=i_ar([1,1]), activation="LIN")
-	cnn.norm(group_size=4, activation=a_relu)
 	cnn.conv(f_size=i_ar([3,3]), nb_filters=nb_filters, stride=i_ar([1,1]), padding=i_ar([1,1]), activation="LIN")
-	l_layer = cnn.merge(-1, -5, "ADD")
+	cnn.norm(group_size=nb_filters, activation="LIN")
+	cnn.conv(f_size=i_ar([1,1]), nb_filters=nb_filters*4, stride=i_ar([1,1]), padding=i_ar([0,0]), activation=a_relu)
+	cnn.grn()
+	cnn.conv(f_size=i_ar([1,1]), nb_filters=nb_filters, stride=i_ar([1,1]), padding=i_ar([0,0]), activation="LIN")
+	l_layer = cnn.merge(-1, -6, "ADD")
 	return l_layer
 
 
 #Used to load a saved network at a given iteration
-load_step = 0
+load_step = 2
 if(load_step > 0):
-	cnn.load("net_save/net0_s%04d.dat"%(load_step), load_step, bin=1)
+	cnn.load("optim_save/net_optim0_s%04d.dat"%(load_step), load_step, bin=1)
 else:
 	cnn.conv(f_size=i_ar([5,5]), nb_filters=16 , padding=i_ar([2,2]), activation="LIN")
+	cnn.norm(group_size=4, activation=a_relu)
 	conv_res_block(16)
 	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
 	cnn.norm(group_size=4, activation=a_relu)
@@ -92,8 +94,8 @@ else:
 #cnn.print_arch_tex("./arch/", "arch", activation=1)
 
 
-cnn.train(nb_iter=10, learning_rate=0.0002, weight_decay=0.0001, decoupled_wdecay=1, wema_rate=0.999, confmat=1, save_every=10, save_optim_every=0, save_bin=1, shuffle_every=0)
-#cnn.perf_eval()
+cnn.train(nb_iter=1, learning_rate=0.0002, weight_decay=0.01, decoupled_wdecay=1, wema_rate=0.999, confmat=1, save_every=1, save_optim_every=1, save_bin=1)
+cnn.perf_eval()
 
 pred = cnn.forward(drop_mode="AVG_MODEL", no_error=0, saving=1, return_output=1)
 print (pred)

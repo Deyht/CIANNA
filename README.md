@@ -29,6 +29,13 @@
 
 &nbsp;
 
+**Development Update 29/04/2026:**
+Experimental branch updated with the latest dev branch content (1.1.0.1_dev).
+* Fix a few issues in the regarding dense to conv branching
+* NORM layer has been rework to have one (gamma,beta) pair for each output channel, instead of one per group.
+* Add a new GRN layer allowing to build residual blocks similar to ConvNext v2
+* NORM and GRN layer CUDA versions are now fully on GPU, improving performances (especially latency).
+
 **Development Update 19/03/2026:**
 
 This branch aims to accumulate new functionalities with a reasonable level of maturity in preparation for the next CIANNA release.  
@@ -40,7 +47,7 @@ Highlight of new features (check the patch_note.txt file for a detailed view):
 * Add merge layers (Add and concatenate) and rework gradient flow. Enable the creation of residual blocks and U-net style architectures.
 * Add Weight Exponential Moving Average (WEMA) support.
 * Rework model saving to keep optimizer and ema states. Enable clean model training restart from a save state.
-* The couv layer is now a grouped convolution. Classical convolution corresponds to a single group. Also enable depth-wise convolution.
+* The conv layer is now a grouped convolution. Classical convolution corresponds to a single group. Also enable depth-wise convolution.
 * The forward function now returns a numpy array with the network prediction directly (writing of a prediction result file is still possible, but optional).
 * Many QOL changes
 

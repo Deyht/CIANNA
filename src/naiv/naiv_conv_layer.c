@@ -247,7 +247,7 @@ void naiv_forward_conv_layer(layer *current)
 		f_im2col_input = (float*)c_param->im2col_input + g * subdim_K*subdim_M;
 		f_output       = (float*)current->output       + g * subdim_M*subdim_N;
 				
-		if(net->is_inference == 1 && net->use_wema)
+		if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 			f_filters = current->ema_weights  + g * subdim_K*subdim_N;
 		else
 			f_filters = current->FP32_weights + g * subdim_K*subdim_N;
@@ -368,6 +368,9 @@ void naiv_backward_conv_layer(layer *current)
 		
 		//####### Im2col_delta_o_T(M,K) x dw_rot_weights(K,N) #######
 		
+		if(current->previous->output_type == FLAT)
+			memset(c_param->temp_delta_o, 0, nb_groups*subdim_M*subdim_N*sizeof(float));
+		
 		for(g = 0; g < nb_groups; g++)
 		{
 			f_im2col_delta_o  = (float*) c_param->im2col_delta_o  + g * subdim_K*subdim_M;
@@ -397,7 +400,7 @@ void naiv_backward_conv_layer(layer *current)
 		
 		if(current->previous->output_type == FLAT)
 		{	
-			flat_dense(c_param->temp_delta_o, current->previous->delta_o, 0, nb_regions_in,
+			flat_dense_back(c_param->temp_delta_o, current->previous->delta_o, nb_regions_in,
 				(nb_regions_in * prev_nb_channels + 1), prev_nb_channels, batch_size,
 				(nb_regions_in * prev_nb_channels + 1) * batch_size);
 		}

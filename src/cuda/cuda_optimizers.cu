@@ -334,9 +334,9 @@ void cuda_free_rmsprop_var(layer *current)
 #define typed_cuda_optimizer_fct_association(name)																								\
 void typed_cuda_optimizer_fct_association_##name(network *net)																					\
 {																																				\
-	net->cu_inst.cu_optimizer_fcts.sgd_fct = cuda_update_weights_sgd_kernel_##name;																\
-	net->cu_inst.cu_optimizer_fcts.adam_fct = cuda_update_weights_adam_kernel_##name;															\
-	net->cu_inst.cu_optimizer_fcts.rmsprop_fct = cuda_update_weights_rmsprop_kernel_##name;														\
+	net->cu_inst.cu_optimizer_fcts.sgd_fct          = cuda_update_weights_sgd_kernel_##name;													\
+	net->cu_inst.cu_optimizer_fcts.adam_fct         = cuda_update_weights_adam_kernel_##name;													\
+	net->cu_inst.cu_optimizer_fcts.rmsprop_fct      = cuda_update_weights_rmsprop_kernel_##name;												\
 }
 
 

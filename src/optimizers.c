@@ -697,7 +697,7 @@ int load_rmsprop_bin_config(FILE *f, network *net, int override)
 			return 0;
 	
 	if(net->optimizer_param == NULL)
-		net->optimizer_param = (rmsprop_param*) malloc(sizeof(rmsprop_param));		
+		net->optimizer_param = (rmsprop_param*) malloc(sizeof(rmsprop_param));
 	rmsprop_param *o_param = (rmsprop_param*)net->optimizer_param;
 	
 	fread(&alpha, sizeof(float), 1, f);
@@ -1037,7 +1037,7 @@ int fread_optim_save_state(FILE *f, network *net, int f_bin, int silent)
 				net->optimizer_param = NULL;
 			}
 			set_optimizer_param_from_string(net, optim_config_string);
-		}	
+		}
 	}
 	
 	return optim_save_format;
@@ -1058,7 +1058,7 @@ void free_optimizer_var(layer *current)
 		case(RMS_PROP):
 			free_rmsprop_var(current);
 			break;
-	}	
+	}
 }
 
 

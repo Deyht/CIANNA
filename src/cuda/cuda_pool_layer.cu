@@ -133,7 +133,7 @@ __global__ void avg_pooling_kernel_##name																										\
 	int k = blockIdx.y*blockDim.y + threadIdx.y;																								\
 	int x, y, z, o_pos[3], i_pos[3]; 																											\
 	double r_avg = 0.0f;																														\
-	int sum_elem = 0;																															\
+	size_t sum_elem = 0;																														\
 																																				\
 	type* input  = (type*) i_input;																												\
 	type* output = (type*) i_output;																											\
@@ -171,7 +171,7 @@ __global__ void avg_pooling_kernel_##name																										\
 			}																																	\
 		}																																		\
 	}																																			\
-	output[i] = (type) (r_avg/(sum_elem));																										\
+	output[i] = (type) (r_avg/sum_elem);																										\
 }
 
 #define deltah_max_pool_cont(name, type)																										\

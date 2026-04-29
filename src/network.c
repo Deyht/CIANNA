@@ -63,13 +63,13 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
                   ...:^~!?JY5PB~                                                                                             \n\n");
     
 	printf("#######################################################################\n\
-     CIANNA V-1.1.0 /!\\ experimental build /!\\ (04/2026), by D.Cornu\n\
+     CIANNA V-1.1.0.1 /!\\ EXPERIMENTAL build /!\\ (04/2026), by D.Cornu\n\
 #######################################################################\n\n");
 	}
 	
 	char string_comp[50]; 
 	int comp_int = C_CUDA;
-	#if defined _OPENMP || BLAS
+	#if defined _OPENMP || HAVE_OPENBLAS == 1
 	int nb_proc_max, nb_threads_current;
 	#endif
 	#ifdef CUDA
@@ -172,7 +172,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
 	}
 	#endif
 	
-	#ifndef BLAS
+	#if !defined BLAS || BLAS == 0
 	if(comp_int == C_BLAS)
 	{
 		printf("\n ERROR: compute method set to BLAS while CIANNA was not compiled for it.\n");
@@ -201,7 +201,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
 	}
 	#endif
 	
-	#ifdef HAVE_OPENBLAS
+	#if HAVE_OPENBLAS == 1
 	nb_proc_max = openblas_get_num_procs();
 	nb_threads_current = openblas_get_num_threads();
 	
@@ -213,7 +213,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
 		printf(" OPENBLAS_MAX_THREADS set to %d  (half detected threads)\n", openblas_get_num_threads());
 		printf(" We recommend investigating manual configuration through environment variables\n\n");
 	}
-	#elif BLAS
+	#elif BLAS == 1
 	printf(" WARNING: the BLAS library in use is not OpenBLAS.\n");
 	printf(" Using the default number of threads can result in low performances.\n");
 	printf(" We recommend investigating manual configuration through environment variables\n\n");
@@ -248,7 +248,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
 	net->lr_decay = 0.0f;
 	net->weight_decay = 0.0f;
 	net->use_wema = u_wema;
-	net->wema_rate = 0.0f;	
+	net->wema_rate = 0.0f;
 	net->optimizer_param = NULL;
 	
 	net->compute_method = comp_int;
@@ -1418,13 +1418,21 @@ void save_network(network *net, const char *filename, int save_optim_state, int 
 				lrn_save(f, net->net_layers[i], f_bin);
 				break;
 			
+			case GRN:
+				grn_save(f, net->net_layers[i], save_optim_state, f_bin);
+				break;
+			
 			case MERGE:
 				merge_save(f, net->net_layers[i], f_bin);
 				break;
 				
 			case DENSE:
-			default:
 				dense_save(f, net->net_layers[i], save_optim_state, f_bin);
+				break;
+				
+			default:
+				printf("\n ERROR: Undefined saving function for the current layer, %d", i);
+				exit(1);
 				break;
 		}
 	}
@@ -1463,7 +1471,7 @@ void load_network(network *net, const char *filename, int iter, int nb_layers, i
 	{
 		if(net->inference_only)
 		{
-			printf("\n ERROR: cannot load a complete optimizer save state with inference_only set to 1 !");
+			printf("\n ERROR: cannot load a complete optimizer save state with inference_only set to 1!\n");
 			exit(EXIT_FAILURE);
 		}
 		if(nb_skip_layers > 0 || nb_layers > 0)
@@ -1517,6 +1525,7 @@ void load_network(network *net, const char *filename, int iter, int nb_layers, i
 				case 'N':
 				case 'L':
 				case 'M':
+				case 'G':
 					if(net->skip_in_dims[3] != temp_dim[3])
 					{
 						printf("\n ERROR: Incompatible input dimension (depth) when loading conv formated layer!\n");
@@ -1559,6 +1568,10 @@ void load_network(network *net, const char *filename, int iter, int nb_layers, i
 			
 			case 'L':
 				lrn_load(net, f, f_bin, skip_layer);
+				break;
+			
+			case 'G':
+				grn_load(net, f, optim_save_format, f_bin, skip_layer);
 				break;
 			
 			case 'M':

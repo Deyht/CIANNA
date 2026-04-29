@@ -142,8 +142,8 @@ void free_pool(layer *current);
 
 
 //norm_layer.c
-int norm_create(network *net, layer *previous, const char *norm_type, const char *activation, int group_size, int set_off, 
-	FILE *f_load, int load_optim_state, int f_bin);
+int norm_create(network *net, layer *previous, const char *norm_type, const char *activation, 
+	int group_size, float gamme_init, FILE *f_load, int load_optim_state, int f_bin);
 void norm_save(FILE *f, layer *current, int save_optim_state, int f_bin);
 void norm_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer);
 void free_norm(layer *current);
@@ -154,6 +154,13 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 void lrn_save(FILE *f, layer *current, int f_bin);
 void lrn_load(network *net, FILE *f, int f_bin, int skip_layer);
 void free_lrn(layer *current);
+
+
+//grn_layer.c
+int grn_create(network *net, layer *previous, const char *activation, int residual, float gamma_init, FILE *f_load, int load_optim_state, int f_bin);
+void grn_save(FILE *f, layer *current, int save_optim_state, int f_bin);
+void grn_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer);
+void free_grn(layer *current);
 
 
 //merge_layer.c
@@ -188,6 +195,7 @@ void naiv_conv_define(layer *current);
 
 //naiv_dense_layer.c
 void flat_dense(void *in, void *out, float bias, int map_size, int flatten_size, int nb_map, int batch_size, int size);
+void flat_dense_back(void *in, void *out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 void reroll_batch(void *in, void *out, int map_size, int flatten_size, int nb_map, int batch_size, int size);
 void dropout_select_dense(float *mask, int biased_dim, size_t size, float drop_rate);
 void dropout_apply_dense(void *table, float *mask, size_t size);
@@ -196,11 +204,17 @@ void naiv_dense_define(layer *current);
 
 //naiv_norm_layer.c
 //most functions are private as not required outside the norm layer file
+void reduce_group_mean_conv_fct(float *input, float *group_mean,
+	size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, size_t sum_div);
 void norm_define(layer *current);
 
 //naiv_lrn_layer.c
 //most functions are private as not required outside the lrn layer file
 void lrn_define(layer *current);
+
+//naiv_lrn_layer.c
+//most functions are private as not required outside the grn layer file
+void grn_define(layer *current);
 
 //naiv_merge_layer.c
 //most functions are private as not required outside the merge layer file
@@ -238,8 +252,8 @@ void blas_conv_define(layer *current);
 //######################################
 
 #ifdef comp_CUDA
-//When compiled by nvcc, variables and global functions must be exported as regular C prototypes
-//so the act as regular C prototypes when linked by gcc
+//When compiled by nvcc, variables and global functions must be exported as 
+//regular C prototypes so they can be linked by gcc
 extern "C"
 {
 //cuda_auxil.cu
@@ -358,6 +372,13 @@ void cuda_lrn_init(network *net);
 size_t cuda_convert_lrn_layer(layer *current);
 void cuda_free_lrn(layer *current);
 void cuda_lrn_define(layer *current);
+
+
+//cuda_grn_layer.cu
+void cuda_grn_init(network *net);
+size_t cuda_convert_grn_layer(layer *current);
+void cuda_free_grn(layer *current);
+void cuda_grn_define(layer *current);
 
 
 //cuda_merge_layer.cu

@@ -56,6 +56,27 @@ void flat_dense(void *in, void *out, float bias, int map_size, int flatten_size,
 }
 
 
+void flat_dense_back(void *in, void *out, int map_size, int flatten_size, int nb_map, int batch_size, int size)
+{
+	int i;
+	int map_id, image_id, pos;
+	
+	float *f_in = (float*) in;
+	float *f_out = (float*) out;
+	
+	#pragma omp parallel for private(image_id, map_id, pos) schedule(guided,4)
+	for(i = 0; i < size; i++)
+	{
+		image_id = i / flatten_size;
+		map_id = (i % flatten_size)/map_size;
+		pos = (i % flatten_size)%map_size;
+		
+		if(map_id < nb_map)
+			f_out[i] += f_in[map_id*(map_size*batch_size) + image_id*map_size + pos];
+	}
+}
+
+
 void reroll_batch(void *in, void *out, int map_size, int flatten_size, int nb_map, int batch_size, int size)
 {
 	int i;
@@ -150,7 +171,7 @@ void naiv_forward_dense_layer(layer *current)
 	
 	ref_input = (float*)current->input;
 	
-	if(net->is_inference == 1 && net->use_wema)
+	if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 		f_weights = (void*) current->ema_weights;
 	else
 		f_weights = (void*) current->weights;

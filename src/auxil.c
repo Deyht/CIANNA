@@ -348,6 +348,10 @@ void perf_eval_display(network *net)
 				layer_type_char = 'L';
 				break;
 			
+			case GRN:
+				layer_type_char = 'G';
+				break;
+			
 			case MERGE:
 				layer_type_char = 'M';
 				break;
@@ -489,7 +493,6 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 				if(l_size) fprintf(f_tex, "& N.Gr. %d ", n_param->nb_group);
 				if(l_f_size) fprintf(f_tex, "& Gr.Size %d ", n_param->group_size);
 				if(l_stride) fprintf(f_tex, "& ");
-				if(l_padding) fprintf(f_tex, "& Off %d ", n_param->set_off);
 				if(l_in_padding) fprintf(f_tex, "& ");
 				if(l_out_size)
 				{

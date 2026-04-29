@@ -123,7 +123,10 @@ int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, s
 				printf("\n ERROR: dense to conv input_shape mismatch.\n\n");
 				exit(EXIT_FAILURE);
 			}
-			current->prev_dim = in_shape;
+			//in shape vector might be destroyed especially if called from the python inteface. Must be copied in a stable memory space.
+			current->prev_dim = (int*) calloc(4,sizeof(int));
+			for(k = 0; k < 3; k++)
+				current->prev_dim[k] = in_shape[k];
 		}
 		current->input = previous->output;
 	}
@@ -612,6 +615,8 @@ void free_conv(layer *current)
 	c_param = (conv_param*) current->param;
 	yolo_param *y_param = NULL;
 	
+	if(current->previous != NULL && current->previous->output_type == FLAT)
+		free(current->prev_dim);
 	free(current->output_dim);
 	free(c_param->f_size);
 	free(c_param->stride);

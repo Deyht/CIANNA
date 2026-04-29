@@ -32,8 +32,8 @@ defines_variables="-D MAX_LAYERS_NB=400 -D MAX_NETWORKS_NB=10 -D CUDA_THREADS_PE
 gcc_compile_dir="/usr/bin/gcc"
 openblas_include_dir="/opt/OpenBLAS/include/"
 openblas_lib_dir="/opt/OpenBLAS/lib"
-nvcc_path="/usr/local/cuda-13.2/bin/nvcc"
-cuda_lib_path="/usr/local/cuda-13.2/lib64"
+nvcc_path="/usr/local/cuda-13.0/bin/nvcc"
+cuda_lib_path="/usr/local/cuda-13.0/lib64"
 compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -Wno-uninitialized -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
 
 ######################################################
@@ -43,10 +43,10 @@ for i in $*
 do
 	if [ $i  = "CUDA" ]
 	then
-		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart -arch=sm_120 -D GEN_AMPERE"
+		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart -arch=sm_86 -D GEN_AMPERE"
 		arg="$arg -D CUDA -lstdc++ -lcublas -lcudart -lcurand -L $cuda_lib_path"
-		cuda_src="cuda_auxil.cu cuda_conv_layer.cu cuda_dense_layer.cu cuda_pool_layer.cu cuda_norm_layer.cu cuda_lrn_layer.cu cuda_merge_layer.cu cuda_activ_functions.cu cuda_optimizers.cu"
-		cuda_obj="cuda/cuda_auxil.o cuda/cuda_conv_layer.o cuda/cuda_dense_layer.o cuda/cuda_pool_layer.o cuda/cuda_norm_layer.o cuda/cuda_lrn_layer.o cuda/cuda_merge_layer.o cuda/cuda_activ_functions.o cuda/cuda_optimizers.o"
+		cuda_src="cuda_auxil.cu cuda_conv_layer.cu cuda_dense_layer.cu cuda_pool_layer.cu cuda_norm_layer.cu cuda_lrn_layer.cu cuda_grn_layer.cu cuda_merge_layer.cu cuda_activ_functions.cu cuda_optimizers.cu"
+		cuda_obj="cuda/cuda_auxil.o cuda/cuda_conv_layer.o cuda/cuda_dense_layer.o cuda/cuda_pool_layer.o cuda/cuda_norm_layer.o cuda/cuda_lrn_layer.o cuda/cuda_grn_layer.o cuda/cuda_merge_layer.o cuda/cuda_activ_functions.o cuda/cuda_optimizers.o"
 		USE_CUDA=1
 		export USE_CUDA=1
 		echo USE_CUDA
@@ -61,7 +61,7 @@ do
 
 	if [ $i = "BLAS" ]
 	then
-		arg="$arg -D BLAS -lopenblas -I $openblas_include_dir -L $openblas_lib_dir"
+		arg="$arg -D BLAS=1 -lopenblas -I $openblas_include_dir -L $openblas_lib_dir"
 		blas_src="blas_dense_layer.c blas_conv_layer.c" 
 		blas_obj="blas/blas_dense_layer.o blas/blas_conv_layer.o"
 		USE_BLAS=1
@@ -91,8 +91,8 @@ then
 cd ./cuda
 $nvcc_path --compiler-bindir $gcc_compile_dir -Xcompiler "$compile_opt" \
 -O3 -c $cuda_src $cuda_arg $defines_variables -lm
-echo "#####  End of CUDA compilation  #####"
 cd ..
+echo "#####  End of CUDA compilation  #####"
 fi
 
 if [ $USE_BLAS ]
@@ -107,17 +107,17 @@ fi
 
 cd ./naiv
 $gcc_compile_dir $compile_opt -std=c99 -c \
-../defs.h ../prototypes.h ../structs.h naiv_dense_layer.c naiv_conv_layer.c naiv_pool_layer.c naiv_norm_layer.c naiv_lrn_layer.c naiv_merge_layer.c -lm $arg $defines_variables
+../defs.h ../prototypes.h ../structs.h naiv_dense_layer.c naiv_conv_layer.c naiv_pool_layer.c naiv_norm_layer.c naiv_lrn_layer.c naiv_grn_layer.c naiv_merge_layer.c -lm $arg $defines_variables
 cd ..
 
 #compiling all the program
 $gcc_compile_dir $compile_opt -std=c99 -c \
-defs.h prototypes.h structs.h main.c conv_layer.c dense_layer.c pool_layer.c norm_layer.c lrn_layer.c merge_layer.c activ_functions.c optimizers.c weights_initializers.c vars.c auxil.c dataset.c network.c -lm $arg $defines_variables
+defs.h prototypes.h structs.h main.c conv_layer.c dense_layer.c pool_layer.c norm_layer.c lrn_layer.c grn_layer.c merge_layer.c activ_functions.c optimizers.c weights_initializers.c vars.c auxil.c dataset.c network.c -lm $arg $defines_variables
 echo "#####  End of main program compilation  #####"
 
 #linking the main program (with cuda if needed)
 $gcc_compile_dir $compile_opt -std=c99 -o \
-../main main.o $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o norm_layer.o lrn_layer.o merge_layer.o activ_functions.o optimizers.o weights_initializers.o vars.o auxil.o dataset.o network.o naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o naiv/naiv_norm_layer.o naiv/naiv_lrn_layer.o naiv/naiv_merge_layer.o -lm $arg $defines_variables
+../main main.o $cuda_obj $blas_obj conv_layer.o dense_layer.o pool_layer.o norm_layer.o lrn_layer.o grn_layer.o merge_layer.o activ_functions.o optimizers.o weights_initializers.o vars.o auxil.o dataset.o network.o naiv/naiv_dense_layer.o naiv/naiv_conv_layer.o naiv/naiv_pool_layer.o naiv/naiv_norm_layer.o naiv/naiv_lrn_layer.o naiv/naiv_grn_layer.o naiv/naiv_merge_layer.o -lm $arg $defines_variables
 echo "#####  End of link edition and executable creation  #####"
 
 

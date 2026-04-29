@@ -1,5 +1,23 @@
 ********************************************
-===== V-1.1.0_dev =====
+===== V-1.1.0.1_exp =====
+
+Updated based on the latest changes in the DEV branch.
+
+- Add manual initial setup of NORM layer gamma (std) value. Setting gamma to 0 in the last norm layer of a residual block ensure initial identity operation.
+- The NORM layer is changed to have one gamma and beta parameter per output channel (instead of one per group). This is done do better align with classical
+  layer norm description and restor expresivite at the normalization output. We also remove the set_off parameter as it has not proven usefull until now.
+- Fix an error introduced in dense to conv linking during last refactor. Also decompose dense to conv forward and backward functions better to ensure that
+  gradient is properly accumulated to comply with layer merging expectation.
+- Add a new Global Response Normalization (GRN) layer following ConvNext V2 (Woo et al. 2023) definition. Each channel is cross-channel L2 normalized. 
+  Each channel is then scaled with learnable parameters like a in NORM layer (gamma*x + beta). The GRN is also redisual by default, adding the original
+  input to the renormalized-scaled output (this is user-controled, so it can be de-activated with a dedicated keyword).
+- All normalization layers (NORM and GRN) CUDA implementation now relies on end-to-end GPU compute. Previous implementation was doing some reduction
+  steps on the host CPU and the CPU version of the optimizer was used. This was causing unrequired host-device synchronization hurting latency.
+- Fix BLAS linking in the latest Cmake install so it now support a wider variety of BLAS implementation. As a side effect, this allows the installer
+  to use the native BLAS on Mac OS (tested on an M2 equiped device).
+
+
+===== V-1.1.0_exp =====
 
 Branch and empty the patch for the new DEV branch.
 Initial state of the branch is based on Stable V-1.0.1.1 (commit a24c040)
@@ -69,37 +87,6 @@ Initial state of the branch is based on Stable V-1.0.1.1 (commit a24c040)
 - Fix an error in free layer that was causing crash when freeing networks.
 - Also include the new makefile installation from the stable version (updated for the experimental version)
 
-#######  To do  #######
-
-Urgent
-
-Code arrangement
-
-- P0 modularize optimizer.c/.cu code
-- Remove as many switch statements as possible through function pointers (e.g., save, load, free layer functions).
-- Rework the compute error and the predict functions
-
-Fix known errors / unexpected behaviors
-
-- Review all binary writes and reads and base them on fixed Byte count types (using e.g <inttypes.h>)
-- Add back dropout to all layers and add drop_feature to spatial layers.
-
-New functionalities / reworks (EASY)
-
-- Add manual initial setup of NORM layer gamma (mean) value. Setting gamma to 0 in the last norm layer of a residual block ensure initial identity operation.
-- Work specifically on DENSE/CONV branching in order to add N dense elements directly to the flat im2col representation instead of full channels.
-- Merge with any number of layer.
-- Generalize Norm layer and LRN layer for dense ? Add back a specific implementation for Batch norm or generalize the current norm implementation ?
-- Add GRN layer and learnable scaling layer (or include partial freeze in existing norm layer (freeze offset ?) )
-- Overlapping pool kernels (set a stride)
-
-New functionalities / reworks (HARD)
-
-- Rework input and output construction to authorize more complex architectures (multiple outputs and multiple inputs, likely need to treat inputs as layers)
-- Add “REORDER” / “Shuffle?” layer for non-destructive layer output reshape
-- Investigate network stochastic depth through “drop path.”
-- Investigate dilated convolution
-- Investigate inception-like block structures
 
 
 

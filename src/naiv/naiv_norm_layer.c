@@ -27,117 +27,123 @@ static norm_param *n_param;
 // Public are in "prototypes.h"
 
 // Private prototypes
-int id_to_conv_fmt(int id, int block_id, int group_size, int nb_group, int flat_a_size, int batch_size);
-void reduce_group_mean_conv_fct(float *input, float *group_mean,
-	int group_size, int nb_group, int flat_a_size, int batch_size, int sum_div);
 void reduce_group_var_conv_fct(float *input, float *group_var, float *group_mean,
-	int group_size, int nb_group, int flat_a_size, int batch_size, int sum_div);
+	size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, size_t sum_div);
 void reduce_group_dgamma_conv_fct(float *input, float *delta_output, float *d_gamma,
-	float *group_var, float *group_mean, int group_size, int nb_group, int flat_a_size, int batch_size);
+	float *group_var, float *group_mean, size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size);
 void group_normalization_conv_fct(float *output, float *input, float *gamma, float *beta, float *group_mean, float *group_var,
-	int b_length, int b_size, int group_size, int nb_group, int nb_filters, int flat_a_size, int set_off);
-void group_normalization_conv_back_fct(float *input, float *delta_output, float *delta_input, float *gamma, float *beta, 
-	float *d_gamma, float * d_beta, float *group_mean, float *group_var, int b_length, int b_size, int group_size,
-	int nb_group, int nb_filters, int flat_a_size, int set_off);
-
-
-int id_to_conv_fmt(int id, int block_id, int group_size, int nb_group, int flat_a_size, int batch_size)
-{
-	int group_id = block_id % nb_group;
-	int batch_id = block_id / nb_group;
-	
-	int in_group_id = id / flat_a_size;
-	int map_pos_id = id % flat_a_size;
-	
-	return batch_id*flat_a_size + (group_id*group_size + in_group_id)*flat_a_size*batch_size + map_pos_id;
-}
+	size_t b_length, size_t b_size, size_t group_size, size_t nb_group, size_t flat_a_size);
+void group_normalization_conv_back_fct(float *input, float *delta_output, float *delta_input, float *gamma, 
+	float *A, float *B, float *group_mean, float *group_var, size_t b_length, size_t b_size, size_t group_size, 
+	size_t nb_group, size_t flat_a_size);
 
 
 void reduce_group_mean_conv_fct(float *input, float *group_mean,
-	int group_size, int nb_group, int flat_a_size, int batch_size, int sum_div)
+	size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, size_t sum_div)
 {
-	int i, j;
+	size_t i, j;
+	size_t group_id, batch_id, in_group_id, map_pos_id, conv_id;
 	double sum;
 	
-	#pragma omp parallel for private(j, sum) schedule(guided,2)
-	for(i = 0; i < nb_group*batch_size; i++)
+	#pragma omp parallel for private(j, group_id, batch_id, in_group_id, map_pos_id, conv_id, sum) schedule(guided,2)
+	for(i = 0; i < (size_t)(nb_group*batch_size); i++)
 	{
+		group_id = i % nb_group;
+		batch_id = i / nb_group;
+
 		sum = 0.0;
 		for(j = 0; j < group_size*flat_a_size; j++)
 		{
-			sum += input[id_to_conv_fmt(j, i, group_size, nb_group, flat_a_size, batch_size)];
+			in_group_id = j / flat_a_size;
+			map_pos_id  = j % flat_a_size;
+			conv_id     =  batch_id*flat_a_size + (group_id*group_size + in_group_id)*flat_a_size*batch_size + map_pos_id;
+		
+			sum += input[conv_id];
 		}
-		group_mean[i] = sum/(sum_div);
+		group_mean[i] = sum/sum_div;
 	}
 }
 
 
 void reduce_group_var_conv_fct(float *input, float *group_var, float *group_mean,
-	int group_size, int nb_group, int flat_a_size, int batch_size, int sum_div)
+	size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size, size_t sum_div)
 {
-	int i, j;
+	size_t i, j;
+	size_t group_id, batch_id, in_group_id, map_pos_id, conv_id;
 	float l_val;
 	double sum;
 	
-	#pragma omp parallel for private(j, l_val, sum) schedule(guided,2)
+	#pragma omp parallel for private(j, group_id, batch_id, in_group_id, map_pos_id, conv_id, l_val, sum) schedule(guided,2)
 	for(i = 0; i < nb_group*batch_size; i++)
 	{
+		group_id = i % nb_group;
+		batch_id = i / nb_group;
+		
 		sum = 0.0;
 		for(j = 0; j < group_size*flat_a_size; j++)
 		{
-			l_val = input[id_to_conv_fmt(j, i, group_size, nb_group, flat_a_size, batch_size)];
+			in_group_id = j / flat_a_size;
+			map_pos_id  = j % flat_a_size;
+			conv_id     =  batch_id*flat_a_size + (group_id*group_size + in_group_id)*flat_a_size*batch_size + map_pos_id;
+			
+			l_val = input[conv_id];
 			sum += (l_val - group_mean[i])*(l_val - group_mean[i]);
 		}
-		group_var[i] = sum/(sum_div);
+		group_var[i] = sum/sum_div;
 	}
 }
 
 
 void reduce_group_dgamma_conv_fct(float *input, float *delta_output, float *d_gamma,
-	float *group_var, float *group_mean, int group_size, int nb_group, int flat_a_size, int batch_size)
+	float *group_var, float *group_mean, size_t group_size, size_t nb_group, size_t flat_a_size, size_t batch_size)
 {	
-	int i, j;
+	size_t i, j;
 	float eps = 0.000001f;
+	size_t conv_id, feature_id, batch_id, group_id, group_pos;
+	size_t nb_features = group_size * nb_group;
 	double sum;
 	
-	#pragma omp parallel for private(j, sum) schedule(guided,2)
-	for(i = 0; i < nb_group*batch_size; i++)
+	#pragma omp parallel for private(j, conv_id, feature_id, batch_id, group_id, group_pos, sum) schedule(guided,2)
+	for(i = 0; i < nb_features*batch_size; i++)
 	{
+		feature_id = i % nb_features;
+		batch_id   = i / nb_features;
+		group_id   = feature_id/group_size;
+		group_pos  = batch_id * nb_group + group_id;
+		conv_id    = batch_id * flat_a_size + feature_id * flat_a_size * batch_size;
+	
 		sum = 0.0;
-		for(j = 0; j < group_size*flat_a_size; j++)
-		{
-			sum += delta_output[id_to_conv_fmt(j, i, group_size, nb_group, flat_a_size, batch_size)]
-				* (input[id_to_conv_fmt(j, i, group_size, nb_group, flat_a_size, batch_size)] - group_mean[i]);
-		}
-		d_gamma[i] = sum*(1.0f/sqrt(group_var[i]+eps));
+		for(j = 0; j < flat_a_size; j++)
+			sum += delta_output[conv_id + j] * (input[conv_id + j] - group_mean[group_pos]);
+		d_gamma[i] = sum*(1.0f/sqrt(group_var[group_pos]+eps));
 	}
 }
 
 
 void group_normalization_conv_fct(float *output, float *input, float *gamma, float *beta, float *group_mean, float *group_var,
-	int b_length, int b_size, int group_size, int nb_group, int nb_filters, int flat_a_size, int set_off)
+	size_t b_length, size_t b_size, size_t group_size, size_t nb_group, size_t flat_a_size)
 {
 	/* Could be optimized with advanced multi-thread reduction */
-	int i, j;
+	size_t i, j;
 	float l_val, eps = 0.000001f;
 	float mean = 0.0f, var = 0.0f;
-	int filter_offset = flat_a_size*b_size;
-	int group_id, batch_id;
-	int in_group_id, map_pos_id, conv_id;
+	size_t filter_offset = flat_a_size*b_size;
+	size_t group_id, batch_id, in_group_id, map_pos_id, feature_id, conv_id;
 	
-	#pragma omp parallel for private(i, j, group_id, batch_id, in_group_id, map_pos_id, conv_id, \
-		mean, var, l_val) schedule(guided,2)
+	#pragma omp parallel for private(i, group_id, batch_id, in_group_id, map_pos_id,\
+		 feature_id, conv_id, mean, var, l_val) schedule(guided,2)
 	for(j = 0; j < nb_group*b_size; j++)
 	{
+		group_id = j % nb_group;
+		batch_id = j / nb_group;
+		
 		for(i = 0; i < flat_a_size*group_size; i++)
 		{
-			group_id = j % nb_group;
-			batch_id = j / nb_group;
 			
 			in_group_id = i / flat_a_size;
-			map_pos_id = i % flat_a_size;
-			
-			conv_id = batch_id*flat_a_size + (group_id*group_size + in_group_id)*filter_offset + map_pos_id;
+			map_pos_id  = i % flat_a_size;
+			feature_id  = group_id * group_size + in_group_id;
+			conv_id     = batch_id * flat_a_size + (group_id * group_size + in_group_id) * filter_offset + map_pos_id;
 			
 			if(batch_id < b_length)
 			{
@@ -145,10 +151,7 @@ void group_normalization_conv_fct(float *output, float *input, float *gamma, flo
 				var  = group_var[batch_id*nb_group + group_id];
 				
 				l_val = input[conv_id];
-				if(group_id < nb_group - set_off)
-					output[conv_id] = (gamma[group_id]*((l_val - mean)/sqrt(var + eps)) + beta[group_id]);
-				else
-					output[conv_id] = l_val;
+				output[conv_id] = (gamma[feature_id]*((l_val - mean)/sqrt(var + eps)) + beta[feature_id]);
 			}
 			else
 				output[conv_id] = 0.0f;
@@ -158,48 +161,42 @@ void group_normalization_conv_fct(float *output, float *input, float *gamma, flo
 
 
 void group_normalization_conv_back_fct(
-	float *input, float *delta_output, float *delta_input, float *gamma, float *beta, float *d_gamma, float * d_beta, float *group_mean,
-	float *group_var, int b_length, int b_size, int group_size, int nb_group, int nb_filters, int flat_a_size, int set_off)
+	float *input, float *delta_output, float *delta_input, float *gamma, float *A, float *B, float *group_mean,
+	float *group_var, size_t b_length, size_t b_size, size_t group_size, size_t nb_group, size_t flat_a_size)
 {
-	int i, j;
+	size_t i, j;
 
 	float eps = 0.000001f;
 	float mean = 0.0f, var = 0.0f;
-	float l_d_gamma, l_d_beta;
-	int filter_offset = flat_a_size*b_size;
-	int group_id, batch_id;
-	int in_group_id, map_pos_id, conv_id;
+	float l_A, l_B;
+	size_t filter_offset = flat_a_size*b_size;
+	size_t group_id, batch_id, in_group_id, map_pos_id, feature_id, conv_id;
 	
-	#pragma omp parallel for private(i, j, group_id, batch_id, in_group_id, map_pos_id, conv_id, \
-		mean, var, l_d_gamma, l_d_beta) schedule(guided,2)
+	#pragma omp parallel for private(i, group_id, batch_id, in_group_id, map_pos_id, \
+		feature_id, conv_id, mean, var, l_A, l_B) schedule(guided,2)
 	for(j = 0; j < nb_group*b_size; j++)
 	{
+		group_id = j % nb_group;
+		batch_id = j / nb_group;
+		
 		for(i = 0; i < flat_a_size*group_size; i++)
-		{	
-			group_id = j % nb_group;
-			batch_id = j / nb_group;
-			
+		{
 			in_group_id = i / flat_a_size;
-			map_pos_id = i % flat_a_size;
-			
-			conv_id = batch_id*flat_a_size + (group_id*group_size + in_group_id)*filter_offset + map_pos_id;
+			map_pos_id  = i % flat_a_size;
+			feature_id  = group_id * group_size + in_group_id;
+			conv_id     = batch_id * flat_a_size + (group_id * group_size + in_group_id) * filter_offset + map_pos_id;
 			
 			if(batch_id < b_length)
 			{
 				mean = group_mean[batch_id*nb_group + group_id];
 				var  = group_var[batch_id*nb_group + group_id];
-				l_d_gamma = d_gamma[batch_id*nb_group + group_id];
-				l_d_beta  = d_beta[batch_id*nb_group + group_id];
+				l_A = A[batch_id*nb_group + group_id];
+				l_B = B[batch_id*nb_group + group_id];
 				
-				if(group_id < nb_group - set_off)
-					delta_input[conv_id] += ((1.0f/(group_size*flat_a_size)) * gamma[group_id] * (1.0f/sqrt(var + eps))
-						* (group_size*flat_a_size*delta_output[conv_id] - l_d_beta
-						- (input[conv_id] - mean) * (1.0f/sqrt(var + eps))*l_d_gamma));
-				else
-					delta_input[conv_id] += delta_output[conv_id];
+				delta_input[conv_id] += ((1.0f/(group_size*flat_a_size)) * (1.0f/sqrt(var + eps))
+					* (gamma[feature_id]*group_size*flat_a_size*delta_output[conv_id] - l_A
+					- (input[conv_id] - mean) * (1.0f/sqrt(var + eps)) * l_B));
 			}
-			else
-				delta_input[conv_id] += 0.0f;
 		}
 	}
 }
@@ -208,7 +205,7 @@ void group_normalization_conv_back_fct(
 void forward_norm_layer(layer *current)
 {
 	int i;
-	size_t dim_offset = 1, flat_output_dim = 1;
+	size_t dim_offset = 1, nb_features;
 	float *l_gamma, *l_beta;
 	
 	network* net = current->c_network;
@@ -220,12 +217,12 @@ void forward_norm_layer(layer *current)
 	{
 		for(i = 0; i < 3; i++)
 			dim_offset *= current->output_dim[i];
-		flat_output_dim = dim_offset * current->output_dim[3];
+		nb_features = current->output_dim[3];
 		
-		if(net->is_inference == 1 && net->use_wema)
+		if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 		{
 			l_gamma = current->ema_weights;
-			l_beta = ((float*)current->ema_weights) + n_param->nb_group;
+			l_beta = ((float*)current->ema_weights) + nb_features;
 		}
 		else
 		{
@@ -235,25 +232,25 @@ void forward_norm_layer(layer *current)
 		
 		reduce_group_mean_conv_fct(current->input, n_param->mean, n_param->group_size, n_param->nb_group, 
 			dim_offset, net->batch_size, dim_offset*n_param->group_size);
-
+		
 		reduce_group_var_conv_fct(current->input, n_param->var, n_param->mean, n_param->group_size, 
 			n_param->nb_group, dim_offset, net->batch_size, dim_offset*n_param->group_size);
 
 		group_normalization_conv_fct(current->output, current->input, l_gamma, l_beta, n_param->mean, n_param->var, 
-			net->length, net->batch_size, n_param->group_size, n_param->nb_group, current->output_dim[3], dim_offset, n_param->set_off);
+			net->length, net->batch_size, n_param->group_size, n_param->nb_group, dim_offset);
 	}
 	
 	current->activation(current);
 	
 	if(!net->inference_only)
-		memset(current->delta_o, 0, flat_output_dim * net->batch_size * sizeof(float));
+		memset(current->delta_o, 0, current->a_size * sizeof(float));
 }
 
 
 void backward_norm_layer(layer *current)
 {
-	int i, j;
-	size_t dim_offset = 1;
+	int i, j, k;
+	size_t dim_offset = 1, nb_features;
 	double sum_dgamma = 0.0, sum_dbeta = 0.0;
 	
 	network* net = current->c_network;
@@ -266,39 +263,55 @@ void backward_norm_layer(layer *current)
 	{
 		for(i = 0; i < 3; i++)
 			dim_offset *= current->output_dim[i];
+		nb_features = current->output_dim[3];
 		
-		reduce_group_mean_conv_fct(current->delta_o, n_param->d_beta, n_param->group_size, 
-			n_param->nb_group, dim_offset, net->batch_size, 1);
+		reduce_group_mean_conv_fct(current->delta_o, n_param->d_beta, 1, nb_features, dim_offset, net->batch_size, 1);
 	
 		reduce_group_dgamma_conv_fct(current->input, current->delta_o, n_param->d_gamma, n_param->var, 
 			n_param->mean, n_param->group_size, n_param->nb_group, dim_offset, net->batch_size);
-	
-		group_normalization_conv_back_fct(current->input, current->delta_o, current->previous->delta_o, n_param->gamma, n_param->beta, 
-			n_param->d_gamma, n_param->d_beta, n_param->mean, n_param->var, net->length, net->batch_size, n_param->group_size, 
-			n_param->nb_group, current->output_dim[3], dim_offset, n_param->set_off);
+		
+		for(i = 0; i < net->batch_size; i++)
+		{
+			for(j = 0; j < n_param->nb_group; j++)
+			{
+				n_param->temp_A[i*n_param->nb_group + j] = 0.0f;
+				n_param->temp_B[i*n_param->nb_group + j] = 0.0f;
+				for(k = 0; k < n_param->group_size; k++)
+				{	
+					 n_param->temp_A[i*n_param->nb_group + j] += n_param->gamma[j*n_param->group_size + k]
+					 	*((float*)n_param->d_beta)[i*nb_features + j*n_param->group_size + k];
+					 n_param->temp_B[i*n_param->nb_group + j] += n_param->gamma[j*n_param->group_size + k]
+					 	*((float*)n_param->d_gamma)[i*nb_features + j*n_param->group_size + k]; 
+				}
+			}
+		}
+		
+		group_normalization_conv_back_fct(current->input, current->delta_o, current->previous->delta_o, n_param->gamma, 
+			n_param->temp_A, n_param->temp_B, n_param->mean, n_param->var, net->length, net->batch_size, n_param->group_size, 
+			n_param->nb_group, dim_offset);
 	}
 	
 	if(!current->frozen)
 	{
-		for(j = 0; j < n_param->nb_group - n_param->set_off; j++)
+		for(j = 0; j < (int)nb_features; j++)
 		{
 			sum_dgamma = 0.0f;
 			sum_dbeta = 0.0f;
 			for(i = 0; i < net->batch_size; i++)
 			{
-				sum_dgamma += n_param->d_gamma[i*n_param->nb_group + j];
-				sum_dbeta  += n_param->d_beta[i*n_param->nb_group + j];
+				sum_dgamma += ((float*)n_param->d_gamma)[i*nb_features + j];
+				sum_dbeta  += ((float*)n_param->d_beta)[i*nb_features + j];
 			}
-			n_param->gamma_update[j] = sum_dgamma;
-			n_param->beta_update[j] = sum_dbeta;
+			((float*)n_param->gamma_grad)[j] = sum_dgamma;
+			((float*)n_param->beta_grad)[j] = sum_dbeta;
 		}
 		
-		net->optim_update_fct(current, 0, 2*n_param->nb_group, 2*n_param->nb_group);
+		net->optim_update_fct(current, 0, 2*nb_features, 2*nb_features);
 		//No decay for gamma and beta
 		
 		if(current->wema_replace_signal > 0)
 		{
-			for(i = 0; i < 2*n_param->nb_group; i++)
+			for(i = 0; i < 2*nb_features; i++)
 				current->FP32_weights[i] = current->ema_weights[i];
 			current->wema_replace_signal = 0;
 		}

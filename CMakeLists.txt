@@ -40,6 +40,7 @@ set(CIANNA_CORE
     src/pool_layer.c
     src/norm_layer.c
     src/lrn_layer.c
+    src/grn_layer.c
     src/merge_layer.c
     src/activ_functions.c
     src/weights_initializers.c
@@ -56,6 +57,7 @@ set(CIANNA_NAIV
     src/naiv/naiv_pool_layer.c
     src/naiv/naiv_norm_layer.c
     src/naiv/naiv_lrn_layer.c
+    src/naiv/naiv_grn_layer.c
     src/naiv/naiv_merge_layer.c
 )
 
@@ -301,6 +303,7 @@ if(USE_CUDA)
             src/cuda/cuda_pool_layer.cu
             src/cuda/cuda_norm_layer.cu
             src/cuda/cuda_lrn_layer.cu
+            src/cuda/cuda_grn_layer.cu
             src/cuda/cuda_merge_layer.cu
             src/cuda/cuda_activ_functions.cu
             src/cuda/cuda_optimizers.cu
@@ -440,7 +443,7 @@ if(NOT BUILD_MODULE)
     # C compilation flags handling
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     target_compile_options(cianna PRIVATE
-        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-unknown-pragmas>
+        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-deprecated-declarations -Wno-unknown-pragmas>
         $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
         #$<$<COMPILE_LANGUAGE:CUDA>:-O3>
     )
@@ -496,7 +499,7 @@ if(BUILD_MODULE)
     # C compilation flags handling
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     target_compile_options(cianna_module PRIVATE
-        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-unknown-pragmas>
+        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-deprecated-declarations -Wno-unknown-pragmas>
         $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
         #$<$<COMPILE_LANGUAGE:CUDA>:-O3>
     )

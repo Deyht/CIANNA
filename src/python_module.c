@@ -593,11 +593,12 @@ static PyObject* py_norm(PyObject* self, PyObject *args, PyObject *kwargs)
 	int prev_layer = -1, network_id = 0, current_layer_id = -1;
 	const char *norm_type = "GN";
 	const char *activation = "LIN";
-	int group_size = 8, set_off = 0;
-	static char *kwlist[] = {"normalization", "activation", "prev_layer", "group_size", "set_off", "network", NULL};
+	double gamma_init = 1.0f;
+	int group_size = 8;
+	static char *kwlist[] = {"normalization", "activation", "prev_layer", "group_size", "gamma_init", "network", NULL};
 	layer* prev;
 	
-	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|ssiiii", kwlist, &norm_type, &activation, &prev_layer, &group_size, &set_off, &network_id))
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|ssiidi", kwlist, &norm_type, &activation, &prev_layer, &group_size, &gamma_init, &network_id))
 		return PyLong_FromLong(-1);
 	
 	if(prev_layer == -1)
@@ -608,7 +609,7 @@ static PyObject* py_norm(PyObject* self, PyObject *args, PyObject *kwargs)
 	else
 		prev = networks[network_id]->net_layers[prev_layer];
 		
-	current_layer_id = norm_create(networks[network_id], prev, norm_type, activation, group_size, set_off, NULL, 0, 0);
+	current_layer_id = norm_create(networks[network_id], prev, norm_type, activation, group_size, gamma_init, NULL, 0, 0);
 	
 	return PyLong_FromLong(current_layer_id);
 }
@@ -636,6 +637,33 @@ static PyObject* py_lrn(PyObject* self, PyObject *args, PyObject *kwargs)
 		prev = networks[network_id]->net_layers[prev_layer];
 		
 	current_layer_id = lrn_create(networks[network_id], prev, activation, range, k, alpha, beta);
+	
+	return PyLong_FromLong(current_layer_id);
+}
+
+
+static PyObject* py_grn(PyObject* self, PyObject *args, PyObject *kwargs)
+{	
+	setlocale(LC_ALL, "C");
+	int prev_layer = -1, network_id = 0, current_layer_id = -1;
+	const char *activation = "LIN";
+	double gamma_init = 1.0f;
+	int residual = 1;
+	static char *kwlist[] = {"residual", "activation", "prev_layer", "gamma_init", "network", NULL};
+	layer* prev;
+	
+	if(!PyArg_ParseTupleAndKeywords(args, kwargs, "|isidi", kwlist, &residual, &activation, &prev_layer, &gamma_init, &network_id))
+		return PyLong_FromLong(-1);
+	
+	if(prev_layer == -1)
+		prev_layer = networks[network_id]->nb_layers - 1;
+	
+	if(prev_layer < 0)
+		prev = NULL;
+	else
+		prev = networks[network_id]->net_layers[prev_layer];
+		
+	current_layer_id = grn_create(networks[network_id], prev, activation, residual, gamma_init, NULL, 0, 0);
 	
 	return PyLong_FromLong(current_layer_id);
 }
@@ -1149,6 +1177,7 @@ static PyMethodDef CIANNAMethods[] = {
 	{ "pool",(PyCFunction)py_pool, METH_VARARGS | METH_KEYWORDS, "Add a pooling layer to the network" },
 	{ "norm", (PyCFunction)py_norm, METH_VARARGS | METH_KEYWORDS, "Add a normalization layer to the network"},
 	{ "lrn", (PyCFunction)py_lrn, METH_VARARGS | METH_KEYWORDS, "Add a Local Response Normalization layer to the network"},
+	{ "grn", (PyCFunction)py_grn, METH_VARARGS | METH_KEYWORDS, "Add a Global Response Normalization layer to the network"},
 	{ "merge", (PyCFunction)py_merge, METH_VARARGS | METH_KEYWORDS, "Add a marge layer to the network"},
 	{ "set_frozen_layers",(PyCFunction)py_set_frozen_layers, METH_VARARGS | METH_KEYWORDS, "Freeze the selected layers' weights for training" },
 	{ "set_IoU_limits",(PyCFunction)py_set_IoU_limits, METH_VARARGS | METH_KEYWORDS, "Create an array from a list of IoU limits" },

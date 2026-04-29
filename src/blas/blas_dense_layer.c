@@ -59,7 +59,7 @@ void blas_forward_dense_layer(layer *current)
 	
 	ref_input = current->input;
 	
-	if(net->is_inference == 1 && net->use_wema)
+	if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 		l_weights = (void*) current->ema_weights;
 	else
 		l_weights = (void*) current->weights;

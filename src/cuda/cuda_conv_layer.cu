@@ -352,7 +352,7 @@ size_t cuda_convert_conv_layer(layer *current)
 		vram_approx += cuda_convert_table(net, &(c_param->im2col_delta_o), nb_groups * subdim_a * subdim_b, 0);
 		
 		subdim_a = spatial_f_size * chan_per_group_out;
-		subdim_b= chan_per_group_in;
+		subdim_b = chan_per_group_in;
 		
 		vram_approx += cuda_convert_table(net, &(c_param->rotated_filters), nb_groups * subdim_a * subdim_b, 0);
 	
@@ -425,7 +425,7 @@ void cuda_forward_conv_layer(layer *current)
 	if(current->previous == NULL || (current->previous != NULL && current->previous->output_type == FLAT))
 	{
 		//If previous is input, each images is stored as continuous flat arrays with all R pixels, all G pixel, all B pixels + input bias
-		//Different images from the batch are append on after the other
+		//Different images from the batch are append one after the other
 		in_image_offset   = nb_regions_in * prev_nb_channels + 1;
 		in_channel_offset = nb_regions_in;
 		if(current->previous == NULL)
@@ -473,7 +473,7 @@ void cuda_forward_conv_layer(layer *current)
 
 	//######### Preparing Weights(K,N) ##########
 	
-	if(net->is_inference == 1 && net->use_wema)
+	if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 	{
 		if(current->FP32_weights == current->weights) //Equivalent to test if mixed precision is off or FP32C_FP32A
 			l_weights = (void*) current->ema_weights;
@@ -573,12 +573,6 @@ void cuda_backward_conv_layer(layer *current)
 	//skip error prop if previous is the input layer
 	if(current->previous != NULL)
 	{
-		//Set prev_delta_o pointer depending on previous layer type
-		if(current->previous->output_type == FLAT)
-			c_prev_delta_o = c_param->temp_delta_o;
-		else
-			c_prev_delta_o = current->previous->delta_o;
-	
 		//########## Preparing dw_rot_weights(K,N) ##########
 		//dimensions from regular weight matrix
 		subdim_N = chan_per_group_out;
@@ -631,8 +625,16 @@ void cuda_backward_conv_layer(layer *current)
 			nb_filters, chan_per_group_out, nb_regions_out, in_image_offset, in_channel_offset,
 			subdim_K*nb_regions_in, subdim_K*subdim_M, 0, batch_size, 0);
 		
-		
 		//####### Im2col_delta_o_T(M,K) x dw_rot_weights(K,N) #######
+		
+		//Set prev_delta_o pointer depending on previous layer type
+		if(current->previous->output_type == FLAT)
+		{
+			net->cu_inst.cu_auxil_fcts.cu_typed_memset_fct(c_param->temp_delta_o, 0, nb_groups*subdim_M*subdim_N);
+			c_prev_delta_o = c_param->temp_delta_o;	
+		}
+		else
+			c_prev_delta_o = current->previous->delta_o;
 		
 		cublasGemmStridedBatchedEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, subdim_M, subdim_N, subdim_K, cu_alpha, 
 			/*A*/c_param->im2col_delta_o , cuda_data_type, /*ldA*/subdim_K, /*strideA*/subdim_K*subdim_M,
@@ -644,8 +646,8 @@ void cuda_backward_conv_layer(layer *current)
 		{
 			cu_blocks = ((nb_regions_in * prev_nb_channels + 1) * batch_size + cu_threads - 1) / cu_threads;
 			
-			net->cu_inst.cu_dense_fcts.flat_dense_fct<<< cu_blocks, cu_threads >>>(
-				c_param->temp_delta_o, current->previous->delta_o, 0, nb_regions_in,
+			net->cu_inst.cu_dense_fcts.flat_dense_back_fct<<< cu_blocks, cu_threads >>>(
+				c_param->temp_delta_o, current->previous->delta_o, nb_regions_in,
 				(nb_regions_in * prev_nb_channels + 1), prev_nb_channels, batch_size, 
 				(nb_regions_in * prev_nb_channels + 1) * batch_size);
 		}
