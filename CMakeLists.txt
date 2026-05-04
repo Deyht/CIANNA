@@ -13,6 +13,7 @@ option(BUILD_MODULE "Build CIANNA as a Python module instead of an executable" O
 option(USE_OPENMP "Enable OpenMP parallelism" ON)
 option(USE_BLAS "Enable OpenBLAS acceleration" ON)
 option(USE_CUDA "Enable CUDA acceleration" ON)
+option(TEST_MODE "Make the binary self consistent without internet access, for testing purposes" OFF)
 set(ARCH "" CACHE STRING "Manual CUDA architecture override (e.g. 70, 75, 86, 89, 90). If empty, auto-detect from GPU.")
 set(BLAS_PATH "" CACHE PATH "Manual BLAS path override. Must be the root folder containing lib/ and include/.")
 if(DEFINED ENV{CUDA_PATH})
@@ -29,6 +30,10 @@ add_definitions(
     -DMAX_LAYERS_NB=400
     -DMAX_NETWORKS_NB=10
 )
+
+if(TEST_MODE)
+    add_definitions(-DTEST_MODE=1)
+endif()
 
 # ==========================================================
 # Sources

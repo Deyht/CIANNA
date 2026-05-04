@@ -27,8 +27,6 @@
 
 int main()
 {
-	FILE *f = NULL;
-	int i, j;
 	int train_size, test_size, valid_size;
 	int dims[4];
 	float *temp;
@@ -69,6 +67,11 @@ int main()
 	net->train = create_dataset(net, 1, train_size);
 	net->valid = create_dataset(net, 1, valid_size);
 	net->test  = create_dataset(net, 0, test_size );
+	
+	//For testing on closed systems or environments without access to network
+	#if !defined TEST_MODE
+	int i, j;
+	FILE *f = NULL;
 	
 	/*Download the dataset if not available*/
 	if(access("mnist_dat", F_OK) != 0)
@@ -155,6 +158,8 @@ int main()
 	
 	fclose(f);
 	free(temp);
+	#endif //TEST_MODE
+	
 	
 	//Must be converted if Dynamic load is off !
 	#ifdef CUDA
@@ -303,6 +308,10 @@ int main()
 		0); 			/*silent*/
 	
 	perf_eval_display(net);
+	
+	#if defined TEST_MODE
+	printf("\nCOMPILE TEST PASSED !\n");
+	#endif
 
 	exit(EXIT_SUCCESS);
 }

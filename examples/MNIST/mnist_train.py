@@ -6,8 +6,8 @@ import os
 import sys, glob
 #if glob.glob('../../src/build/lib.*/'):
 #	sys.path.insert(0,glob.glob('../../src/build/lib.*/')[-1]) #if compiled with compile.cp
-if glob.glob('../../build/'):
-	sys.path.insert(0,glob.glob('../../build/')[-1]) #if compiled with cmake
+#if glob.glob('../../build/'):
+#	sys.path.insert(0,glob.glob('../../build/')[-1]) #if compiled with cmake
 import CIANNA as cnn
 
 
@@ -71,7 +71,7 @@ def conv_res_block(nb_filters):
 
 
 #Used to load a saved network at a given iteration
-load_step = 2
+load_step = 0
 if(load_step > 0):
 	cnn.load("optim_save/net_optim0_s%04d.dat"%(load_step), load_step, bin=1)
 else:

@@ -72,8 +72,8 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
 void train_network(network *net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, 
 	float u_decay, float u_weight_decay, int u_decoupled_wdecay, float u_wema_rate, int wema_replace_every, int show_confmat, 
 	int save_net, int save_bin, int save_optim_state, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor, int silent);
-float* forward_testset(network *net, int saving, int repeat, int drop_mode, int silent, int return_result);
-void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat, int silent, float *result);
+float* pred_testset(network *net, int saving, int repeat, int drop_mode, int silent, int return_result);
+void pred_network(network *net, Dataset data, int saving, int confusion_matrix, int repeat, int silent, float *result);
 void set_frozen_layers(network *net, int *tab, int dim);
 void fprint_layer_params(network *net, FILE *f, void *params, size_t param_size, size_t return_dim, size_t padding, int stay_on_host, int f_bin);
 void save_layer_weights(FILE *f, layer *current, size_t param_size, size_t return_dim, size_t padding, int stay_on_host, int save_optim_state, int f_bin);

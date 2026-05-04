@@ -15,6 +15,15 @@ Updated based on the latest changes in the DEV branch.
   steps on the host CPU and the CPU version of the optimizer was used. This was causing unrequired host-device synchronization hurting latency.
 - Fix BLAS linking in the latest Cmake install so it now support a wider variety of BLAS implementation. As a side effect, this allows the installer
   to use the native BLAS on Mac OS (tested on an M2 equiped device).
+- Update the error message when requesting an unsuported (or non-compiled) compute backend to improve clarity on possible actions to take.
+- The binary created by compiling the main.c file is now self consistent. MNIST data are automatically downloaded for testing.
+  The main.c file was also reworked to improve readability, especially for functions with many arguments.
+- The main.c file can now be compiled in "TEST_MODE" (by passing -D TEST_MODE=ON as a CMake argument). This allows to bypass data download
+  to verify that the framework is compiled properly without network access, by running the test model on empty data arrays.
+- Fix the return argument of many functions in the C/Python interface. This was causing crashes of the framework when training for an
+  extended time using the dynamic data augmentation scheme.
+- Tweak the confmat display to not show nan values in precision or recall of empty classes (now display 0 instead).
+- Add a isinf test to forward and training functions to detect model configuration errors requesting more VRAM than what is available on the GPU.
 
 
 ===== V-1.1.0_exp =====

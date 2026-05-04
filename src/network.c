@@ -167,7 +167,8 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
 	if(comp_int == C_CUDA)
 	{
 		printf("\n ERROR: compute method set to CUDA while CIANNA was not compiled for it.\n");
-		printf(" Install Nvidia CUDA and recompile CIANNA with the appropriate option.\n\n");
+		printf(" Change compute method in the init function for a supported one\n");
+		printf(" or install CUDA and recompile CIANNA with the appropriate option.\n\n");
 		exit(EXIT_FAILURE);
 	}
 	#endif
@@ -176,14 +177,16 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, int 
 	if(comp_int == C_BLAS)
 	{
 		printf("\n ERROR: compute method set to BLAS while CIANNA was not compiled for it.\n");
-		printf(" Install OpenBLAS and recompile CIANNA with the appropriate option.\n\n");
+		printf(" Change compute method in the init function for a supported one\n");
+		printf(" or install OpenBLAS and recompile CIANNA with the appropriate option.\n\n");
 		exit(EXIT_FAILURE);
 	}
 	#endif
 	if(comp_int == C_NAIV)
 	{
-		printf(" WARNING: compute method set to NAIV, which is not optimal.\n");
-		printf(" We recommand the use of OpenBLAS for a better usage of CPU ressources.\n\n");
+		printf("\n WARNING: compute method set to NAIV, which is not optimal.\n");
+		printf(" We recommand the use of OpenBLAS for a better usage of CPU ressources.\n");
+		printf(" If NAIV with single CPU thread is your only option, we recommand the use of the SGD learning scheme, enabled by setting the batch size to 1.\n\n");
 	}
 	is_init = 1;
 	
@@ -574,7 +577,22 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 			}
 			net->is_inference = 1;
 			net->no_error = 0;
-			compute_error(net, net->valid, 0, show_confmat, 1, silent, NULL);
+			pred_network(net, net->valid, 0, show_confmat, 1, silent, NULL);
+			
+			if(isinf(items_per_s))
+			{
+				printf("\n ERROR: An invalid operation was detected!\n");
+				printf(" This most often appen when the model require more VRAM than what is available.\n");
+				printf(" Try reducing the batch size or other options to reduce the model RAM footprint.\n");
+				printf(" One can check the RAM requirement of the model using the perf_eval() function after network declaration.\n");
+				exit(EXIT_FAILURE);
+			}
+			
+			if(isnan(total_error))
+			{
+				printf("\n ERROR: Network divergence detected (Nan)!\n\n");
+				exit(EXIT_FAILURE);
+			}
 		}
 		
 		if(save_every > 0 && ((net->iter) % save_every) == 0)
@@ -617,7 +635,7 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 }
 
 
-float* forward_testset(network *net, int saving, int repeat, int drop_mode, int silent, int return_output)
+float* pred_testset(network *net, int saving, int repeat, int drop_mode, int silent, int return_output)
 {
 	int k;
 	size_t l_out_size;
@@ -664,7 +682,7 @@ float* forward_testset(network *net, int saving, int repeat, int drop_mode, int 
 	
 	net->is_inference = 1;
     net->inference_drop_mode = drop_mode;
-	compute_error(net, net->test, saving, 0, repeat, silent, result);
+	pred_network(net, net->test, saving, 0, repeat, silent, result);
 	
 	free(net->output_error);
 	
@@ -684,7 +702,7 @@ float* forward_testset(network *net, int saving, int repeat, int drop_mode, int 
 }
 
 
-void compute_error(network *net, Dataset data, int saving, int confusion_matrix, int repeat, int silent, float *result)
+void pred_network(network *net, Dataset data, int saving, int confusion_matrix, int repeat, int silent, float *result)
 {
 	int j, k, l, m, r;
 	float **mat = NULL; 
@@ -1100,6 +1118,15 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				}
 			}
 			
+			if(isinf(items_per_s))
+			{
+				printf("\n ERROR: An invalid operation was detected!\n");
+				printf(" This most often appen when the model require more VRAM than what is available.\n");
+				printf(" Try reducing the batch size or other options to reduce the model RAM footprint.\n");
+				printf(" One can check the RAM requirement of the model using the perf_eval() function after network declaration.\n");
+				exit(EXIT_FAILURE);
+			}
+			
 			if(isnan(total_error))
 			{
 				printf("\n ERROR: Network divergence detected (Nan)!\n\n");
@@ -1169,8 +1196,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 						rapp_err[j] += mat[j][k];
 						rapp_err_rec[j] += mat[k][j];
 					}
-					rapp_err[j] = mat[j][j]/rapp_err[j]*100.0;
-					rapp_err_rec[j] = mat[j][j]/rapp_err_rec[j]*100.0;
+					rapp_err[j] = mat[j][j]/(rapp_err[j]+0.000001f)*100.0;
+					rapp_err_rec[j] = mat[j][j]/(rapp_err_rec[j]+0.000001f)*100.0;
 				}
 				for(j = 0; j < net->output_dim; j++)
 				{
@@ -1187,7 +1214,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				for(j = 0; j < net->output_dim; j++)
 					count += mat[j][j];
 				
-				printf("Acc %6.2f%%\n", count/data.size*100);
+				printf("Acc %6.2f%%\n", count/(data.size+0.000001f)*100);
 			}
 			else if(confusion_matrix == 2)
 			{
