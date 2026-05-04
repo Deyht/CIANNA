@@ -32,8 +32,8 @@ defines_variables="-D MAX_LAYERS_NB=400 -D MAX_NETWORKS_NB=10 -D CUDA_THREADS_PE
 gcc_compile_dir="/usr/bin/gcc"
 openblas_include_dir="/opt/OpenBLAS/include/"
 openblas_lib_dir="/opt/OpenBLAS/lib"
-nvcc_path="/usr/local/cuda-13.2/bin/nvcc"
-cuda_lib_path="/usr/local/cuda-13.2/lib64"
+nvcc_path="/usr/local/cuda-13.0/bin/nvcc"
+cuda_lib_path="/usr/local/cuda-13.0/lib64"
 compile_opt="-O3 -fPIC -Wall -Werror -Wno-unused-result -Wno-uninitialized -fmax-errors=2 -fbounds-check -Wno-unknown-pragmas"
 
 ######################################################
@@ -43,7 +43,7 @@ for i in $*
 do
 	if [ $i  = "CUDA" ]
 	then
-		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart -arch=sm_120 -D GEN_AMPERE"
+		cuda_arg="$cuda_arg -D CUDA -D comp_CUDA -lcublas -lcudart -arch=sm_86 -D GEN_AMPERE"
 		arg="$arg -D CUDA -lstdc++ -lcublas -lcudart -lcurand -L $cuda_lib_path"
 		cuda_src="cuda_auxil.cu cuda_conv_layer.cu cuda_dense_layer.cu cuda_pool_layer.cu cuda_norm_layer.cu cuda_lrn_layer.cu cuda_activ_functions.cu"
 		cuda_obj="cuda/cuda_auxil.o cuda/cuda_conv_layer.o cuda/cuda_dense_layer.o cuda/cuda_pool_layer.o cuda/cuda_lrn_layer.o cuda/cuda_norm_layer.o cuda/cuda_activ_functions.o"

@@ -4,6 +4,10 @@
 rm main
 rm -rf build/
 rm -rf cianna.egg-info
+rm -rf mnist_dat/
+rm mnist.tar.gz
+rm -rf net_save/
+rm -rf net_optim/
 
 #Compilation files
 cd ./src/

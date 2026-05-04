@@ -64,7 +64,7 @@ void init_network(int network_number, int u_input_dim[4], int u_output_dim, floa
                   ...:^~!?JY5PB~                                                                                             \n\n");
 
 	printf("############################################################\n\
-CIANNA V-1.0.1.3 stable build (04/2026), by D.Cornu\n\
+CIANNA V-1.0.1.4 stable build (05/2026), by D.Cornu\n\
 ############################################################\n\n");
 	
 	}
@@ -561,6 +561,22 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 			net->is_inference = 1;
 			net->no_error = 0;
 			compute_error(net, net->valid, 0, show_confmat, 1, silent);
+			
+			if(isinf(items_per_s))
+			{
+				printf("\n ERROR: An invalid operation was detected!\n");
+				printf(" This most often appen when the model require more VRAM than what is available.\n");
+				printf(" Try reducing the batch size or other options to reduce the model RAM footprint.\n");
+				printf(" One can check the RAM requirement of the model using the perf_eval() function after network declaration.\n");
+				exit(EXIT_FAILURE);
+			}
+			
+			if(isnan(total_error))
+			{
+				printf("\n ERROR: Network divergence detected (Nan)!\n\n");
+				exit(EXIT_FAILURE);
+			}
+			
 		}
 		if(save_every > 0)
 		{
@@ -1069,7 +1085,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 	if(silent != 1)
 	{
 		printf("\n%*s", 14, " ");
-		printf("Average forward perf : %0.2f it/s ", items_per_s);
+		printf("Average forward perf: %0.2f it/s ", items_per_s);
 		if(net->no_error != 1)
 		{	
 			printf("| Mean Loss: %.5g", total_error/(data.size*repeat));
@@ -1082,6 +1098,15 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 					objectness_error/(data.size*repeat), class_error/(data.size*repeat), param_error/(data.size*repeat), 
 					sum_IoU/nb_IoU, sum_objectness/nb_IoU, (float)nb_good_IoU/(float)nb_IoU);
 				}
+			}
+			
+			if(isinf(items_per_s))
+			{
+				printf("\n ERROR: An invalid operation was detected!\n");
+				printf(" This most often appen when the model require more VRAM than what is available.\n");
+				printf(" Try reducing the batch size or other options to reduce the model RAM footprint.\n");
+				printf(" One can check the RAM requirement of the model using the perf_eval() function after network declaration.\n");
+				exit(EXIT_FAILURE);
 			}
 			
 			if(isnan(total_error))
@@ -1151,8 +1176,8 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 						rapp_err[j] += mat[j][k];
 						rapp_err_rec[j] += mat[k][j];
 					}
-					rapp_err[j] = mat[j][j]/rapp_err[j]*100.0;
-					rapp_err_rec[j] = mat[j][j]/rapp_err_rec[j]*100.0;
+					rapp_err[j] = mat[j][j]/(rapp_err[j]+0.000001f)*100.0;
+					rapp_err_rec[j] = mat[j][j]/(rapp_err_rec[j]+0.000001f)*100.0;
 				}
 				for(j = 0; j < o; j++)
 				{
@@ -1169,7 +1194,7 @@ void compute_error(network *net, Dataset data, int saving, int confusion_matrix,
 				for(j = 0; j < o; j++)
 					count += mat[j][j];
 				
-				printf("Acc %6.2f%%\n", count/data.size*100);
+				printf("Acc %6.2f%%\n", count/(data.size+0.000001f)*100);
 			}
 			else if(confusion_matrix == 2)
 			{
