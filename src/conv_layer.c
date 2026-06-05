@@ -593,6 +593,9 @@ void conv_load(network *net, FILE *f, int f_bin, int skip_layer)
 			for(i = 0; i < 3; i++)
 				for(j = 0; j < nb_box; j++)
 					fscanf(f, "%f", &(prior_size[j*3+i]));
+			for(i = 0; i < 6; i++)
+				for(j = 0; j < 3; j++)
+					fscanf(f, "%f", &(slopes_and_maxes[i][j]));
 		}
 	}
 	

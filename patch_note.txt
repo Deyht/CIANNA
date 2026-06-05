@@ -10,6 +10,7 @@
   extended time using the dynamic data augmentation scheme.
 - Tweak the confmat display to not show nan values in precision or recall of empty classes (now display 0 instead).
 - Add a isinf test to forward and training functions to detect model configuration errors requesting more VRAM than what is available on the GPU.
+- Fix a save file loading error that was happening when loading a YOLO activated conv layer using the ASCII save format.
 
 ********************************************
 ===== V-1.0.1.3 =====
