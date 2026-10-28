@@ -29,7 +29,7 @@ static lrn_param *n_param;
 // Private prototypes
 
 
-int lrn_create(network *net, layer *previous, const char *activation, int range, float k, float alpha, float beta)
+int lrn_create(network *net, int prev_layer, const char *activation, int range, float k, float alpha, float beta, int silent)
 {
 	int i;
 	size_t flat_output_dim = 1;
@@ -41,14 +41,25 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 	current->c_network = net;
 	net->nb_layers++;
 	
-	printf("L:%d - CREATING LOCAL RESPONSE NORMALIZATION LAYER ...\n", net->nb_layers);
+	if(!silent)
+		printf("L:%d - CREATING LOCAL RESPONSE NORMALIZATION LAYER ...\n", net->nb_layers - 1);
 	
-	current->type = LRN;
-	current->frozen = 0;
+	current->type         = LRN;
+	current->layer_id     = net->nb_layers-1;
+	current->frozen       = 0;
 	current->dropout_rate = 0.0f;
-	current->previous = previous;
 	
-	if(current->previous == NULL)
+	if(prev_layer < 0 && prev_layer + net->nb_layers-1 >= 0)
+		current->previous = net->net_layers[current->layer_id + prev_layer];
+	else if(prev_layer >= 0 && prev_layer < net->nb_layers-1)
+		current->previous = net->net_layers[prev_layer];
+	else
+	{
+		printf("\n ERROR: Invalid previous layer id provided!\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(current->previous->type == INPUT)
 	{
 		printf("\n ERROR: normalization layer is not autorized as first layer.\n");
 		exit(EXIT_FAILURE);
@@ -57,7 +68,7 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 	n_param = (lrn_param*) malloc(sizeof(lrn_param));
 	current->param = n_param;
 	
-	current->input = previous->output;
+	current->input = current->previous->output;
 	current->output_type = current->previous->output_type;
 	current->output_dim = (int*) calloc(4, sizeof(int));
 	for(i = 0; i < 4; i++)
@@ -81,6 +92,9 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 	}
 	else
 	{
+		printf("\n ERROR: Norm from flat/dense layers is not supported yet. Convert to 1d conv for merging.\n");
+		exit(EXIT_FAILURE);
+		
 		flat_output_dim = current->output_dim[3] + 1;
 	
 		current->a_size       = flat_output_dim * net->batch_size;
@@ -127,9 +141,10 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 	char activ[40];
 	fill_string_activ_param(current, activ,0);
 	
-	printf("      Range: %d, k: %f, Alpha: %f, Beta: %f, Activation: %s\n\
+	if(!silent)
+		printf("      Range: %d, k: %f, Alpha: %f, Beta: %f, Activation: %s\n\
       Approx layer RAM/VRAM requirement: %d MB\n",
-		n_param->range, n_param->k, n_param->alpha, n_param->beta,
+			n_param->range, n_param->k, n_param->alpha, n_param->beta,
 		activ, (int)(mem_approx/1000000));
 	net->memory_footprint += mem_approx;
 	
@@ -140,12 +155,16 @@ int lrn_create(network *net, layer *previous, const char *activation, int range,
 void lrn_save(FILE *f, layer *current, int f_bin)
 {
 	char layer_type = 'L';
+	int prev_id = -1;
 	
 	n_param = (lrn_param*)current->param;
+	
+	prev_id = current->previous->layer_id - current->layer_id;
 	
 	if(f_bin)
 	{
 		fwrite(&layer_type    , sizeof(char)  , 1, f);
+		fwrite(&prev_id       , sizeof(int)   , 1, f);
 		fwrite(&n_param->range, sizeof(int)   , 1, f);
 		fwrite(&n_param->k    , sizeof(float) , 1, f);
 		fwrite(&n_param->alpha, sizeof(float) , 1, f);
@@ -154,7 +173,7 @@ void lrn_save(FILE *f, layer *current, int f_bin)
 	}
 	else
 	{
-		fprintf(f,"L ");
+		fprintf(f,"L prev%d ", prev_id);
 		fprintf(f, "%d %f %f %f ", n_param->range, n_param->k, n_param->alpha, n_param->beta);
 		print_activ_param(f, current, f_bin);
 		fprintf(f,"\n");
@@ -162,18 +181,18 @@ void lrn_save(FILE *f, layer *current, int f_bin)
 }
 
 
-void lrn_load(network *net, FILE *f, int f_bin, int skip_layer)
+void lrn_load(network *net, FILE *f, int f_bin, int skip_layer, int silent)
 {
-	int range;
+	int range, prev_id;
 	float k, alpha, beta;
 	char activ_type[40];
-	layer *previous;
 	
 	if(!skip_layer)
-		printf("Loading Local Response Normalization layer, L:%d\n", net->nb_layers+1);
+		printf("Loading Local Response Normalization layer, L:%d\n", net->nb_layers);
 	
 	if(f_bin)
 	{
+		fread(&prev_id, sizeof(int), 1, f);
 		fread(&range, sizeof(int)   , 1, f);
 		fread(&k    , sizeof(float) , 1, f);
 		fread(&alpha, sizeof(float) , 1, f);
@@ -181,19 +200,10 @@ void lrn_load(network *net, FILE *f, int f_bin, int skip_layer)
 		fread(activ_type, sizeof(char), 40, f);
 	}
 	else
-	{
-		fscanf(f, " %d %f %f %f %s", &range, &k, &alpha, &beta, activ_type);
-	}
+		fscanf(f, " prev%d %d %f %f %f %s", &prev_id, &range, &k, &alpha, &beta, activ_type);
 
 	if(!skip_layer)
-	{
-		if(net->nb_layers <= 0)
-			previous = NULL;
-		else
-			previous = net->net_layers[net->nb_layers-1];
-	
-		lrn_create(net, previous, activ_type, range, k, alpha, beta);
-	}
+		lrn_create(net, prev_id, activ_type, range, k, alpha, beta, silent);
 }
 
 

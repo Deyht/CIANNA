@@ -27,7 +27,7 @@ endif()
 # ==========================================================
 
 add_definitions(
-    -DMAX_LAYERS_NB=400
+    -DMAX_LAYERS_NB=600
     -DMAX_NETWORKS_NB=10
 )
 
@@ -40,8 +40,9 @@ endif()
 # ==========================================================
 
 set(CIANNA_CORE
-    src/conv_layer.c
+	src/input_layer.c
     src/dense_layer.c
+    src/conv_layer.c
     src/pool_layer.c
     src/norm_layer.c
     src/lrn_layer.c
@@ -57,6 +58,7 @@ set(CIANNA_CORE
 )
 
 set(CIANNA_NAIV
+	src/naiv/naiv_input_layer.c
     src/naiv/naiv_dense_layer.c
     src/naiv/naiv_conv_layer.c
     src/naiv/naiv_pool_layer.c
@@ -449,11 +451,11 @@ if(NOT BUILD_MODULE)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     target_compile_options(cianna PRIVATE
         $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-deprecated-declarations -Wno-unknown-pragmas>
-        $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
+        $<$<COMPILE_LANGUAGE:CUDA>:-Wno-deprecated-gpu-targets --generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
         #$<$<COMPILE_LANGUAGE:CUDA>:-O3>
     )
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-        target_compile_options(cianna PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=2 -Wno-unused-result -Wno-uninitialized>)
+        target_compile_options(cianna PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=3 -Wno-unused-result -Wno-uninitialized>)
     endif()
 
     target_include_directories(cianna PRIVATE src)
@@ -505,11 +507,11 @@ if(BUILD_MODULE)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     target_compile_options(cianna_module PRIVATE
         $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-deprecated-declarations -Wno-unknown-pragmas>
-        $<$<COMPILE_LANGUAGE:CUDA>:--generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
+        $<$<COMPILE_LANGUAGE:CUDA>:-Wno-deprecated-gpu-targets --generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
         #$<$<COMPILE_LANGUAGE:CUDA>:-O3>
     )
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-        target_compile_options(cianna_module PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=2 -Wno-unused-result -Wno-uninitialized>)
+        target_compile_options(cianna_module PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=3 -Wno-unused-result -Wno-uninitialized>)
     endif()
 
     if(USE_BLAS)

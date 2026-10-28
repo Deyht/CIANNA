@@ -80,9 +80,9 @@ int load_merge_type(const char *type)
 }
 
 
-int merge_create(network *net, int previous_id_a, int previous_id_b, int merge_type, const char *activation)
+int merge_create(network *net, int nb_previous, int *prev_list_id, int merge_type, const char *activation, int silent)
 {
-	size_t i, nb_features;
+	size_t i, j, nb_features;
 	size_t flat_output_dim = 1;
 	size_t mem_approx = 0;
 
@@ -93,86 +93,132 @@ int merge_create(network *net, int previous_id_a, int previous_id_b, int merge_t
 	current->c_network = net;
 	net->nb_layers++;
 	
-	printf("L:%d - CREATING MERGE LAYER ...\n", net->nb_layers);
+	if(!silent)
+		printf("L:%d - CREATING MERGE LAYER ...\n", net->nb_layers - 1);
 	
-	current->type = MERGE;
-	current->frozen = 0;
+	current->type         = MERGE;
+	current->layer_id     = net->nb_layers-1;
+	current->frozen       = 0;
 	current->dropout_rate = 0.0f;
-	current->previous = NULL;
-	current->input = NULL;
+	current->previous     = NULL;
+	current->input        = NULL;
+	
+	if(current->layer_id == 0)
+	{
+		printf("\n ERROR: Cannot start a network with a merge layer!\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(nb_previous < 2 || prev_list_id == NULL)
+	{
+		printf("\n ERROR: Merge layer requires a list of at least two valid previous layer ids!\n");
+		exit(EXIT_FAILURE);
+	}
 	
 	m_param = (merge_param*) malloc(sizeof(merge_param));
 	current->param = m_param;
 	m_param->merge_type = merge_type;
+	m_param->nb_previous = nb_previous;
+	m_param->prev_list = (layer**) malloc(nb_previous*sizeof(layer*));
+	m_param->prev_type_list = (int*) malloc(nb_previous*sizeof(int));
+	m_param->prev_nb_channels = NULL;
 	
-	if(previous_id_a > net->nb_layers-2 || previous_id_a < -net->nb_layers)
+	for(i = 0; i < nb_previous; i++)
 	{
-		printf("\n ERROR: Invalid layer id value for previous A in merge layer!\n");
-		exit(EXIT_FAILURE);
+		if(prev_list_id[i] < 0 && prev_list_id[i] + net->nb_layers-1 >= 0)
+			m_param->prev_list[i] = net->net_layers[current->layer_id + prev_list_id[i]];
+		else if(prev_list_id[i] >= 0 && prev_list_id[i] < net->nb_layers-1)
+			m_param->prev_list[i] = net->net_layers[prev_list_id[i]];
+		else
+		{
+			printf("\n ERROR: Invalid previous layer id provided!\n");
+			exit(EXIT_FAILURE);
+		}
 	}
-	if(previous_id_b > net->nb_layers-2 || previous_id_b < -net->nb_layers)
+	
+	for(i = 0; i < nb_previous; i++)
+		for(j = i + 1; j < nb_previous; j++)
+			if(m_param->prev_list[i] == m_param->prev_list[j])
+			{
+				printf("\n ERROR: All previous layer IDs must be different!\n");
+				exit(EXIT_FAILURE);
+			}
+	
+	
+	for(i = 0; i < nb_previous; i++)
+		m_param->prev_type_list[i] = m_param->prev_list[i]->type;
+	
+	current->output_type = -1;
+	for(i = 0; i < nb_previous; i++)
+	{	//Output type is determined by the first non-input layer
+		if(m_param->prev_type_list[i] != INPUT)
+		{
+			current->output_type = m_param->prev_list[i]->output_type;
+			break;
+		}
+	}
+	if(current->output_type == -1) //All merged layers are input
 	{
-		printf("\n ERROR: Invalid layer id value for previous B in merge layer!\n");
-		exit(EXIT_FAILURE);
+		flat_output_dim = 1;
+		for(i = 0; i < 3; i++)
+			flat_output_dim *= m_param->prev_list[0]->output_dim[i];
+		if(flat_output_dim == 1)
+			current->output_type = FLAT;
+		else
+			current->output_type = SPATIAL;
 	}
 	
-	m_param->previous_id_a = previous_id_a;
-	m_param->previous_id_b = previous_id_b;
+	for(i = 0; i < nb_previous; i++)
+		if((m_param->prev_list[i]->output_type != current->output_type))
+		{
+			printf("\n ERROR: Can't merge layers of different kind!\n");
+			exit(EXIT_FAILURE);
+		}
 	
-	if(previous_id_a < 0)
-		m_param->previous_a = net->net_layers[net->nb_layers - 1 + previous_id_a];
-	else
-		m_param->previous_a = net->net_layers[previous_id_a];
-	if(previous_id_b < 0)
-		m_param->previous_b = net->net_layers[net->nb_layers - 1 + previous_id_b];
-	else
-		m_param->previous_b = net->net_layers[previous_id_b];
-	
-	if(m_param->previous_a->output_type != m_param->previous_b->output_type)
-	{
-		printf("\n ERROR: trying to merge layers of different kind!\n");
-		exit(EXIT_FAILURE);
-	}
-
-	current->output_type = m_param->previous_a->output_type;
 	current->output_dim = (int*) calloc(4, sizeof(int));
+	current->prev_dim = m_param->prev_list[0]->output_dim; //used only as a placeholder here
 	
 	if(m_param->merge_type == ADD_merge)
 	{
-		for(i = 0; i < 4; i++)
-			if(m_param->previous_a->output_dim[i] != m_param->previous_b->output_dim[i])
-			{
-				printf("\n ERROR: ADD merge layer require the two input layers to have the exact same shape!\n");
-				exit(EXIT_FAILURE);
-			}	
+		for(i = 1; i < nb_previous; i++)
+			for(j = 0; j < 4; j++)
+				if(m_param->prev_list[i]->output_dim[j] != current->prev_dim[j])
+				{
+					printf("\n ERROR: ADD merge layer require all input layers to have the exact same shape!\n");
+					exit(EXIT_FAILURE);
+				}
 		
-		for(i = 0; i < 4; i++)
-		{
-			current->output_dim[i] = m_param->previous_a->output_dim[i];
-			//prev_dim
-		}
+		for(j = 0; j < 4; j++)
+			current->output_dim[j] = current->prev_dim[j];
 	}
-	else
+	else // CONCAT_MERGE
 	{
-		for(i = 0; i < 3; i++)
-			if(m_param->previous_a->output_dim[i] != m_param->previous_b->output_dim[i]) //should also work with dense
-			{
-				printf("\n ERROR: CONCATENATE merge layer require the two input layers to the same spatial shape!\n");
-				exit(EXIT_FAILURE);
-			}
+		for(i = 1; i < nb_previous; i++)
+			for(j = 0; j < 3; j++)
+				if(m_param->prev_list[i]->output_dim[j] != current->prev_dim[j]) //should also work with dense
+				{
+					printf("\n ERROR: CONCATENATE merge layer require all input layers to have the same spatial shape!\n");
+					exit(EXIT_FAILURE);
+				}
 		
-		for(i = 0; i < 3; i++)
+		for(j = 0; j < 3; j++)
+			current->output_dim[j] = current->prev_dim[j];
+	
+		m_param->prev_nb_channels = (int*) malloc(nb_previous*sizeof(int));
+		
+		current->output_dim[3] = 0;
+		for(i = 0; i < nb_previous; i++)
 		{
-			current->output_dim[i] = m_param->previous_a->output_dim[i];
-			//prev_dim
+			m_param->prev_nb_channels[i] = m_param->prev_list[i]->output_dim[3];
+			current->output_dim[3] += m_param->prev_list[i]->output_dim[3];
 		}
-		current->output_dim[3] = m_param->previous_a->output_dim[3] + m_param->previous_b->output_dim[3];
 	}
 	
 	nb_features = current->output_dim[3];
 	
 	if(current->output_type == SPATIAL)
 	{
+		flat_output_dim = 1;
 		for(i = 0; i < 3; i++)
 			flat_output_dim *= current->output_dim[i];
 	
@@ -182,27 +228,45 @@ int merge_create(network *net, int previous_id_a, int previous_id_b, int merge_t
 		current->a_offset     = net->batch_size;
 	}
 	else
-	{	
-		flat_output_dim = nb_features + 1;
+	{
+		nb_features += 1;
 	
-		current->a_size       = flat_output_dim * net->batch_size;
-		current->a_dim        = nb_features;
-		current->a_biased_dim = flat_output_dim;
+		current->a_size       = nb_features * net->batch_size;
+		current->a_dim        = nb_features - 1;
+		current->a_biased_dim = nb_features;
 		current->a_offset     = 1;
 	}
 
 	current->output = (float*) calloc(current->a_size, sizeof(float));
 	mem_approx += current->a_size * sizeof(float);
 	
+	m_param->prev_output_list = (void**) malloc(nb_previous * sizeof(void*));
+	mem_approx += nb_previous * sizeof(void*);
+	
+	for(i = 0; i < nb_previous; i++)
+		m_param->prev_output_list[i] = m_param->prev_list[i]->output;
+	// prev_list[i]->output is already a GPU adress if CUDA_comp enabled as previous layers are converted on the fly
+	// Just need to move this array of GPU adresses itself on the GPU memory to be access by kernels when using CUDA_comp
+	
 	if(!net->inference_only)
 	{
 		//allocate output error comming from next layer
 		current->delta_o = (float*) calloc(current->a_size, sizeof(float));
 		mem_approx += current->a_size * sizeof(float);
+		
+		m_param->prev_delta_o_list = (void**) malloc(nb_previous * sizeof(void*));
+		mem_approx += nb_previous * sizeof(void*);
+		
+		for(i = 0; i < nb_previous; i++)
+		{
+			if(m_param->prev_type_list[i] != INPUT)
+				m_param->prev_delta_o_list[i] = m_param->prev_list[i]->delta_o;
+			else
+				m_param->prev_delta_o_list[i] = NULL;
+		}
 	}
 	
 	current->nb_params = 0;
-	
 	define_activation_param(current, activation);
 	
 	//associate the conv specific functions to the layer
@@ -230,15 +294,19 @@ int merge_create(network *net, int previous_id_a, int previous_id_b, int merge_t
 	get_string_merge_type(m_type, merge_type);
 	fill_string_activ_param(current, activ, 0);
 	
-	printf("      Prev_A: %d, Prev_B: %d, Type: %s\n\
-      Output: %dx%dx%dx%ld, Activation: %s\n\
+	if(!silent)
+	{
+		printf("      Nb_previous: %d, prev_list_id:", nb_previous);
+		for(i = 0; i < nb_previous; i++)
+			printf(" %d", prev_list_id[i]);
+		printf("\n      Type: %s, Output: %dx%dx%dx%ld, Activation: %s\n\
       Approx layer RAM/VRAM requirement: %d MB\n",
-		previous_id_a, previous_id_b, m_type,
-		current->output_dim[0], current->output_dim[1], current->output_dim[2], nb_features,
-		activ, (int)(mem_approx/1000000));
+			m_type, current->output_dim[0], current->output_dim[1], current->output_dim[2], 
+			nb_features, activ, (int)(mem_approx/1000000));
+	}
 	net->total_nb_param += 0;
 	net->memory_footprint += mem_approx;
-
+	
 	return net->nb_layers - 1;
 }
 
@@ -246,24 +314,33 @@ int merge_create(network *net, int previous_id_a, int previous_id_b, int merge_t
 
 void merge_save(FILE *f, layer *current, int f_bin)
 {
+	int i;
 	char layer_type = 'M';
 	
 	m_param = (merge_param*)current->param;
 	
+	int nb_previous = m_param->nb_previous;
+	int prev_layer_id[nb_previous];
+	
+	for(i = 0; i < nb_previous; i++)
+		prev_layer_id[i] = m_param->prev_list[i]->layer_id - current->layer_id;
+	
 	if(f_bin)
 	{
 		fwrite(&layer_type, sizeof(char), 1, f);
-		fwrite(&m_param->previous_id_a, sizeof(int), 1, f);
-		fwrite(&m_param->previous_id_b, sizeof(int), 1, f);
+		fwrite(&nb_previous, sizeof(int), 1, f);
+		fwrite(prev_layer_id, sizeof(int), nb_previous, f);
 		fwrite(current->output_dim, sizeof(int), 4, f);
 		print_merge_type(f, m_param->merge_type, f_bin);
 		print_activ_param(f, current, f_bin);
 	}
 	else
 	{
-		fprintf(f,"M"); //output dim required for partial save loading through skip_layers
-		fprintf(f, "%dpa%dpb odim%dx%dx%dx%d ", m_param->previous_id_a, m_param->previous_id_b,
-			current->output_dim[0], current->output_dim[1], current->output_dim[2], current->output_dim[3]);
+		fprintf(f,"M %d", nb_previous); //output dim required for partial save loading through skip_layers
+		for(i = 0; i < nb_previous; i++)
+			fprintf(f, " %d", prev_layer_id[i]);
+		fprintf(f, " odim%dx%dx%dx%d ", current->output_dim[0], current->output_dim[1], 
+			current->output_dim[2], current->output_dim[3]);
 		print_merge_type(f, m_param->merge_type, f_bin);
 		fprintf(f, " ");
 		print_activ_param(f, current, f_bin);
@@ -271,50 +348,52 @@ void merge_save(FILE *f, layer *current, int f_bin)
 	}
 }
 
-void merge_load(network *net, FILE *f, int f_bin, int skip_layer)
+void merge_load(network *net, FILE *f, int f_bin, int skip_layer, int silent)
 {
-	int i;
+	int i, nb_previous;
 	char merge_type[40];
 	char activ_type[40];
 	int output_dim[4];
-	int previous_id_a, previous_id_b;
+	int *prev_layer_id;
 	
-	if(!skip_layer)
-		printf("Loading merge layer, M:%d\n", net->nb_layers+1);
+	if(!skip_layer && !silent)
+		printf("Loading merge layer, M:%d\n", net->nb_layers);
 	
 	if(f_bin)
 	{
-		fread(&previous_id_a, sizeof(int), 1, f);
-		fread(&previous_id_b, sizeof(int), 1, f);
+		fread(&nb_previous, sizeof(int), 1, f);
+		prev_layer_id = (int*) malloc(nb_previous*sizeof(int));
+		// Static array scope should be enough since merge_create is called in this function
+		// and the array is only used for startup (replaced with a m_param-stored array of layer pointers)
+		fread(prev_layer_id, sizeof(int), nb_previous, f);
 		fread(output_dim, sizeof(int), 4, f);
 		fread(merge_type, sizeof(char), 40, f);
 		fread(activ_type, sizeof(char), 40, f);
 	}
 	else
-		fscanf(f, "%dpa%dpb odim%dx%dx%dx%d %s %s\n", &previous_id_a, &previous_id_b,
-			&output_dim[0], &output_dim[1], &output_dim[2], &output_dim[3], merge_type, activ_type);
+	{
+		fscanf(f, "%d", &nb_previous);
+		prev_layer_id = (int*) malloc(nb_previous*sizeof(int));
+		for(i = 0; i < nb_previous; i++)
+			fscanf(f, " %d", &(prev_layer_id[i]));
+		fscanf(f, " odim%dx%dx%dx%d %s %s\n", &output_dim[0], &output_dim[1], 
+			&output_dim[2], &output_dim[3], merge_type, activ_type);
+	}
 	
 	if(!skip_layer)
-	{
-		if(net->nb_layers <= 0)
-		{
-			printf("\n ERROR: Cannot start a network with a merge layer!\n");
-			exit(EXIT_FAILURE);
-		}
-		
-		merge_create(net, previous_id_a, previous_id_b, load_merge_type(merge_type), activ_type);
-	}
-	else
-	{
-		for(i = 0; i < 4; i++)
-			net->skip_in_dims[i] = output_dim[i];
-	}
+		merge_create(net, nb_previous, prev_layer_id, load_merge_type(merge_type), activ_type, silent);
+	
+	free(prev_layer_id);
 }
 
 void free_merge(layer *current)
 {
-	//free(current->output_dim);
-		
+	m_param = (merge_param*) current->param;
+	
+	free(m_param->prev_list);
+	free(current->output_dim);
+	free(m_param->prev_output_list);
+	
 	#ifdef CUDA
 	if(current->c_network->compute_method == C_CUDA)
 	{	
@@ -324,8 +403,14 @@ void free_merge(layer *current)
 	#endif
 	{
 		free(current->output);
+		free(m_param->prev_type_list);
+		if(m_param->prev_nb_channels != NULL)
+			free(m_param->prev_nb_channels);
 		if(!current->c_network->inference_only)
+		{
 			free(current->delta_o);
+			free(m_param->prev_delta_o_list);
+		}
 	}
 	
 	if(current->activ_param != NULL)

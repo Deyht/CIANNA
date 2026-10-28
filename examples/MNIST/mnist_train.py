@@ -6,101 +6,99 @@ import os
 import sys, glob
 #if glob.glob('../../src/build/lib.*/'):
 #	sys.path.insert(0,glob.glob('../../src/build/lib.*/')[-1]) #if compiled with compile.cp
-#if glob.glob('../../build/'):
-#	sys.path.insert(0,glob.glob('../../build/')[-1]) #if compiled with cmake
+if glob.glob('../../build/'):
+	sys.path.insert(0,glob.glob('../../build/')[-1]) #if compiled with cmake
+
 import CIANNA as cnn
 
 
-############################################################################
-##              Data reading (your mileage may vary)
-############################################################################
-
-def i_ar(int_list):
-	return np.array(int_list, dtype="int")
-
-def f_ar(float_list):
-	return np.array(float_list, dtype="float32")
-
 if(not os.path.isdir("mnist_dat")):
-	os.system("wget https://share.obspm.fr/s/EkYR5B2Wc2gNis3/download/mnist.tar.gz")
+	#share.obspm not available currently, so mnist.tar.gz is store in git for now 
+	#os.system("wget https://share.obspm.fr/s/EkYR5B2Wc2gNis3/download/mnist.tar.gz")
 	os.system("tar -xvzf mnist.tar.gz")
-	
 
-print ("Reading inputs ... ", end = "", flush=True)
+mnist_data = np.fromfile("mnist_dat/mnist_input.dat", dtype="float32")
+mnist_data = np.reshape(mnist_data, (80000,28*28))
+mnist_targets = np.fromfile("mnist_dat/mnist_target.dat", dtype="float32")
+mnist_targets = np.reshape(mnist_targets, (80000,10))
 
-#Loading binary files
-data = np.fromfile("mnist_dat/mnist_input.dat", dtype="float32")
-data = np.reshape(data, (80000,28*28))
-target = np.fromfile("mnist_dat/mnist_target.dat", dtype="float32")
-target = np.reshape(target, (80000,10))
+data_train = mnist_data[:60000,:]
+data_valid = mnist_data[60000:70000,:]
+data_test  = mnist_data[70000:80000,:]
+
+#Label smoothing
+target_train = mnist_targets[:60000,:]*0.9 + 0.1/10
+target_valid = mnist_targets[60000:70000,:]*0.9 + 0.1/10
+target_test  = mnist_targets[70000:80000,:]*0.9 + 0.1/10
 
 
-data_train = data[:60000,:]
-data_valid = data[60000:70000,:]
-data_test  = data[70000:80000,:]
 
-target_train = target[:60000,:]
-target_valid = target[60000:70000,:]
-target_test  = target[70000:80000,:]
-
-print ("Done !", flush=True)
-
-############################################################################
-##               CIANNA network construction and use
-############################################################################
-
-cnn.init(in_dim=i_ar([28,28]), in_nb_ch=1, out_dim=10, b_size=16,
-		optimizer=cnn.adam(beta1=0.95), wema=1,
-		comp_meth="C_CUDA", dynamic_load=1, mixed_precision="BF16C_FP32A")
+# Optimizer selection and configuration is available in init
+# Input shape is no longer an option of init
+cnn.init(b_size=16, optimizer=cnn.adam(beta1=0.90, beta2=0.999), wema=1,
+		comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP16C_FP32A")
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)
-cnn.create_dataset("TEST" , size=10000, input=data_test, target=target_test)
+# Target is no longer mandatory. Avoid creating an empty target array when using the model in inference only.
+cnn.create_dataset("TEST" , size=10000, input=data_test)
 
+a_relu = cnn.relu(leaking=0.05, saturation=640000.0)
 
-a_relu = cnn.relu(leaking=0.1, saturation=640000.0)
-
-def conv_res_block(nb_filters):
-	cnn.conv(f_size=i_ar([3,3]), nb_filters=nb_filters, stride=i_ar([1,1]), padding=i_ar([1,1]), activation="LIN")
-	cnn.norm(group_size=nb_filters, activation="LIN")
-	cnn.conv(f_size=i_ar([1,1]), nb_filters=nb_filters*4, stride=i_ar([1,1]), padding=i_ar([0,0]), activation=a_relu)
-	cnn.grn()
-	cnn.conv(f_size=i_ar([1,1]), nb_filters=nb_filters, stride=i_ar([1,1]), padding=i_ar([0,0]), activation="LIN")
-	l_layer = cnn.merge(-1, -6, "ADD")
-	return l_layer
-
-
-#Used to load a saved network at a given iteration
 load_step = 0
 if(load_step > 0):
 	cnn.load("optim_save/net_optim0_s%04d.dat"%(load_step), load_step, bin=1)
 else:
-	cnn.conv(f_size=i_ar([5,5]), nb_filters=16 , padding=i_ar([2,2]), activation="LIN")
-	cnn.norm(group_size=4, activation=a_relu)
-	conv_res_block(16)
-	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.norm(group_size=4, activation=a_relu)
-	
-	cnn.conv(f_size=i_ar([5,5]), nb_filters=32, padding=i_ar([2,2]), activation="LIN")
-	conv_res_block(32)
-	cnn.pool(p_size=i_ar([2,2]), p_type="MAX")
-	cnn.norm(group_size=4, activation=a_relu)
-	
-	cnn.dense(nb_neurons=256, activation=a_relu, drop_rate=0.5)
-	cnn.dense(nb_neurons=128, activation=a_relu, drop_rate=0.2)
+    #New input layer, must provide spatial dimension and number of features
+	im_input = cnn.input(spatial_shape=(28,28), nb_features=1)
+
+    #All configuration keywords that expected numpy arrays now also support lists and tuple formats with variable length
+	cnn.conv(f_size=(5,5), nb_filters=8 , padding=(2,2), activation=a_relu)
+	cnn.pool(p_size=(2,2), p_type="MAX")
+	cnn.norm(group_size=4)
+
+	cnn.conv(f_size=(5,5), nb_filters=16, padding=(2,2), activation=a_relu)
+	cnn.pool(p_size=(2,2), p_type="MAX")
+	cnn.norm(group_size=4)
+
+	cnn.dense(nb_neurons=256, activation=a_relu, drop_rate=0.8)
+	cnn.dense(nb_neurons=128, activation=a_relu, drop_rate=0.5)
 	cnn.dense(nb_neurons=10 , strict_size=1, activation="SMAX")
 
-#To create a latex table and associated pdf with the current architecture	
-#cnn.print_arch_tex("./arch/", "arch", activation=1)
 
+# Example of advanced learning rate scheduling
+# Here cyclical cosine decay (currently configured with only one cycle)
+warmup = 2
+cycle_length = 40
+cycle_decay = 0.8
 
-cnn.train(nb_iter=1, learning_rate=0.0002, weight_decay=0.01, decoupled_wdecay=1, wema_rate=0.999, confmat=1, save_every=1, save_optim_every=1, save_bin=1)
-cnn.perf_eval()
+l_r_max = 5e-4
+l_r_min = 2e-6
 
-pred = cnn.forward(drop_mode="AVG_MODEL", no_error=0, saving=1, return_output=1)
-print (pred)
+for i in range(0,cycle_length): #adjust the number of cycle here
 
+    if(i < warmup):
+        l_r = l_r_min + (l_r_max - l_r_min) * min(i/warmup,1.0)
+    else:
+        cycle_id = i//cycle_length
+        in_cycle_progress = (i%cycle_length)/cycle_length
+        l_r = l_r_min + 0.5*(l_r_max*cycle_decay**cycle_id - l_r_min)*(1 + np.cos(np.pi*in_cycle_progress))
 
+    # Some new optimization-related keywords. Also allow saving an optimizer complete save state for warm restart
+    cnn.train(nb_iter=1, learning_rate=l_r,
+        weight_decay=0.05, decoupled_wdecay=1, wema_rate=0.998, wema_replace_every=cycle_length,
+    	confmat=3, control_interv=1, save_every=10, save_optim_every=10, save_bin=1)
+    if(i == 0):
+        cnn.perf_eval()
+
+# Forward can now return a numpy array for subsequent processing without having to load a fwd_res/---.txt file
+pred = cnn.forward(drop_mode="AVG_MODEL", no_error=1, saving=0, return_output=1)
+
+pred_class = np.argmax(pred, axis=1)
+targ_class = np.argmax(target_test, axis=1)
+
+accuracy = len(np.where(pred_class == targ_class)[0])/len(targ_class)
+print ("Test set accuracy: %4.2f %%"%(accuracy*100))
 
 
 

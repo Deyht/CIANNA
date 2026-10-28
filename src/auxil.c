@@ -22,32 +22,82 @@
 #include "prototypes.h"
 
 // Local variables
-struct timeval t_perf_eval;
-struct timeval t_batch_eval, t_epoch_eval;
 
 // Public are in "prototypes.h"
 
 
-void init_timing(struct timeval* tstart)
+void* timer_init(network *net)
 {
-    gettimeofday(tstart, NULL);
+	void *temp;
+	if(net->compute_method == C_CUDA)
+	{
+		#ifdef CUDA
+		temp = cuda_timer_init();
+		#endif
+	}
+	else
+		temp = (struct timeval*) malloc(sizeof(struct timeval));
+	
+	return (void*)temp;
 }
 
 
-float ellapsed_time(struct timeval tstart)
+void timer_start(network *net, void *timer)
 {
-    struct timeval tmp;
-    long long diff;
-    gettimeofday(&tmp, NULL);
-    diff = (tmp.tv_usec - tstart.tv_usec);
-    diff += (tmp.tv_sec - tstart.tv_sec)*1000000;
-    return ((float)diff); //return in micro sec
+	struct timeval *t_timer;
+	if(net->compute_method == C_CUDA)
+	{
+		#ifdef CUDA
+		cuda_timer_start(timer);
+		#endif
+	}
+	else
+	{
+		t_timer = (struct timeval*)timer;
+		gettimeofday(t_timer, NULL);
+	}
+}
+
+
+double ellapsed_time(network *net, void *timer)
+{
+	double time;
+	struct timeval tmp, t_timer;
+	
+	if(net->compute_method == C_CUDA)
+	{
+		#ifdef CUDA
+		time = cuda_ellapsed_time(timer);
+		#endif
+	}
+	else
+	{
+		long long int diff;
+		t_timer = *((struct timeval*)timer);
+		gettimeofday(&tmp, NULL);
+		diff = (tmp.tv_usec - t_timer.tv_usec);
+		diff += (tmp.tv_sec - t_timer.tv_sec)*1000000;
+		time = (double)diff;
+	}
+    return time; //return in micro sec
+}
+
+void timer_free(network *net, void *timer)
+{
+	if(net->compute_method == C_CUDA)
+	{
+		#ifdef CUDA
+		cuda_timer_free(timer);
+		#endif
+	}
+	else
+		free(timer);
 }
 
 
 void sig_handler(int signo)
 {
-	if(signo == SIGINT)
+	if(signo == SIGINT || signo == SIGTERM)
 		printf("\n WARNING: program interrupted\n");
 	//Could handle exit more gracefully by freeing everything (postponed ATM)
 	exit(EXIT_SUCCESS);
@@ -70,7 +120,7 @@ void print_table(float* tab, int column_size, int nb_column)
 }
 
 
-void print_iter_advance(network *net, int c_batch, int nb_batch, float loss, float c_perf, int is_training)
+void print_iter_advance(network *net, int c_batch, int nb_batch, float loss, double c_perf, int is_training)
 {
 	int i;
 	int size = net->adv_size, l_size = 0;
@@ -161,28 +211,31 @@ double random_normal(void)
 }
 
 
+size_t random_int_below(size_t n)
+{
+	unsigned long range = (unsigned long)RAND_MAX + 1UL;
+	unsigned long limit = range - (range % n);
+	unsigned long r;
+
+	do
+	{
+		r = (unsigned long)rand();
+	} while (r >= limit);
+
+	return (size_t)(r % n);
+}
+
+
 //Warning : the following *eval* functions are used during network training and must not be used anywhere else in the code (would lead to incorrect training metrics)
 void eval_init(network *net)
 {
-	#ifdef CUDA
-	if(net->compute_method == C_CUDA)
-	{
-		cuda_batch_eval_init();
-		cuda_epoch_eval_init();
-	}
-	#endif
-
 	if(net->perf_eval == 1)
 	{
-		net->fwd_perf =  (float*) calloc(net->nb_layers,sizeof(float));
-		net->back_perf = (float*) calloc(net->nb_layers,sizeof(float));
-		net->fwd_perf_n =  (int*) calloc(net->nb_layers,sizeof(int));
-		net->back_perf_n = (int*) calloc(net->nb_layers,sizeof(int));
-	
-		#ifdef CUDA
-		if(net->compute_method == C_CUDA)
-			cuda_perf_eval_init();
-		#endif
+		net->fwd_perf    = (double*) calloc(net->nb_layers, sizeof(double));
+		net->back_perf   = (double*) calloc(net->nb_layers, sizeof(double));
+		net->fwd_perf_n  = (size_t*) calloc(net->nb_layers, sizeof(size_t));
+		net->back_perf_n = (size_t*) calloc(net->nb_layers, sizeof(size_t));
+		
 		net->perf_eval = 2;
 	}
 	else
@@ -190,127 +243,35 @@ void eval_init(network *net)
 }
 
 
-void perf_eval_in(network *net)
+void perf_layer_eval(network *net, long long int ellapsed_time, int layer_id, double *vect, size_t *n_vect)
 {
 	if(net->perf_eval == 0)
 		return;
-	if(net->compute_method == C_CUDA)
-	{
-		#ifdef CUDA
-		cuda_perf_eval_in();
-		#endif
-	}
-	else
-	{
-		init_timing(&t_perf_eval);
-	}
-}
-
-
-void batch_eval_in(network *net)
-{
-	if(net->compute_method == C_CUDA)
-	{
-		#ifdef CUDA
-		cuda_batch_eval_in();
-		#endif
-	}
-	else
-	{
-		init_timing(&t_batch_eval);
-	}
-}
-
-
-void epoch_eval_in(network *net)
-{
-	if(net->compute_method == C_CUDA)
-	{
-		#ifdef CUDA
-		cuda_epoch_eval_in();
-		#endif
-	}
-	else
-	{
-		init_timing(&t_epoch_eval);
-	}
-}
-
-
-void perf_eval_out(network *net, int layer_id, float *vect, int *n_vect)
-{
-	float time = 0.0f;
-	if(net->perf_eval == 0)
-		return;
-	if(net->compute_method == C_CUDA)
-	{
-		#ifdef CUDA
-		time = cuda_perf_eval_out(); //in micro sec
-		#endif
-	}
-	else
-	{
-		time = ellapsed_time(t_perf_eval);
-	}
 	
 	if(n_vect[layer_id] < 999)
 	{
-		vect[layer_id] += time/net->batch_size;
+		vect[layer_id] += ellapsed_time/net->batch_size;
 		n_vect[layer_id] += 1;
 	}
-}
-
-
-float batch_eval_out(network *net)
-{
-	float time = 0.0f;
-	if(net->compute_method == C_CUDA)
-	{
-		#ifdef CUDA
-		time = cuda_batch_eval_out()/1000000.0f;
-		#endif
-	}
-	else
-	{
-		time = ellapsed_time(t_batch_eval)/1000000.0f;
-	}
-	return time;
-}
-
-
-float epoch_eval_out(network *net)
-{
-	float time = 0.0f;
-	if(net->compute_method == C_CUDA)
-	{
-		#ifdef CUDA
-		time = cuda_epoch_eval_out()/1000000.0f;
-		#endif
-	}
-	else
-	{
-		time = ellapsed_time(t_epoch_eval)/1000000.0f;
-	}
-	return time;
 }
 
 
 void perf_eval_display(network *net)
 {
 	int i;
-	float *fwd_time, *back_time, *cumul_time;
-	float total_fwd = 0.0f, total_back = 0.0f, total_cumul = 0.0f;
+	double *fwd_time, *back_time, *cumul_time;
+	double total_fwd = 0.0f, total_back = 0.0f, total_cumul = 0.0f;
 	char layer_type_char = '-';
 	
-	fwd_time   = (float*) calloc(net->nb_layers, sizeof(float));
-	back_time  = (float*) calloc(net->nb_layers, sizeof(float));
-	cumul_time = (float*) calloc(net->nb_layers, sizeof(float));
+	fwd_time   = (double*) calloc(net->nb_layers, sizeof(double));
+	back_time  = (double*) calloc(net->nb_layers, sizeof(double));
+	cumul_time = (double*) calloc(net->nb_layers, sizeof(double));
 	
 	if (net->perf_eval == 0)
 		return;
 	
-	printf("\nTotal Net. nb weights: %lld \nTotal Network RAM/VRAM usage : %d MB\n", 
-		net->total_nb_param, (int)(net->memory_footprint/1000000));
+	printf("\nTotal Net. nb weights: %ld \nTotal Network RAM/VRAM usage : %ld MB\n", 
+		net->total_nb_param, (size_t)(net->memory_footprint/1000000));
 	printf("(without datasets, and prop. to batch_size)\n");
 	
 	for(i = 0; i < net->nb_layers; i++)
@@ -332,6 +293,10 @@ void perf_eval_display(network *net)
 	{
 		switch(net->net_layers[i]->type)
 		{
+			case INPUT:
+				layer_type_char = 'I';
+				break;
+				
 			case CONV:
 				layer_type_char = 'C';
 				break;
@@ -564,7 +529,12 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 				m_param = (merge_param*)c_l->param;
 				type_count[5] += 1;
 				fprintf(f_tex, "& MERGE\\_%d ", type_count[5]);
-				if(l_in_size) fprintf(f_tex, "L:%d / L:%d ", m_param->previous_id_a, m_param->previous_id_b);
+				if(l_in_size)
+				{ 
+					fprintf(f_tex, "L_ids:");
+					for(int j = 0; j < m_param->nb_previous; j++)
+						fprintf(f_tex, " %d", m_param->prev_list[j]->layer_id);
+				}
 				if(l_size) fprintf(f_tex, "& %d ", c_l->output_dim[3]);
 				if(l_f_size) fprintf(f_tex, "& ");
 				if(l_stride) fprintf(f_tex, "& ");

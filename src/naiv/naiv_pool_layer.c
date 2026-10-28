@@ -367,9 +367,9 @@ void forward_pool_layer(layer* current)
 	network* net = current->c_network;
 	p_param = (pool_param*) current->param;
 	
-	if(current->previous == NULL)
+	if(current->previous->type == INPUT)
 	{
-		current->input = net->input;
+		current->input = current->previous->output;
 		bias_in = 1;
 	}
 	
@@ -442,7 +442,7 @@ void backward_pool_layer(layer* current)
 	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 		dropout_apply_pool(current->delta_o, current->dropout_mask, nb_maps * flat_nb_area * net->batch_size);
 
-	if(current->previous != NULL)
+	if(current->previous->type != INPUT)
 	{
 		if(current->output_type == SPATIAL)
 		{

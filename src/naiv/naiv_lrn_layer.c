@@ -116,9 +116,7 @@ void naiv_forward_lrn_layer(layer *current)
 	size_t flat_output_dim = 1;
 
 	network* net = current->c_network;
-	n_param = (lrn_param*)current->param;		
-	//Previous verification should ensure that it is not the first layer 
-	current->input = current->previous->output;
+	n_param = (lrn_param*)current->param;
 	
 	if(current->output_type == FLAT)
 		flat_output_dim = current->output_dim[3] + 1;

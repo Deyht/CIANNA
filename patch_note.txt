@@ -1,7 +1,97 @@
 ********************************************
-===== V-1.1.0.1_exp =====
+===== V-1.1.0.4_dev =====
 
-Updated based on the latest changes in the DEV branch.
+- Fix network id behavior in the Python interface. Default init network id is zero, meaning that calling init twice without specifying id
+  will destroy and recreate a network with id zero. However, if a network_id is specified, it now sets a global_current_network_id variable.
+  With this change, all API functions called after a given network init with no network_id specified as argument will automatically apply to
+  the last initialized network (and not to the network_id 0 as before).
+- Change in API interface. Following popular request, most function arguments that previously required pre-typed numpy arrays (int or float32)
+  now also support lists and tuples; e.g., cnn.conv(f_size=i_ar([3,3])) can now be replaced with cnn.conv(f_size=[3,3]) or cnn.conv(f_size=(3,3)).
+  Previous argument format is still supported for backward compatibility. Data arrays provided as input still need to be provided as explicitly
+  typed float32 numpy arrays. Also, all layers supporting a "prev_layer" argument or similar now work as absolute or relative.
+  Some interface functions now also return a layer id (e.g., cnn.load() returns the last loaded layer id).
+  Overall, many interface functions have been patched to properly increment and decrement python variables, fixing some very long training crashes.
+- Rework input design. Add a new INPUT layer type, created with the cnn.input() interface function, with one mandatory keyword "nb_features", 
+  and one optional argument "spatial_shape" (plus classical silent and network arguments) and returning the layer id. 
+  The corresponding arguments are therefore removed from the cnn.init() function.
+  A network can now have an arbitraty number of INPUT type layers. These layers are added to the network structure as classical layers and can
+  therefore be referenced by their absolute or relative id by other layers.
+  To follow this change, the cnn.create_dataset() function now takes a list (or tuple, or numpy array of objects) of 2D data arrays as argument
+  for both "input" and "target" keywords (target remains optional for the TEST dataset, and only the first target data array will be used for now). 
+  Each data array must match the dimension of its corresponding input layer in order of declaration (checked when calling the train function).
+  These changes enable the construction of complex multi-branch network architectures (class-conditioned networks, multimodal networks, etc.). 
+- Rework norm layer to AdaGN (Adaptive Group Norm). Normalization layers now declare an internal DENSE layer (hidden from the global network structure)
+  that performs a projection from a condition input layer to the gamma and beta values. If no condition input layer is provided, the projection takes
+  a constant hidden input instead (stored in the network structure), reproducing the classical GN normalization. 
+  The stored NORM layer parameters now correspond to the projection layer's weight matrix rather than the gamma and beta values directly.
+  Also, scaling is now performed with (1+gamma) instead of just gamma, allowing the projection layer to learn a deviation from identity.
+  Interface should be backward-compatible (except for gamma_init renamed to gamma_start). A new "cond_layer" argument can be used to specify
+  the absolute or relative id of the layer to use as condition input (leave undeclared for constant input).
+  This change allows the creation of efficiently conditioned models (mostly for generative models) or the merging of input branches of different kinds.
+  Note that this change only applies to the NORM layer type for now. GRN layers still learn non-conditioned gamma and beta parameters directly.
+- Remove bias auto propagation through weight matrix pivot (replaced with forward and backprop time bias setting to allow dense layer branching).
+  The pivot column is preserved in the current implementation of dense weight matrices, even though it is now only filled with zeros, as it allows
+  to automatically create outputs that accommodate an extra output column used to store the bias input for subsequent layers. 
+  Also fix remaining bugs related to leaking gradient propagation to the pivot vector.
+- Update MERGE layer to support FLAT format (dense) layers merging.
+- Change the saving format of the "opt_step" parameter from the Adam optimizer to an explicit 6-bit unsigned integer to prevent overflow
+  and ensure compatibility between 32-bit and 64-bit systems. Some other saved arguments should follow.
+- Update MERGE to support input layers as well.
+- Fix an error in freeing GRN layers
+
+********************************************
+===== V-1.1.0.3_dev =====
+
+- Fix layer skipping when loading a save state in binary format.
+- Fix an error in dense-to-conv connect introduced by the last FLAT/SPATIAL refactor.
+- Fix an error adding a TC_padding of 8 when unnecessary (this will marginally reduce memory footprint and improve compute efficiency).
+- Implement per-group parameter sharing in grouped convolution. As an example, from an input with 32 channels
+  cnn.conv(f_size=i_ar([1,1]), nb_filters=2, nb_groups=4, group_param_sharing=1)
+  will decompose the input channels into 4 groups of 8 channels and each group will be convolved with the same 2 filters of size 1x1x1x8,
+  leading to an output with nb_filters*nb_groups (here 8) activation maps. This contrasts with classical grouped convolution where each
+  group gets independent filters.
+  Note: when group_param_sharing=0, the nb_filters argument must be the total number of output filters (will be split amongst groups), 
+  while when group_param_sharing=1, the nb_filters argument is the number of filters per group, scaled in output by the number of groups.
+  Therefore, "nb_filters" always represents the number of learnable parameters in the layer (multiplied by the kernel size).
+- Add no-deprecated-gpu-targets to cuda compilation to prevent errors when compiling for VOLTA on cuda 12.8/12.9 (latest supported version)
+- Fix an issue in perf eval that would unfairly add latency of the first-ever program kernel launch to the first layer forward time.
+- Move previous layer logic from the python interface to the C code for each layer. The new formulation allows for expressing prev_ids as relative to
+  the current layer, like for merge layer arguments. The saved prev_id for each layer is now expressed as relative. This increase the chances that
+  subparts of a given model can be loaded independently (for example, the decoder part from a U-net that contains skip connections).
+- Rework MERGE layer to allow > 2 previous layers. The new version takes an array of relative (negative only) or absolute layer ids as an argument.
+  This rework should improve code clarity and reduces memory footprint when merging more than two layers (previously achieved by stacking merge layers).
+- Rework of the YOLO-CIANNA assignment phase. This change aims at simplifying the code itself, improving performances, and also fixing some unexpected
+  behavior present in the previous implementation. For a detailed view of the new approach, look at the code itself. In summary:
+  * Random prior association is now decided per cell elements and affects all units in the cell (used at startup or at a small rate). 
+    All other association processes are ignored in that case.
+  * All elements that restrict association are now affecting directly the association matrix (through masking of the distance_to_prior matrix).
+  * Restrict to the smallest prior is now applied first and is considered a priority compared to other association refinments.
+  * Random best prior association is now considered as a special case of setting strict_box_size_association = 1 on the current cell.
+  * Prediction-awase association then takes place on the masked IoU and dist_to_prior matrices. Association ordering is based on the IoU when above 
+    low_IoU_best_box_assoc and based on dist_to_prior otherwise. When matching based on dist_to_prior, multiple identical priors are discriminated based 
+    on the predicted IoU.
+    One consequence of this change is that, in contrast with setting strict_box_size_association = 1 which would prevent association if the best theoretical
+    prior is already set to another target, the new low_IoU_best_box_assoc simply search for the best remaining prior available / authorized.
+  * Difficult flag status is checked for each association pair and IoU / Obj limits are checked before assignement validation.
+  * A new alternative association priority has been added (opt-in for the moment) based on minimising regret of assignement. The current best match
+    is not selected based on the highest IoU score anymore, but on the highest difference between the best and second best associaiton for each box.
+    This approach allows for selecting better "global" solution instead of always affecting "best first" regardless of the quality of the other predictions.
+
+
+********************************************
+===== V-1.1.0.2_dev =====
+
+- Change default activation of Conv and Dense to LIN instead of RELU
+- Add tunable classification label smooting to the YOLO loss. Using an alpha smoothing scaling, negative class has a target of alpha/nb_class, 
+  while positive class has a target of (1-alpha) + alpha/nb_class.
+- Change in saving format to include previous layer id just after the layer type. This change allows to save and load architecture with more
+  advanced branching that could already be build with CIANNA but impossible to save and load.
+- Fix a save file loading error that was happening when loading a YOLO activated conv layer using the ASCII save format.
+
+********************************************
+===== V-1.1.0.1_dev =====
+
+Recreate dev branch from the V-1.1.0_exp branch to ensure consistency.
 
 - Add manual initial setup of NORM layer gamma (std) value. Setting gamma to 0 in the last norm layer of a residual block ensure initial identity operation.
 - The NORM layer is changed to have one gamma and beta parameter per output channel (instead of one per group). This is done do better align with classical
@@ -15,21 +105,16 @@ Updated based on the latest changes in the DEV branch.
   steps on the host CPU and the CPU version of the optimizer was used. This was causing unrequired host-device synchronization hurting latency.
 - Fix BLAS linking in the latest Cmake install so it now support a wider variety of BLAS implementation. As a side effect, this allows the installer
   to use the native BLAS on Mac OS (tested on an M2 equiped device).
-- Update the error message when requesting an unsuported (or non-compiled) compute backend to improve clarity on possible actions to take.
-- The binary created by compiling the main.c file is now self consistent. MNIST data are automatically downloaded for testing.
-  The main.c file was also reworked to improve readability, especially for functions with many arguments.
-- The main.c file can now be compiled in "TEST_MODE" (by passing -D TEST_MODE=ON as a CMake argument). This allows to bypass data download
-  to verify that the framework is compiled properly without network access, by running the test model on empty data arrays.
-- Fix the return argument of many functions in the C/Python interface. This was causing crashes of the framework when training for an
-  extended time using the dynamic data augmentation scheme.
-- Tweak the confmat display to not show nan values in precision or recall of empty classes (now display 0 instead).
-- Add a isinf test to forward and training functions to detect model configuration errors requesting more VRAM than what is available on the GPU.
-- Fix a save file loading error that was happening when loading a YOLO activated conv layer using the ASCII save format.
+- Get minor fixes from stable branch (better compute backend fallback message, at compute time backend selection in main and new test mode main,
+  fix all python function returns to prevent long train run crash)
 
-===== V-1.1.0_exp =====
+
+********************************************
+===== V-1.1.0_dev =====
 
 Branch and empty the patch for the new DEV branch.
 Initial state of the branch is based on Stable V-1.0.1.1 (commit a24c040)
+-> Final state used to create the V-1.1.0_exp branch.
 
 - Backprop now accumulates the gradient in the previous layer instead of setting its value. All layers set their own gradient to zero at inference time.
   This change aims at allowing complex layer branching (e.g., split and merge layers).
@@ -97,6 +182,54 @@ Initial state of the branch is based on Stable V-1.0.1.1 (commit a24c040)
 - Also include the new makefile installation from the stable version (updated for the experimental version)
 
 
+********************************************
+#######  To do  #######
+
+#In progress note
+
+- While changing for multiple input (and targets) notice some dependancies of YOLO to a specific set of input/target dimensions.
+  For now, use of dataset id 0 has been hardcoded. Should be checked in all YOLO related functions and changed to a user defined input layer (associated to a branch).
+  Some checks should also be moved from general to data specific (at network forward, instead of general config). 
+
+- Should update Mixed precision so each network can have a different compute mode (put cublas handles in network structure)
+- Having two networks running in parrallel is not safe => layers temporary variables are shared (likely other issues)
+
+Code arrangement
+
+- Add LOGI+BCE (multi loss support for same activation?)
+- Improve 1x1 convolution by skipping im2col. This requires to add bias weight directly in the conv layer output and manage automatic bias propagation like in dense!
+(specificity of CIANNA that is getting generalized).
+
+
+- P0 modularize optimizer.c/.cu code (Usefull ? Already not that bad)
+- Check scalability of norm layers => try to have different block sizes and select automatically to maximize GPU occupancy, or rework kernel work distribution ...
+- Remove as many switch statements as possible through function pointers (e.g., save, load, free layer functions).
+- Rework the compute error and the predict functions
+
+Fix known errors / unexpected behaviors
+
+- Review all binary writes and reads and base them on fixed Byte count types (using e.g <inttypes.h>)
+- Add back dropout to all layers and add drop_feature to spatial layers.
+
+New functionalities / reworks (EASY)
+
+- Add layer-wise lr decay ? (mostly usefull for fine-tuning a model over a new task to preserve general features from the layers close to the input).
+- In YOLO, try to weight lambda no-obj based on the batch image/batch statistic rather than fixed per prior value ? This would aim at automatically having a common objectness scale for NMS. 
+- Work specifically on DENSE/CONV branching in order to add N dense elements directly to the flat im2col representation instead of full channels.
+- Generalize Norm layer and LRN layer for dense ? Add back a specific implementation for Batch norm or generalize the current norm implementation ?
+- Add learnable scaling layer ? (already covered through NORM and GRN with customizable gamma start?)
+- Overlapping pool kernels (set a stride)
+- Try to improve performances even more for small batches (typically a size of 1 is used for realtime applications)
+
+New functionalities / reworks (HARD)
+
+- Add “REORDER” / “Shuffle?” layer for non-destructive layer output reshape
+- Add network stochastic depth through “drop path.”
+- Investigate dilated convolution
+- Investigate inception-like block structures
+- Investigate unified gpu memory management (for SoC such as DGX SPARK), 
+  -> look for the best way to take advantage of shared memory allocation but in a way that preserve performance (host malloc memory accessed by GPU can be slower)
+  -> and ideally that preserve a single global programming scheme (avoid too much of system architecture dependant code in the inner parts of CIANNA). 
 
 
 

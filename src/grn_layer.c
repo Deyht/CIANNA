@@ -29,7 +29,8 @@ static grn_param *n_param;
 // Private prototypes
 
 
-int grn_create(network *net, layer *previous, const char *activation, int residual, float gamma_init, FILE *f_load, int load_optim_state, int f_bin)
+int grn_create(network *net, int prev_layer, const char *activation, int residual, float gamma_start, 
+	FILE *f_load, int load_optim_state, int f_bin, int silent)
 {
 	size_t i;
 	size_t flat_output_dim = 1, nb_features;
@@ -41,15 +42,26 @@ int grn_create(network *net, layer *previous, const char *activation, int residu
 	current->c_network = net;
 	net->nb_layers++;
 	
-	printf("L:%d - CREATING GLOBAL RESPONSE NORMALIZATION LAYER ...\n", net->nb_layers);
+	if(!silent)
+		printf("L:%d - CREATING GLOBAL RESPONSE NORMALIZATION LAYER ...\n", net->nb_layers - 1);
 	
-	current->type = GRN;
-	current->frozen = 0;
+	current->type                = GRN;
+	current->layer_id            = net->nb_layers-1;
+	current->frozen              = 0;
 	current->wema_replace_signal = 0;
-	current->dropout_rate = 0.0f; //no dropout authorized here
-	current->previous = previous;
+	current->dropout_rate        = 0.0f; //no dropout authorized here
 	
-	if(previous == NULL)
+	if(prev_layer < 0 && prev_layer + net->nb_layers-1 >= 0)
+		current->previous = net->net_layers[current->layer_id + prev_layer];
+	else if(prev_layer >= 0 && prev_layer < net->nb_layers-1)
+		current->previous = net->net_layers[prev_layer];
+	else
+	{
+		printf("\n ERROR: Invalid previous layer id provided!\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(current->previous->type == INPUT)
 	{
 		printf("\n ERROR: GRN layer is not autorized as first layer.\n");
 		exit(EXIT_FAILURE);
@@ -60,13 +72,13 @@ int grn_create(network *net, layer *previous, const char *activation, int residu
 	
 	n_param->residual = residual;
 	
-	current->input = previous->output;
-	current->output_type = previous->output_type;
+	current->input = current->previous->output;
+	current->output_type = current->previous->output_type;
 	current->output_dim = (int*) calloc(4, sizeof(int));
 	for(i = 0; i < 4; i++)
-		current->output_dim[i] = previous->output_dim[i];
+		current->output_dim[i] = current->previous->output_dim[i];
 	nb_features = current->output_dim[3];
-	current->prev_dim = previous->output_dim;
+	current->prev_dim = current->previous->output_dim;
 	
 	if(current->output_type == SPATIAL)
 	{
@@ -79,7 +91,10 @@ int grn_create(network *net, layer *previous, const char *activation, int residu
 		current->a_offset     = net->batch_size;
 	}
 	else
-	{	
+	{
+		printf("\n ERROR: Norm from flat/dense layers is not supported yet. Convert to 1d conv for merging.\n");
+		exit(EXIT_FAILURE);
+		
 		flat_output_dim = nb_features + 1;
 	
 		current->a_size       = flat_output_dim * net->batch_size;
@@ -92,7 +107,6 @@ int grn_create(network *net, layer *previous, const char *activation, int residu
 	n_param->relative_importance = (float*) calloc(nb_features*net->batch_size, sizeof(float));
 	mem_approx += 2 * nb_features * net->batch_size * sizeof(float);
 	
-	//Only useful for th GPU implementation but allocated anyway
 	n_param->mean = (float*) calloc(net->batch_size, sizeof(float));
 	mem_approx += net->batch_size * sizeof(float);
 	
@@ -103,7 +117,7 @@ int grn_create(network *net, layer *previous, const char *activation, int residu
 	mem_approx += 2 * nb_features * sizeof(float);
 	
 	for(i = 0; i < nb_features; i++)
-		n_param->gamma[i] = gamma_init;
+		n_param->gamma[i] = gamma_start;
 	
 	current->output = (float*) calloc(current->a_size, sizeof(float));
 	mem_approx += current->a_size * sizeof(float);
@@ -147,7 +161,6 @@ int grn_create(network *net, layer *previous, const char *activation, int residu
 			#ifdef CUDA
 			cuda_grn_define(current);
 			mem_approx = cuda_convert_grn_layer(current);
-			//optim is done on CPU for GRN for the moment
 			cuda_define_activation_fct(current);
 			#endif
 			break;
@@ -163,9 +176,10 @@ int grn_create(network *net, layer *previous, const char *activation, int residu
 	char activ[40];
 	fill_string_activ_param(current, activ,0);
 	
-	printf("      N. features %ld, Activation: %s\n\
+	if(!silent)
+		printf("      N. features %ld, Activation: %s\n\
       Nb. params: %ld, Approx layer RAM/VRAM requirement: %d MB\n",
-		nb_features, activ, current->nb_params,(int)(mem_approx/1000000));
+			nb_features, activ, current->nb_params,(int)(mem_approx/1000000));
 	net->total_nb_param += current->nb_params;
 	net->memory_footprint += mem_approx;
 	
@@ -178,19 +192,24 @@ void grn_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 {
 	char layer_type = 'G';
 	size_t nb_features;
-
+	int prev_id = -1;
+	
 	n_param = (grn_param*)current->param;	
+	
+	prev_id = current->previous->layer_id - current->layer_id;
+	
 	nb_features = current->output_dim[3];
 	
 	if(f_bin)
 	{
 		fwrite(&layer_type, sizeof(char), 1, f);
+		fwrite(&prev_id, sizeof(int), 1, f);
 		fwrite(&n_param->residual, sizeof(int), 1, f);
 		print_activ_param(f, current, f_bin);
 	}
 	else
 	{
-		fprintf(f,"G res_%d ", n_param->residual);
+		fprintf(f,"G prev%d res_%d ", prev_id, n_param->residual);
 		print_activ_param(f, current, f_bin);
 		fprintf(f,"\n");
 	}
@@ -198,45 +217,27 @@ void grn_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 	save_layer_weights(f, current, 2*nb_features, nb_features, 0, 0, save_optim_state, f_bin);
 }
 
-void grn_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer)
+void grn_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer, int silent)
 {
-	int residual, nb_features;
-	float temp_read;
+	int residual, prev_id;
 	char activ_type[40];
-	layer *previous;
 	
-	if(!skip_layer)
-		printf("Loading GRN layer, L:%d\n", net->nb_layers+1);
+	if(!skip_layer && !silent)
+		printf("Loading GRN layer, L:%d\n", net->nb_layers);
 	
 	if(f_bin)
 	{
+		fread(&prev_id, sizeof(int), 1, f);
 		fread(&residual, sizeof(int), 1, f);
 		fread(activ_type, sizeof(char), 40, f);
 	}
 	else
-	{
-		fscanf(f, " res_%d %s\n", &residual, activ_type);
-	}
-
+		fscanf(f, " prev%d res_%d %s\n", &prev_id, &residual, activ_type);
+	
 	if(!skip_layer)
-	{
-		if(net->nb_layers <= 0)
-			previous = NULL;
-		else
-			previous = net->net_layers[net->nb_layers-1];
-		
-		grn_create(net, previous, activ_type, residual, 1.0f, f, load_optim_state, f_bin);
-	}
+		grn_create(net, prev_id, activ_type, residual, 1.0f, f, load_optim_state, f_bin, silent);
 	else
-	{
-		nb_features = net->skip_in_dims[3];
-		
-		if(f_bin)
-			fseek(f, nb_features*2, SEEK_CUR);
-		else
-			for(int i = 0; i < nb_features*2; i++)
-				fscanf(f, "%f", &temp_read);
-	}
+		skip_layer_weights(f, f_bin);
 }
 
 

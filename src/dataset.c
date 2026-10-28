@@ -24,49 +24,71 @@
 // Public are in "prototypes.h"
 
 // Private prototypes
-Dataset create_dataset_host(network *net, int with_target, size_t nb_elem);
+Dataset create_dataset_host(network *net, int with_target, size_t nb_elem, 
+	int nb_branch_in, size_t *branch_in_dim, int nb_branch_targ, size_t *branch_targ_dim);
 void copy_to_host(float* in_tab, void* out_tab, int out_offset, size_t size);
 
 
-Dataset create_dataset(network *net, int with_target, size_t nb_elem)
+Dataset create_dataset(network *net, int with_target, size_t nb_elem, 
+	int nb_branch_in, size_t *branch_in_dim, int nb_branch_targ, size_t *branch_targ_dim)
 {
 	#ifdef CUDA
 	if(net->compute_method == C_CUDA)
 	{
-		return cuda_create_dataset(net, with_target, nb_elem);
+		return cuda_create_dataset(net, with_target, nb_elem, nb_branch_in, branch_in_dim, nb_branch_targ, branch_targ_dim);
 	}
 	else
 	#endif
 	{
-		return create_dataset_host(net, with_target, nb_elem);
+		return create_dataset_host(net, with_target, nb_elem, nb_branch_in, branch_in_dim, nb_branch_targ, branch_targ_dim);
 	}
 }
 
 
-Dataset create_dataset_host(network *net, int with_target, size_t nb_elem)
+Dataset create_dataset_host(network *net, int with_target, size_t nb_elem, 
+	int nb_branch_in, size_t *branch_in_dim, int nb_branch_targ, size_t *branch_targ_dim)
 {
-	size_t i;
+	size_t i, b;
 	Dataset data;
 	
-	data.size = nb_elem;
-	data.localization = HOST;
-	data.cont_copy = copy_to_host;
-	data.nb_batch = (data.size - 1) / net->batch_size + 1;
+	data.nb_branch_in   = nb_branch_in;
+	data.nb_branch_targ = nb_branch_targ;
+	data.size           = nb_elem;
+	data.localization   = HOST;
+	data.cont_copy      = copy_to_host;
+	data.nb_batch       = (data.size - 1) / net->batch_size + 1;
 	
-	data.input = (void**) malloc(data.nb_batch*sizeof(float*));
+	data.input = (void***) malloc(nb_branch_in*sizeof(void**));
+	data.branch_in_dim = (size_t*) malloc(nb_branch_in*sizeof(size_t));
 	
-	for(i = 0; i < data.nb_batch; i++)
-		((float**)data.input)[i] = (float*) calloc(net->batch_size * (net->input_dim + 1), sizeof(float));
+	for(b = 0; b < nb_branch_in; b++)
+	{
+		data.input[b] = (void**) malloc(data.nb_batch*sizeof(float*));
+		data.branch_in_dim[b] = branch_in_dim[b];
+	
+		for(i = 0; i < data.nb_batch; i++)
+			((float**)data.input[b])[i] = (float*) calloc(net->batch_size * (branch_in_dim[b] + 1), sizeof(float));
+	}
 	
 	if(with_target)
 	{
-		data.target = (void**) malloc(data.nb_batch*sizeof(float*));
+		data.target = (void***) malloc(nb_branch_targ*sizeof(void**));
+		data.branch_targ_dim = (size_t*) malloc(nb_branch_targ*sizeof(size_t));
 		
-		for(i = 0; i < data.nb_batch; i++)
-			((float**)data.target)[i] = (float*) calloc(net->batch_size * net->output_dim, sizeof(float));
+		for(b = 0; b < nb_branch_targ; b++)
+		{
+			data.target[b] = (void**) malloc(data.nb_batch*sizeof(float*));
+			data.branch_targ_dim[b] = branch_targ_dim[b];
+			
+			for(i = 0; i < data.nb_batch; i++)
+				((float**)data.target[b])[i] = (float*) calloc(net->batch_size * branch_targ_dim[b], sizeof(float));
+		}
 	}
 	else
+	{
 		data.target = NULL;
+		data.branch_targ_dim = NULL;
+	}
 	
 	return data;
 }
@@ -80,35 +102,47 @@ void copy_to_host(float *in_tab, void *out_tab, int out_offset, size_t size)
 }
 
 
-void host_only_shuffle(network *net, Dataset data)
+void host_only_shuffle(network *net, Dataset *data)
 {
-	size_t i, j, k;
+	size_t i, j, k, b;
 	float temp;
 	size_t pos, pos2, batch, batch2;
+	float **c_input, **c_target;
 
-	for(i = 0; i < data.size - 1; i++)
+	for(i = 0; i < data->size - 1; i++)
 	{
-		j = i + random_uniform() * (double)(data.size-i);
-		pos = i%net->batch_size;
-		batch = i/net->batch_size;
-		pos2 = j%net->batch_size;
+		j      = i + random_int_below(data->size - i);
+		pos    = i%net->batch_size;
+		batch  = i/net->batch_size;
+		pos2   = j%net->batch_size;
 		batch2 = j/net->batch_size;
 		
-		for(k = 0; k < net->input_dim+1; k++)
+		for(b = 0; b < data->nb_branch_in; b++)
 		{
-			temp = ((float**)data.input)[batch][pos*(net->input_dim + 1) + k];
-			((float**)data.input)[batch][pos*(net->input_dim + 1) + k] = ((float**)data.input)[batch2][pos2*(net->input_dim + 1) + k];
-			((float**)data.input)[batch2][pos2*(net->input_dim + 1) + k] = temp;
+			c_input = (float**)data->input[b];
+			
+			for(k = 0; k < data->branch_in_dim[b]+1; k++)
+			{
+				temp = ((float*)c_input[batch])[pos*(data->branch_in_dim[b] + 1) + k];
+				((float*)c_input[batch])[pos*(data->branch_in_dim[b] + 1) + k] = 
+					((float*)c_input[batch2])[pos2*(data->branch_in_dim[b] + 1) + k];
+				((float*)c_input[batch2])[pos2*(data->branch_in_dim[b] + 1) + k] = temp;
+			}
 		}
 		
-		if(data.target != NULL)
+		if(data->target != NULL)
 		{
-			for(k = 0; k < net->output_dim; k++)
+			for(b = 0; b < data->nb_branch_targ; b++)
 			{
-				temp = ((float**)data.target)[batch][pos*net->output_dim + k];
+				c_target = (float**)data->target[b];
 				
-				((float**)data.target)[batch][pos*net->output_dim + k] = ((float**)data.target)[batch2][pos2*net->output_dim + k];
-				((float**)data.target)[batch2][pos2*net->output_dim + k] = temp;
+				for(k = 0; k < data->branch_targ_dim[b]; k++)
+				{
+					temp = ((float*)c_target[batch])[pos*data->branch_targ_dim[b] + k];
+					((float*)c_target[batch])[pos*data->branch_targ_dim[b] + k] = 
+						((float*)c_target[batch2])[pos2*data->branch_targ_dim[b] + k];
+					((float*)c_target[batch2])[pos2*data->branch_targ_dim[b] + k] = temp;
+				}
 			}
 		}
 	}
@@ -117,21 +151,33 @@ void host_only_shuffle(network *net, Dataset data)
 
 void free_dataset(Dataset *data)
 {
-	size_t i;
+	size_t i, b;
 	
 	if(data->localization == HOST)
 	{
 		if(data->input != NULL)
 		{
-			for(i = 0; i < data->nb_batch; i++)
-				free(data->input[i]);
+			for(b = 0; b < data->nb_branch_in; b++)
+			{
+				if(data->input[b] == NULL)
+					continue;
+				for(i = 0; i < data->nb_batch; i++)
+					free(data->input[b][i]);
+				free(&data->input[b][0]);
+			}
 			free(&data->input[0]);
 		}
 		
 		if(data->target != NULL)
 		{
-			for(i = 0; i < data->nb_batch; i++)
-				free(data->target[i]);
+			for(b = 0; b < data->nb_branch_targ; b++)
+			{
+				if(data->target[b] == NULL)
+					continue;
+				for(i = 0; i < data->nb_batch; i++)
+					free(data->target[b][i]);
+				free(&data->target[b][0]);
+			}
 			free(&data->target[0]);
 		}
 	}
@@ -142,8 +188,12 @@ void free_dataset(Dataset *data)
 		
 		if(data->input != NULL)
 			free(&data->input[0]);
+		if(data->input_device != NULL)
+			free(&data->input_device[0]);
 		if(data->target != NULL)
 			free(&data->target[0]);
+		if(data->target_device != NULL)
+			free(&data->target_device[0]);
 	}
 	#endif
 	

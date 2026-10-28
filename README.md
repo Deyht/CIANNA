@@ -29,6 +29,20 @@
 
 &nbsp;
 
+**Development Update 28/10/2026:**
+Experimental branch updated with the latest dev branch content (1.1.0.4_dev).  
+Many chanches from 1.1.0.1, see patch note for an exhausive list of changes.  
+**New save format is not compatible with previous versions (also can't load older models).**
+* Rework the Python interface. All dimension arguments can now be provided as list and tuble in addition to the previous int np.arrays format. All "prev_layer" or "cond_layer" keyworks now support both absolute and relative network position. Move many default configuration setting from the python librarie to the C code.
+* Rework all CIANNA input design. Add a new INPUT layer. Move input size declaration from cnn.init to cnn.input. Support multiple input layers. Create dataset now support providing a 
+list of numpy arrays corresponding to the data from each input branch (must match the number of declared input layer in the architecture). Provide support for much more complex architectures.
+* Add support for Adaptive Group Normalization (AdaGN). Added to the existing GN. Takes a extra conditionning layer and declare an hidden dense projection layer to learn gamma and beta. Y = gamma(X, C)*GN(X) + beta(X,C). Gradient propagates (accumulated) to the conditioning layer if it is not an input layer.
+* Rework CIANNA's signature pivot-bias propagation in FLAT style layers to allow more flexible architecture (multi-branch).
+* Improve bin saving format robustness across systems. Also improve partial architecture loading scheme.
+* Rework YOLO-CIANNA assignement process: simplified and remove undesired correlations between refinement steps. Also add a new "regret-based" assignement, as an alternative to best fIoU.
+* Rework merge to allow > 2 previous layer and extend previous layer type compatibility.
+* Rework Conv layer to allow cross-group parameter sharing (similar to a 4D convolution) as opt-in, enable some new architectures like "MLP-MIXER".
+
 **Development Update 29/04/2026:**
 Experimental branch updated with the latest dev branch content (1.1.0.1_dev).
 * Fix a few issues in the regarding dense to conv branching

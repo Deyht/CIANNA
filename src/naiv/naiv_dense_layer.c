@@ -158,32 +158,31 @@ void naiv_forward_dense_layer(layer *current)
 		flat_in_size *= current->prev_dim[i];
 	flat_in_size += 1;
 	
-	if(current->previous == NULL)
+	if(current->previous->type == INPUT)
 	{
-		ref_input = net->input;
+		current->input = current->previous->output;
 		for(i = 0; i < net->batch_size; i++)
-			ref_input[i*(net->input_dim+1) + net->input_dim] = current->bias_value;
-		
-		current->input = net->input;
+			((float*)current->input)[i*flat_in_size + (flat_in_size-1)] = current->bias_value;
+		ref_input = current->input;
+	}
+	else if(current->previous->output_type == FLAT)
+	{
+		for(i = 0; i < net->batch_size; i++)
+			((float*)current->input)[i*flat_in_size + (flat_in_size-1)] = current->bias_value;
+		ref_input = current->input;
 	}
 	else
-		current->input = current->previous->output;
-	
-	ref_input = (float*)current->input;
+	{
+		flat_dense(current->input, d_param->flat_input, current->bias_value, 
+			current->prev_dim[0]*current->prev_dim[1]*current->prev_dim[2], flat_in_size, 
+			current->prev_dim[3], net->batch_size, flat_in_size * net->batch_size);
+		ref_input = (float*)d_param->flat_input;
+	}
 	
 	if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 		f_weights = (void*) current->ema_weights;
 	else
 		f_weights = (void*) current->weights;
-	
-	if(current->previous != NULL && current->previous->output_type != FLAT)
-	{
-		flat_dense(current->input, d_param->flat_input, current->bias_value, 
-			current->prev_dim[0]*current->prev_dim[1]*current->prev_dim[2], flat_in_size, 
-			current->prev_dim[3], net->batch_size, flat_in_size * net->batch_size);
-		
-		ref_input = (float*)d_param->flat_input;
-	}
 	
 	//Strongly affected by performance drop of cache miss
 	//Could be optimized by transposing the matrix first => better use OpenBLAS directly
@@ -198,7 +197,6 @@ void naiv_forward_dense_layer(layer *current)
 				h += f_weights[j*(nb_neurons+1) + i]
 					* ref_input[b*flat_in_size + j];
 			}
-			
 			f_output[b*(nb_neurons+1)+i] = h;
 		}
 	}
@@ -219,7 +217,7 @@ void naiv_forward_dense_layer(layer *current)
 	if(!net->inference_only)
 	{
 		memset(current->delta_o, 0, (nb_neurons+1) * net->batch_size * sizeof(float));
-		if(current->previous != NULL && current->previous->output_type != FLAT)
+		if(current->previous->type != INPUT && current->previous->output_type != FLAT)
 			memset(d_param->flat_delta_o, 0, flat_in_size * net->batch_size * sizeof(float));
 	}
 }
@@ -249,13 +247,31 @@ void naiv_backward_dense_layer(layer* current)
 	//Must be done here so all layers can add their contribution to current layer delta_o (merging / branching)
 	current->deriv_activation(current);
 	
+	if(current->previous->type == INPUT)
+	{
+		current->input = current->previous->output;
+		for(i = 0; i < net->batch_size; i++)
+			((float*)current->input)[i*flat_in_size + (flat_in_size-1)] = current->bias_value;
+		ref_input = current->input;
+	}
+	else if(current->previous->output_type == FLAT)
+	{	//must be done at every pass to handle cases where multiple dense layers have the same previous layer
+		for(i = 0; i < net->batch_size; i++)
+			((float*)current->input)[i*flat_in_size + (flat_in_size-1)] = current->bias_value;
+		ref_input = current->input;
+	}
+	else
+	{	//flat_input array is per layer, no need to re set the bias here
+		ref_input = (float*)d_param->flat_input;
+	}
+	
 	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 		dropout_apply_dense(current->delta_o, current->dropout_mask, (nb_neurons+1)*net->batch_size);
 	
 	//######################## ERROR PROPAGATION ########################
 
 	//skip error prop if previous is the input layer
-	if(current->previous != NULL)
+	if(current->previous->type != INPUT)
 	{
 		#pragma omp parallel for private(i, j, h) collapse(2) schedule(guided, 4)
 		for(b = 0; b < net->batch_size; b++)
@@ -285,11 +301,6 @@ void naiv_backward_dense_layer(layer* current)
 	//########################  WEIGHTS UPDATE   ########################
 	if(!current->frozen)
 	{
-		ref_input = (float*) current->input;
-	
-		if(current->previous != NULL && current->previous->output_type != FLAT)
-			ref_input = (float*) d_param->flat_input;
-	
 		#pragma omp parallel for private(j, b, h) collapse(2) schedule(guided, 4)
 		for(i = 0; i <  flat_in_size; i++)
 		{

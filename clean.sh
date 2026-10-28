@@ -29,7 +29,7 @@ cd ../examples/
 cd MNIST
 
 rm error.txt
-rm *.tar.gz
+#rm *.tar.gz #Commented as it is not available through share.obspm at the moment / store to git as a temporary fix
 rm -rf mnist_dat
 rm -rf arch
 rm -rf fwd_res

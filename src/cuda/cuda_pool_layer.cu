@@ -441,9 +441,9 @@ void cuda_forward_pool_layer(layer *current)
 	network* net = current->c_network;
 	p_param = (pool_param*) current->param;
 	
-	if(current->previous == NULL)
+	if(current->previous->type == INPUT)
 	{
-		current->input = net->input;
+		current->input = current->previous->output;
 		bias_in = 1;
 	}
 	
@@ -529,7 +529,7 @@ void cuda_backward_pool_layer(layer* current)
 			current->dropout_mask, nb_maps * flat_nb_area * net->batch_size, current->dropout_rate);
 	}
 
-	if(current->previous != NULL)
+	if(current->previous->type != INPUT)
 	{
 		if(current->output_type == SPATIAL)
 		{

@@ -178,17 +178,38 @@ __global__ void cuda_dropout_scale_conv_##name(void* i_table, float* mask, size_
 }
 
 
+#define cuda_reduce_shared_group_gradient_kernel(name, type)																					\
+__global__ void cuda_reduce_shared_group_gradient_##name(void *i_group_grad, void *i_shared_grad, size_t param_size, size_t nb_groups)			\
+{																																				\
+	size_t i = blockIdx.x * blockDim.x + threadIdx.x;																							\
+	size_t g;																																	\
+	float acc = 0.0f;																															\
+																																				\
+	type *group_grad = (type*) i_group_grad;																									\
+	type *shared_grad = (type*) i_shared_grad;																									\
+																																				\
+	if(i >= param_size)																															\
+		return;																																	\
+																																				\
+	for(g = 0; g < nb_groups; g++)																												\
+		acc += (float)group_grad[g * param_size + i];																							\
+																																				\
+	shared_grad[i] = (type)acc;																													\
+}
+
 
 im2col_kernel(FP32, float);
 cuda_rotate_filter_matrix(FP32, float); 
 cuda_dropout_apply_conv(FP32, float);
 cuda_dropout_scale_conv(FP32, float);
+cuda_reduce_shared_group_gradient_kernel(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 im2col_kernel(FP16, half);
 cuda_rotate_filter_matrix(FP16, half);
 cuda_dropout_apply_conv(FP16, half);
 cuda_dropout_scale_conv(FP16, half);
+cuda_reduce_shared_group_gradient_kernel(FP16, half);
 #endif
 
 #if defined (GEN_AMPERE)
@@ -196,6 +217,7 @@ im2col_kernel(BF16, nv_bfloat16);
 cuda_rotate_filter_matrix(BF16, nv_bfloat16); 
 cuda_dropout_apply_conv(BF16, nv_bfloat16);
 cuda_dropout_scale_conv(BF16, nv_bfloat16);
+cuda_reduce_shared_group_gradient_kernel(BF16, nv_bfloat16);
 #endif
 
 
@@ -210,6 +232,7 @@ void cuda_conv_init(network* net)
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_FP32;
 			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_FP32;
 			net->cu_inst.cu_conv_fcts.drop_scale_fct = cuda_dropout_scale_conv_FP32;
+			net->cu_inst.cu_conv_fcts.reduce_shared_group_gradient_fct = cuda_reduce_shared_group_gradient_FP32;
 			break;
 		
 		case FP16C_FP32A:
@@ -219,6 +242,7 @@ void cuda_conv_init(network* net)
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_FP16;
 			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_FP16;
 			net->cu_inst.cu_conv_fcts.drop_scale_fct = cuda_dropout_scale_conv_FP16;
+			net->cu_inst.cu_conv_fcts.reduce_shared_group_gradient_fct = cuda_reduce_shared_group_gradient_FP16;
 			#else
 			printf("\n ERROR: CIANNA not compiled with FP16 compute capability (GEN_VOLTA minimum)\n");
 			exit(EXIT_FAILURE);
@@ -231,6 +255,7 @@ void cuda_conv_init(network* net)
 			net->cu_inst.cu_conv_fcts.rotate_filter_fct = cuda_rotate_filter_matrix_BF16;
 			net->cu_inst.cu_conv_fcts.drop_apply_fct = cuda_dropout_apply_conv_BF16;
 			net->cu_inst.cu_conv_fcts.drop_scale_fct = cuda_dropout_scale_conv_BF16;
+			net->cu_inst.cu_conv_fcts.reduce_shared_group_gradient_fct = cuda_reduce_shared_group_gradient_BF16;
 			#else
 			printf("\n ERROR: CIANNA not compiled with BF16 compute capability (GEN_AMPERE minimum)\n");
 			exit(EXIT_FAILURE);
@@ -260,11 +285,19 @@ size_t cuda_convert_conv_layer(layer *current)
 	spatial_f_size   =     c_param->f_size[0] *     c_param->f_size[1] *     c_param->f_size[2];
 	nb_regions_in    =   current->prev_dim[0] *   current->prev_dim[1] *   current->prev_dim[2];
 	nb_regions_out   = current->output_dim[0] * current->output_dim[1] * current->output_dim[2];
-	nb_filters       = current->output_dim[3];
 	prev_nb_channels =   current->prev_dim[3];
 	
 	chan_per_group_in  = prev_nb_channels / nb_groups;
-	chan_per_group_out = nb_filters       / nb_groups;
+	if(c_param->group_param_sharing)
+	{
+		nb_filters = current->output_dim[3] / nb_groups;
+		chan_per_group_out = nb_filters;
+	}
+	else
+	{
+		nb_filters = current->output_dim[3];
+		chan_per_group_out = nb_filters / nb_groups;
+	}
 
 	//######## Input related data arrays  ########
 	
@@ -278,14 +311,14 @@ size_t cuda_convert_conv_layer(layer *current)
 	//######## Weights related data arrays ########
 	
 	subdim_a = spatial_f_size * chan_per_group_in + 1 + c_param->TC_padding;
-	subdim_b = chan_per_group_out;
+	subdim_b = nb_filters;
 	
 	switch(net->cu_inst.use_cuda_TC)
 	{
 		default:
 		case FP32C_FP32A:
 		case TF32C_FP32A:
-			vram_approx += cuda_convert_table(net, &(current->weights), nb_groups * subdim_a * subdim_b, 0);
+			vram_approx += cuda_convert_table(net, &(current->weights), subdim_a * subdim_b, 0);
 			current->FP32_weights = (float*)current->weights;
 			break;
 		
@@ -293,24 +326,24 @@ size_t cuda_convert_conv_layer(layer *current)
 		case FP16C_FP16A:
 			#if defined(GEN_VOLTA) || defined(GEN_AMPERE) 
 			temp_tab = (float*)current->weights;
-			cudaMalloc(&(current->FP32_weights), nb_groups * subdim_a * subdim_b * sizeof(float));
-			vram_approx += nb_groups * subdim_a * subdim_b * sizeof(float);
-			cudaMemcpy(current->FP32_weights, temp_tab, nb_groups * subdim_a * subdim_b * sizeof(float), cudaMemcpyHostToDevice);
+			cudaMalloc(&(current->FP32_weights), subdim_a * subdim_b * sizeof(float));
+			vram_approx += subdim_a * subdim_b * sizeof(float);
+			cudaMemcpy(current->FP32_weights, temp_tab, subdim_a * subdim_b * sizeof(float), cudaMemcpyHostToDevice);
 			free(temp_tab);
-			cudaMalloc(&(current->weights), nb_groups * subdim_a * subdim_b * sizeof(half));
-			vram_approx += nb_groups * subdim_a * subdim_b * sizeof(half);
+			cudaMalloc(&(current->weights), subdim_a * subdim_b * sizeof(half));
+			vram_approx += subdim_a * subdim_b * sizeof(half);
 			#endif
 			break;
 		
 		case BF16C_FP32A:
 			#if defined (GEN_AMPERE)
 			temp_tab = (float*)current->weights;
-			cudaMalloc(&(current->FP32_weights), nb_groups * subdim_a * subdim_b * sizeof(float));
-			vram_approx += nb_groups * subdim_a * subdim_b * sizeof(float);
-			cudaMemcpy(current->FP32_weights, temp_tab, nb_groups * subdim_a * subdim_b * sizeof(float), cudaMemcpyHostToDevice);
+			cudaMalloc(&(current->FP32_weights), subdim_a * subdim_b * sizeof(float));
+			vram_approx += subdim_a * subdim_b * sizeof(float);
+			cudaMemcpy(current->FP32_weights, temp_tab, subdim_a * subdim_b * sizeof(float), cudaMemcpyHostToDevice);
 			free(temp_tab);
-			cudaMalloc(&(current->weights), nb_groups * subdim_a * subdim_b * sizeof(nv_bfloat16));
-			vram_approx += nb_groups * subdim_a * subdim_b * sizeof(nv_bfloat16);
+			cudaMalloc(&(current->weights), subdim_a * subdim_b * sizeof(nv_bfloat16));
+			vram_approx += subdim_a * subdim_b * sizeof(nv_bfloat16);
 			#endif
 			break;
 	}
@@ -318,11 +351,14 @@ size_t cuda_convert_conv_layer(layer *current)
 	if(!net->inference_only)
 	{
 		if(net->use_wema)
-			vram_approx += cuda_convert_table_FP32((void**)&(current->ema_weights), nb_groups * subdim_a * subdim_b, 0);
+			vram_approx += cuda_convert_table_FP32((void**)&(current->ema_weights), subdim_a * subdim_b, 0);
 		
-		vram_approx += cuda_convert_table(net, &(current->gradient), nb_groups * subdim_a * subdim_b, 0);
+		vram_approx += cuda_convert_table(net, &(current->gradient), subdim_a * subdim_b, 0);
 		
-		vram_approx += cuda_convert_optimizer_var(current, nb_groups * subdim_a * subdim_b);
+		if(c_param->group_param_sharing && nb_groups > 1)
+			vram_approx += cuda_convert_table(net, &(c_param->shared_group_gradient), nb_groups * subdim_a * subdim_b, 0);
+		
+		vram_approx += cuda_convert_optimizer_var(current, subdim_a * subdim_b);
 	}
 	
 	//#############################################
@@ -330,15 +366,15 @@ size_t cuda_convert_conv_layer(layer *current)
 	//######## Output related data arrays #########
 	
 	subdim_a = batch_size * nb_regions_out;
-	subdim_b = chan_per_group_out;
+	subdim_b = nb_groups * chan_per_group_out;
 	
-	vram_approx += cuda_convert_table(net, &(current->output), nb_groups * subdim_a * subdim_b, 0);
+	vram_approx += cuda_convert_table(net, &(current->output), subdim_a * subdim_b, 0);
 	
 	if(current->dropout_rate > 0.01f)
-		vram_approx += cuda_convert_table_FP32((void**)&(current->dropout_mask), nb_groups * subdim_a * subdim_b, 0);
+		vram_approx += cuda_convert_table_FP32((void**)&(current->dropout_mask), subdim_a * subdim_b, 0);
 	
 	if(!net->inference_only)
-		vram_approx += cuda_convert_table(net, &(current->delta_o), nb_groups * subdim_a * subdim_b, 0);
+		vram_approx += cuda_convert_table(net, &(current->delta_o), subdim_a * subdim_b, 0);
 	
 	//#############################################
 	
@@ -356,7 +392,7 @@ size_t cuda_convert_conv_layer(layer *current)
 		
 		vram_approx += cuda_convert_table(net, &(c_param->rotated_filters), nb_groups * subdim_a * subdim_b, 0);
 	
-		if(current->previous != NULL && current->previous->output_type == FLAT)
+		if(current->previous->type != INPUT && current->previous->output_type == FLAT)
 		{
 			subdim_a = prev_nb_channels * nb_regions_in;
 			subdim_b = batch_size;
@@ -388,9 +424,11 @@ void cuda_free_conv(layer *current)
 		if(current->c_network->use_wema)
 			cudaFree(current->ema_weights);
 		cudaFree(current->gradient);
+		if(c_param->group_param_sharing && c_param->nb_groups > 1)
+			cudaFree(c_param->shared_group_gradient);
 		cudaFree(c_param->rotated_filters);
 		cudaFree(current->delta_o);
-		if(current->previous != NULL && current->previous->output_type == FLAT)
+		if(current->previous->type != INPUT && current->previous->output_type == FLAT)
 			cudaFree(c_param->temp_delta_o);
 		cudaFree(c_param->im2col_delta_o);
 		
@@ -400,8 +438,8 @@ void cuda_free_conv(layer *current)
 
 void cuda_forward_conv_layer(layer *current)
 {
-	int dim_a, dim_b, dim_c;
-	size_t subdim_M, subdim_N, subdim_K, nb_groups, batch_size;
+	int dim_a, dim_b, dim_c, group_param_sharing;
+	size_t subdim_M, subdim_N, subdim_K, nb_groups, stride_param, batch_size;
 	size_t in_image_offset, in_channel_offset;
 	size_t spatial_f_size, nb_filters, prev_nb_channels;
 	size_t chan_per_group_in, chan_per_group_out;
@@ -412,33 +450,38 @@ void cuda_forward_conv_layer(layer *current)
 	c_param = (conv_param*) current->param;
 	batch_size = net->batch_size;
 	nb_groups = c_param->nb_groups;
+	group_param_sharing = c_param->group_param_sharing;
 	
 	spatial_f_size   =     c_param->f_size[0] *     c_param->f_size[1] *     c_param->f_size[2];
 	nb_regions_in    =   current->prev_dim[0] *   current->prev_dim[1] *   current->prev_dim[2];
 	nb_regions_out   = current->output_dim[0] * current->output_dim[1] * current->output_dim[2];
-	nb_filters       = current->output_dim[3];
 	prev_nb_channels =   current->prev_dim[3];
 	
 	chan_per_group_in  = prev_nb_channels / nb_groups;
-	chan_per_group_out = nb_filters       / nb_groups;
-	
-	if(current->previous == NULL || (current->previous != NULL && current->previous->output_type == FLAT))
+	if(group_param_sharing)
 	{
+		nb_filters = current->output_dim[3] / nb_groups;
+		chan_per_group_out = nb_filters;
+	}
+	else
+	{
+		nb_filters = current->output_dim[3];
+		chan_per_group_out = nb_filters / nb_groups;
+	}
+	
+	if(current->previous->type == INPUT || (current->previous->type != INPUT && current->previous->output_type == FLAT))
+	{
+		current->input = current->previous->output;
 		//If previous is input, each images is stored as continuous flat arrays with all R pixels, all G pixel, all B pixels + input bias
 		//Different images from the batch are append one after the other
 		in_image_offset   = nb_regions_in * prev_nb_channels + 1;
 		in_channel_offset = nb_regions_in;
-		if(current->previous == NULL)
-			current->input = net->input;
-		else
-			current->input = current->previous->output;
 	}
 	else
 	{
 		//If previous layer is SPATIAL then the format is all images R flat, all images G flat, all images B flat. 
 		in_image_offset   = nb_regions_in;
 		in_channel_offset = nb_regions_in * batch_size;
-		current->input    = current->previous->output;
 	}
 	
 	
@@ -479,7 +522,7 @@ void cuda_forward_conv_layer(layer *current)
 			l_weights = (void*) current->ema_weights;
 		else
 		{
-			cuda_master_weight_copy(net, (float*)current->ema_weights, current->weights, nb_groups * subdim_K * subdim_N);
+			cuda_master_weight_copy(net, (float*)current->ema_weights, current->weights, subdim_K * nb_filters);
 			l_weights = current->weights;
 		}	
 	}
@@ -489,17 +532,21 @@ void cuda_forward_conv_layer(layer *current)
 			l_weights = (void*) current->FP32_weights;
 		else
 		{
-			cuda_master_weight_copy(net, (float*)current->FP32_weights, current->weights, nb_groups * subdim_K * subdim_N);
+			cuda_master_weight_copy(net, (float*)current->FP32_weights, current->weights, subdim_K * nb_filters);
 			l_weights = current->weights;
 		}
 	}
 	
-	
 	//####### Im2col_T(M,K) x Weights(K,N) #######
+	
+	if(group_param_sharing)
+		stride_param = 0;
+	else
+		stride_param = subdim_K*subdim_N;
 	
 	cublasGemmStridedBatchedEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, subdim_M, subdim_N, subdim_K, cu_alpha, 
 		/*A*/c_param->im2col_input, cuda_data_type, /*ldA*/subdim_K, /*strideA*/subdim_K*subdim_M,
-		/*B*/l_weights            , cuda_data_type, /*ldB*/subdim_K, /*strideB*/subdim_K*subdim_N, cu_beta,
+		/*B*/l_weights            , cuda_data_type, /*ldB*/subdim_K, /*strideB*/stride_param, cu_beta,
 		/*C*/current->output      , cuda_data_type, /*ldC*/subdim_M, /*strideC*/subdim_M*subdim_N,
 		nb_groups, cuda_compute_type, CUBLAS_GEMM_DEFAULT);
 	
@@ -534,28 +581,37 @@ void cuda_forward_conv_layer(layer *current)
 void cuda_backward_conv_layer(layer *current)
 {
 	size_t k;
-	int dim_a, dim_b, dim_c;
-	size_t subdim_M, subdim_N, subdim_K, nb_groups, batch_size;
+	int dim_a, dim_b, dim_c, group_param_sharing;
+	size_t subdim_M, subdim_N, subdim_K, nb_groups, stride_param, batch_size;
 	size_t in_image_offset, in_channel_offset;
 	size_t spatial_f_size, nb_filters, prev_nb_channels;
 	size_t chan_per_group_in, chan_per_group_out;
 	size_t nb_regions_in, nb_regions_out;
 	int back_padding[3];
-	void *c_prev_delta_o;
+	void *c_prev_delta_o, *c_gradient;
 
 	network* net = current->c_network;
 	c_param = (conv_param*) current->param;
-	nb_groups = c_param->nb_groups;
 	batch_size = net->batch_size;
+	nb_groups = c_param->nb_groups;
+	group_param_sharing = c_param->group_param_sharing;
 	
 	spatial_f_size   =     c_param->f_size[0] *     c_param->f_size[1] *     c_param->f_size[2];
 	nb_regions_in    =   current->prev_dim[0] *   current->prev_dim[1] *   current->prev_dim[2];
 	nb_regions_out   = current->output_dim[0] * current->output_dim[1] * current->output_dim[2];
-	nb_filters       = current->output_dim[3];
 	prev_nb_channels =   current->prev_dim[3];
 	
 	chan_per_group_in  = prev_nb_channels / nb_groups;
-	chan_per_group_out = nb_filters       / nb_groups;
+	if(group_param_sharing)
+	{
+		nb_filters = current->output_dim[3] / nb_groups;
+		chan_per_group_out = nb_filters;
+	}
+	else
+	{
+		nb_filters = current->output_dim[3];
+		chan_per_group_out = nb_filters / nb_groups;
+	}
 	
 	//Must be done here so all layers can add their contribution to current layer delta_o (merging / branching)
 	current->deriv_activation(current);
@@ -571,19 +627,19 @@ void cuda_backward_conv_layer(layer *current)
 	
 	//######################## ERROR PROPAGATION ########################
 	//skip error prop if previous is the input layer
-	if(current->previous != NULL)
+	if(current->previous->type != INPUT)
 	{
 		//########## Preparing dw_rot_weights(K,N) ##########
 		//dimensions from regular weight matrix
-		subdim_N = chan_per_group_out;
+		subdim_N = nb_filters; //equivalent to nb_groups * chan_per_group_out
 		subdim_K = spatial_f_size * chan_per_group_in + 1 + c_param->TC_padding;
 	
-		cu_blocks = (nb_groups*subdim_N*subdim_K + cu_threads - 1) / cu_threads;
+		cu_blocks = (subdim_N*subdim_K + cu_threads - 1) / cu_threads;
 		
 		net->cu_inst.cu_conv_fcts.rotate_filter_fct<<< cu_blocks, cu_threads >>>(
 			current->weights, c_param->rotated_filters, subdim_K, 
 			spatial_f_size, chan_per_group_out, c_param->TC_padding, 
-			nb_groups*subdim_N*subdim_K);
+			subdim_N*subdim_K);
 		
 		//########## Subproblem dimensions ##########
 		
@@ -606,12 +662,12 @@ void cuda_backward_conv_layer(layer *current)
 		}
 		
 		if(batch_size <= 2) dim_c = 1; else dim_c = 2;
-		if(nb_filters > 16) dim_b = 16; else if(nb_filters > 8) dim_b = 8; else dim_b = 4;
+		if(current->output_dim[3] > 16) dim_b = 16; else if(current->output_dim[3] > 8) dim_b = 8; else dim_b = 4;
 		if(nb_regions_out <= 8) dim_a = 4; else dim_a = 8;
 		
 		dim3 threadsPerBlock2(dim_a, dim_b, dim_c);
 		dim3 numBlocks2((nb_regions_out + threadsPerBlock2.x - 1) / threadsPerBlock2.x,
-			(nb_filters + threadsPerBlock2.y - 1) / threadsPerBlock2.y,
+			(current->output_dim[3] + threadsPerBlock2.y - 1) / threadsPerBlock2.y,
 			(batch_size + threadsPerBlock2.z - 1) / threadsPerBlock2.z);
 		
 		net->cu_inst.cu_conv_fcts.im2col_fct<<< numBlocks2, threadsPerBlock2 >>>(
@@ -622,7 +678,7 @@ void cuda_backward_conv_layer(layer *current)
 			                c_param->f_size[0]    ,      c_param->f_size[1]    ,      c_param->f_size[2]    ,
 			/*in_size*/ current->output_dim[0]    ,  current->output_dim[1]    ,  current->output_dim[2]    ,
 			/*out_size*/  current->prev_dim[0]    ,    current->prev_dim[1]    ,    current->prev_dim[2]    ,
-			nb_filters, chan_per_group_out, nb_regions_out, in_image_offset, in_channel_offset,
+			current->output_dim[3], chan_per_group_out, nb_regions_out, in_image_offset, in_channel_offset,
 			subdim_K*nb_regions_in, subdim_K*subdim_M, 0, batch_size, 0);
 		
 		//####### Im2col_delta_o_T(M,K) x dw_rot_weights(K,N) #######
@@ -636,10 +692,15 @@ void cuda_backward_conv_layer(layer *current)
 		else
 			c_prev_delta_o = current->previous->delta_o;
 		
+		if(group_param_sharing)
+			stride_param = 0;
+		else
+			stride_param = subdim_K*subdim_N;
+		
 		cublasGemmStridedBatchedEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, subdim_M, subdim_N, subdim_K, cu_alpha, 
 			/*A*/c_param->im2col_delta_o , cuda_data_type, /*ldA*/subdim_K, /*strideA*/subdim_K*subdim_M,
-			/*B*/c_param->rotated_filters, cuda_data_type, /*ldB*/subdim_K, /*strideB*/subdim_K*subdim_N, cu_alpha,
-			/*C*/c_prev_delta_o          , cuda_data_type, /*ldC*/subdim_M, /*strideC*/subdim_M*subdim_N,
+			/*B*/c_param->rotated_filters, cuda_data_type, /*ldB*/subdim_K, /*strideB*/stride_param, cu_alpha,
+			/*C*/c_prev_delta_o            , cuda_data_type, /*ldC*/subdim_M, /*strideC*/subdim_M*subdim_N,
 			nb_groups, cuda_compute_type , CUBLAS_GEMM_DEFAULT);
 		
 		if(current->previous->output_type == FLAT)
@@ -662,19 +723,32 @@ void cuda_backward_conv_layer(layer *current)
 		subdim_N = chan_per_group_out;
 		subdim_K = batch_size * nb_regions_out;
 		
+		if(group_param_sharing && nb_groups > 1)
+			c_gradient = c_param->shared_group_gradient;
+		else
+			c_gradient = current->gradient;
+		
 		//####### Im2col(M,K) x delta_o(K,N) #######
 		
 		cublasGemmStridedBatchedEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, subdim_M, subdim_N, subdim_K, cu_alpha, 
 			/*A*/c_param->im2col_input, cuda_data_type, /*ldA*/subdim_M, /*strideA*/subdim_K*subdim_M,
 			/*B*/current->delta_o     , cuda_data_type, /*ldB*/subdim_K, /*strideB*/subdim_K*subdim_N, cu_beta,
-			/*C*/current->gradient    , cuda_data_type, /*ldC*/subdim_M, /*strideC*/subdim_M*subdim_N,
+			/*C*/c_gradient    , cuda_data_type, /*ldC*/subdim_M, /*strideC*/subdim_M*subdim_N,
 			nb_groups, cuda_compute_type , CUBLAS_GEMM_DEFAULT);
 		
-		net->optim_update_fct_gpu(current, subdim_M - c_param->TC_padding, subdim_M, nb_groups*subdim_M*subdim_N);
+		if(group_param_sharing && nb_groups > 1)
+		{
+			cu_blocks = (subdim_M*subdim_N + cu_threads - 1) / cu_threads;
+			
+			net->cu_inst.cu_conv_fcts.reduce_shared_group_gradient_fct<<<cu_blocks, cu_threads>>>(
+				c_param->shared_group_gradient, current->gradient, subdim_M*subdim_N, nb_groups);
+		}
+		
+		net->optim_update_fct_gpu(current, subdim_M - c_param->TC_padding, subdim_M, subdim_M*nb_filters);
 	
 		if(current->wema_replace_signal > 0)
 		{
-			cudaMemcpy(current->FP32_weights, current->ema_weights, nb_groups*subdim_M*subdim_N*sizeof(float), cudaMemcpyDeviceToDevice);
+			cudaMemcpy(current->FP32_weights, current->ema_weights, subdim_M*nb_filters*sizeof(float), cudaMemcpyDeviceToDevice);
 			current->wema_replace_signal = 0;
 		}
 	}

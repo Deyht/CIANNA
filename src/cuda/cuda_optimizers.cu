@@ -66,10 +66,10 @@ __global__ void cuda_update_weights_sgd_kernel_##name(float *weights, float *ema
 	if(decoupled_wdecay)																														\
 	{																																			\
 		weights[i] -= learning_rate*decay_mask*weight_decay*weights[i];																			\
-		l_grad = (float)c_gradient[i]/batch_size;																								\
+		l_grad = ((float)c_gradient[i]/batch_size)/TC_scale_factor;																				\
 	}																																			\
 	else																																		\
-		l_grad = (float)c_gradient[i]/batch_size + decay_mask*weight_decay*weights[i];															\
+		l_grad = ((float)c_gradient[i]/batch_size)/TC_scale_factor + decay_mask*weight_decay*weights[i];										\
 																																				\
 	if(momentum >= 0.01)																														\
 	{																																			\
@@ -126,11 +126,11 @@ size_t cuda_convert_adam_var(layer *current, size_t param_size)
 	cuda_convert_table_FP32((void**)&(o_var->second_mom), param_size, 0);
 	
 	if(o_param->ams_grad <= 0)
-		return 0;
+		return 2*param_size;
 	
 	cuda_convert_table_FP32((void**)&(o_var->max_second_mom), param_size, 0);
 	
-	return param_size;
+	return 3*param_size;
 }
 
 
@@ -156,10 +156,10 @@ __global__ void cuda_update_weights_adam_kernel_##name(float *weights, float *em
 	if(decoupled_wdecay)																														\
 	{																																			\
 		weights[i] -= learning_rate*decay_mask*weight_decay*weights[i];																			\
-		l_grad = (float)c_gradient[i]/batch_size;																								\
+		l_grad = ((float)c_gradient[i]/batch_size)/TC_scale_factor;																				\
 	}																																			\
 	else																																		\
-		l_grad = (float)c_gradient[i]/batch_size + decay_mask*weight_decay*weights[i];															\
+		l_grad = ((float)c_gradient[i]/batch_size)/TC_scale_factor + decay_mask*weight_decay*weights[i];										\
 																																				\
 	first_mom[i]  = beta_1*first_mom[i]  + (1.0-beta_1)*l_grad;																					\
 	second_mom[i] = beta_2*second_mom[i] + (1.0-beta_2)*l_grad*l_grad;																			\
@@ -267,10 +267,10 @@ __global__ void cuda_update_weights_rmsprop_kernel_##name(float *weights, float 
 	if(decoupled_wdecay)																														\
 	{																																			\
 		weights[i] -= learning_rate*decay_mask*weight_decay*weights[i];																			\
-		l_grad = (float)c_gradient[i]/batch_size;																								\
+		l_grad = ((float)c_gradient[i]/batch_size)/TC_scale_factor;																				\
 	}																																			\
 	else																																		\
-		l_grad = (float)c_gradient[i]/batch_size + decay_mask*weight_decay*weights[i];															\
+		l_grad = ((float)c_gradient[i]/batch_size)/TC_scale_factor + decay_mask*weight_decay*weights[i];										\
 																																				\
 	sqrt_avg[i] = alpha*sqrt_avg[i] + (1.0 - alpha)*l_grad*l_grad;																				\
 	l_sqrt_avg_centered = sqrt_avg[i];																											\

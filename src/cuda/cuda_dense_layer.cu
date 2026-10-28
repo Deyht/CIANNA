@@ -238,7 +238,7 @@ size_t cuda_convert_dense_layer(layer *current)
 		flat_in_size *= current->prev_dim[i];
 	flat_in_size += 1;
 	
-	if(current->previous != NULL)
+	if(current->previous->type != INPUT)
 	{
 		if(current->previous->output_type == SPATIAL)
 		{
@@ -318,7 +318,7 @@ void cuda_free_dense(layer *current)
 	if(current->dropout_rate > 0.01f)
 		cudaFree(current->dropout_mask);
 	
-	if(current->previous != NULL && current->previous->output_type != FLAT)
+	if(current->previous->type != INPUT && current->previous->output_type != FLAT)
 		cudaFree(d_param->flat_input);
 	
 	if(!current->c_network->inference_only)
@@ -327,7 +327,7 @@ void cuda_free_dense(layer *current)
 			cudaFree(current->ema_weights);
 		cudaFree(current->gradient);
 		cudaFree(current->delta_o);
-		if(current->previous != NULL && current->previous->output_type != FLAT)
+		if(current->previous->type != INPUT && current->previous->output_type != FLAT)
 			cudaFree(d_param->flat_delta_o);
 		
 		cuda_free_optimizer_var(current);
@@ -349,20 +349,30 @@ void cuda_forward_dense_layer(layer *current)
 		flat_in_size *= current->prev_dim[i];
 	flat_in_size += 1;
 	
-	if(current->previous == NULL)
+	if(current->previous->type == INPUT)
 	{
-		ref_input = net->input;
-		
+		current->input = current->previous->output;
 		cu_blocks = (net->batch_size + cu_threads - 1) / cu_threads;
 		net->cu_inst.cu_dense_fcts.set_input_bias<<< cu_blocks, cu_threads >>>(
-			ref_input, flat_in_size-1, current->bias_value, net->batch_size);
-		
-		current->input = net->input;
+			current->input, flat_in_size-1, current->bias_value, net->batch_size);
+		ref_input = current->input;
+	}
+	else if(current->previous->output_type == FLAT) 
+	{	//must be done at every pass to handle cases where multiple dense layers have the same previous layer
+		cu_blocks = (net->batch_size + cu_threads - 1) / cu_threads;
+		net->cu_inst.cu_dense_fcts.set_input_bias<<< cu_blocks, cu_threads >>>(
+			current->input, flat_in_size-1, current->bias_value, net->batch_size);
+		ref_input = current->input;
 	}
 	else
-		current->input = current->previous->output;
-	
-	ref_input = current->input;
+	{
+		cu_blocks = (flat_in_size * net->batch_size + cu_threads - 1) / cu_threads;
+		net->cu_inst.cu_dense_fcts.flat_dense_fct<<< cu_blocks, cu_threads >>>(
+			current->input, d_param->flat_input, current->bias_value, 
+			current->prev_dim[0]*current->prev_dim[1]*current->prev_dim[2],
+			flat_in_size, current->prev_dim[3], net->batch_size, flat_in_size * net->batch_size);
+		ref_input = d_param->flat_input;
+	}
 	
 	if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 	{
@@ -383,18 +393,6 @@ void cuda_forward_dense_layer(layer *current)
 			cuda_master_weight_copy(net, (float*)current->FP32_weights, current->weights, flat_in_size*(nb_neurons+1));
 			l_weights = current->weights;
 		}
-	}
-	
-	if(current->previous != NULL && current->previous->output_type != FLAT)
-	{
-		cu_blocks = (flat_in_size * net->batch_size + cu_threads - 1) / cu_threads;
-		
-		net->cu_inst.cu_dense_fcts.flat_dense_fct<<< cu_blocks, cu_threads >>>(
-			current->input, d_param->flat_input, current->bias_value, 
-			current->prev_dim[0]*current->prev_dim[1]*current->prev_dim[2],
-			flat_in_size, current->prev_dim[3], net->batch_size, flat_in_size * net->batch_size);
-		
-		ref_input = d_param->flat_input;
 	}
 	
 	cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_N, nb_neurons+1, 
@@ -422,7 +420,7 @@ void cuda_forward_dense_layer(layer *current)
 	if(!net->inference_only)
 	{
 		net->cu_inst.cu_auxil_fcts.cu_typed_memset_fct(current->delta_o, 0, (nb_neurons+1) * net->batch_size);
-		if(current->previous != NULL && current->previous->output_type != FLAT)
+		if(current->previous->type != INPUT && current->previous->output_type != FLAT)
 			net->cu_inst.cu_auxil_fcts.cu_typed_memset_fct(d_param->flat_delta_o, 0, flat_in_size * net->batch_size);
 	}
 }
@@ -445,6 +443,26 @@ void cuda_backward_dense_layer(layer* current)
 	//Must be done here so all layers can add their contribution to current layer delta_o (merging / branching)
 	current->deriv_activation(current);
 	
+	if(current->previous->type == INPUT)
+	{
+		current->input = current->previous->output;
+		cu_blocks = (net->batch_size + cu_threads - 1) / cu_threads;
+		net->cu_inst.cu_dense_fcts.set_input_bias<<< cu_blocks, cu_threads >>>(
+			current->input, flat_in_size-1, current->bias_value, net->batch_size);
+		ref_input = current->input;
+	}
+	else if(current->previous->output_type == FLAT)
+	{	//must be done at every pass to handle cases where multiple dense layers have the same previous layer
+		cu_blocks = (net->batch_size + cu_threads - 1) / cu_threads;
+		net->cu_inst.cu_dense_fcts.set_input_bias<<< cu_blocks, cu_threads >>>(
+			current->input, flat_in_size-1, current->bias_value, net->batch_size);
+		ref_input = current->input;
+	}
+	else
+	{	//flat_input array is per layer, no need to re set the bias here
+		ref_input = d_param->flat_input;
+	}	
+	
 	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 	{
 		cu_blocks = ((nb_neurons+1) * net->batch_size + cu_threads - 1) / cu_threads;
@@ -453,10 +471,9 @@ void cuda_backward_dense_layer(layer* current)
 	}
 	
 	//######################## ERROR PROPAGATION ########################
-	ref_input = current->input;
 	
 	//skip error prop if previous is the input layer
-	if(current->previous != NULL)
+	if(current->previous->type != INPUT)
 	{
 		cublasGemmEx(cu_handle, CUBLAS_OP_T, CUBLAS_OP_N, flat_in_size, 
 			net->batch_size, nb_neurons+1, cu_alpha, current->weights, cuda_data_type, 
@@ -479,10 +496,7 @@ void cuda_backward_dense_layer(layer* current)
 		
 	//########################  WEIGHTS UPDATE   ########################
 	if(!current->frozen)
-	{
-		if(current->previous != NULL && current->previous->output_type != FLAT)
-			ref_input = d_param->flat_input;
-		
+	{	
 		cublasGemmEx(cu_handle, CUBLAS_OP_N, CUBLAS_OP_T, nb_neurons+1, flat_in_size,
 			net->batch_size, cu_alpha, current->delta_o, cuda_data_type, 
 			nb_neurons+1, ref_input, cuda_data_type, flat_in_size, cu_beta,

@@ -201,8 +201,6 @@ void cuda_forward_lrn_layer(layer *current)
 	network* net = current->c_network;
 	n_param = (lrn_param*)current->param;		
 	
-	current->input = current->previous->output;
-	
 	if(current->output_type == FLAT)
 		flat_output_dim = current->output_dim[3] + 1;
 	else

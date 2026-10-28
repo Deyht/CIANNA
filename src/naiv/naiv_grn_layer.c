@@ -29,12 +29,12 @@ static grn_param *n_param;
 // Private prototypes
 void reduce_l2norm_conv_fct(float *input, float *group_l2norm,
 	size_t nb_features, size_t flat_a_size, size_t batch_size, size_t sum_size);
-void reduce_grn_dgamma_conv_fct(float *input, float *d_output, float *d_gamma,
+void reduce_grn_dgamma_dbeta_conv_fct(float *input, float *d_output, float *d_gamma, float *d_beta,
 	size_t nb_features, size_t flat_a_size, size_t batch_size, size_t sum_size);
 void grn_conv_fct(float *output, float *input, float *gamma, float *beta,
 	float *relative_importance, int residual, size_t b_length, size_t b_size, size_t nb_features, size_t flat_a_size);
 void grn_conv_back_fct(float *input, float *delta_output, float *delta_input, 
-	float *gamma, float *d_gamma, float *feature_norm, float *relative_importance, int residual,
+	float *gamma, float *d_gamma, float *feature_norm, float *relative_importance, float *mean, int residual,
 	size_t b_length, size_t b_size, size_t nb_features, size_t flat_a_size);
 
 
@@ -63,24 +63,31 @@ void reduce_l2norm_conv_fct(float *input, float *group_l2norm,
 }
 
 
-void reduce_grn_dgamma_conv_fct(float *input, float *d_output, float *d_gamma,
+void reduce_grn_dgamma_dbeta_conv_fct(float *input, float *d_output, float *d_gamma, float *d_beta,
 	size_t nb_features, size_t flat_a_size, size_t batch_size, size_t sum_size)
 {
 	size_t i, j;
 	size_t conv_id, feature_id, batch_id;
-	double sum;
+	float l_output;
+	double sum_gamma, sum_beta;
 
-	#pragma omp parallel for private(j, conv_id, feature_id, batch_id, sum) schedule(guided,2)
+	#pragma omp parallel for private(j, conv_id, feature_id, batch_id, l_output, sum_gamma, sum_beta) schedule(guided,2)
 	for(i = 0; i < nb_features*batch_size; i++)
 	{
 		feature_id = i % nb_features;
 		batch_id   = i / nb_features;
 		conv_id    = batch_id * flat_a_size + feature_id * flat_a_size * batch_size;
 
-		sum = 0.0;
+		sum_gamma = 0.0;
+		sum_beta  = 0.0;
 		for(j = 0; j < sum_size; j++)
-			sum += d_output[conv_id + j] * input[conv_id + j];
-		d_gamma[i] = sum;
+		{
+			l_output = d_output[conv_id + j];
+			sum_gamma += l_output * input[conv_id + j];
+			sum_beta  += l_output;
+		}
+		d_gamma[i] = sum_gamma;
+		d_beta[i]  = sum_beta;
 	}
 }
 
@@ -104,7 +111,7 @@ void grn_conv_fct(float *output, float *input, float *gamma, float *beta,
 		for(j = 0; j < flat_a_size; j++)
 		{
 			conv_id = batch_id * flat_a_size + feature_id*filter_offset + j;
-			l_val = input[conv_id];
+			l_val   = input[conv_id];
 			
 			if(batch_id < b_length)
 			{
@@ -120,36 +127,36 @@ void grn_conv_fct(float *output, float *input, float *gamma, float *beta,
 
 
 void grn_conv_back_fct(float *input, float *delta_output, float *delta_input, 
-	float *gamma, float *d_gamma, float *feature_norm, float *relative_importance, int residual,
+	float *gamma, float *d_gamma, float *feature_norm, float *relative_importance, float *mean, int residual,
 	size_t b_length, size_t b_size, size_t nb_features, size_t flat_a_size)
 {
 	size_t i, j;
 	size_t conv_id, feature_id, batch_id;
 	size_t filter_offset = flat_a_size*b_size;
-	double l_d_gamma, l_rel_imp, l_feat_norm, l_mean_eps, l_val, l_grad;
+	double l_d_gamma, l_rel_imp, l_feat_norm, l_mean_eps, l_mean, l_val, l_grad;
 	
-	#pragma omp parallel for private(j, conv_id, feature_id, batch_id, l_d_gamma, l_rel_imp, l_feat_norm, l_mean_eps, l_val, l_grad) schedule(guided,2)
+	#pragma omp parallel for private(j, conv_id, feature_id, batch_id, l_d_gamma, l_rel_imp, l_feat_norm, l_mean_eps, l_mean, l_val, l_grad) schedule(guided,2)
 	for(i = 0; i < nb_features*b_size; i++)
 	{
 		feature_id = i % nb_features;
 		batch_id   = i / nb_features;
 
-		l_d_gamma = d_gamma[batch_id*nb_features + feature_id];
+		l_d_gamma   = d_gamma[batch_id*nb_features + feature_id];
 		l_feat_norm = feature_norm[batch_id*nb_features + feature_id];
-		l_rel_imp = relative_importance[batch_id*nb_features + feature_id];
-		l_mean_eps = l_feat_norm / l_rel_imp;
+		l_rel_imp   = relative_importance[batch_id*nb_features + feature_id];
+		l_mean_eps  = l_feat_norm / l_rel_imp;
+		l_mean      = mean[batch_id];
 
 		for(j = 0; j < flat_a_size; j++)
 		{
 			conv_id = batch_id * flat_a_size + feature_id*filter_offset + j;
-			l_val = input[conv_id];
-			l_grad = delta_output[conv_id];
+			l_val   = input[conv_id];
+			l_grad  = delta_output[conv_id];
 			
 			if(batch_id < b_length)
 			{
 				delta_input[conv_id] += gamma[feature_id] * l_rel_imp * l_grad
-					+ gamma[feature_id] * l_d_gamma * l_val
-					* (1.0f/(l_mean_eps*l_feat_norm) - 1.0f/(nb_features*l_mean_eps*l_mean_eps));
+					+ l_val / (l_mean_eps*l_feat_norm) * (gamma[feature_id] * l_d_gamma  - l_mean);
 				if(residual)
 					delta_input[conv_id] += l_grad;
 			}
@@ -168,8 +175,6 @@ void forward_grn_layer(layer *current)
 	
 	network* net = current->c_network;
 	n_param = (grn_param*)current->param;
-	//Previous verification should ensure that it is not the first layer 
-	current->input = current->previous->output;
 	
 	if(current->output_type == SPATIAL)
 	{
@@ -216,9 +221,9 @@ void forward_grn_layer(layer *current)
 
 void backward_grn_layer(layer *current)
 {
-	size_t i, j;
+	size_t i, j, l_id;
 	size_t dim_offset = 1, nb_features = 1;
-	double sum_dgamma = 0.0f, sum_dbeta = 0.0f;
+	double l_sum, sum_dgamma = 0.0f, sum_dbeta = 0.0f;
 	
 	network* net = current->c_network;
 	n_param = (grn_param*)current->param;	
@@ -232,17 +237,26 @@ void backward_grn_layer(layer *current)
 			dim_offset *= current->output_dim[i];
 		nb_features = current->output_dim[3];
 		
-		reduce_group_mean_conv_fct(current->delta_o, n_param->d_beta, 1, nb_features, dim_offset, net->batch_size, 1);
-		
-		reduce_grn_dgamma_conv_fct(current->input, current->delta_o,
-			n_param->d_gamma, nb_features, dim_offset, net->batch_size, dim_offset);
+		reduce_grn_dgamma_dbeta_conv_fct(current->input, current->delta_o,
+			n_param->d_gamma, n_param->d_beta, nb_features, dim_offset, net->batch_size, dim_offset);
 		//Here d_gamma is missing a multiplication with relative_importance[block_id]
 		//Still, the current reduction is usefull for propagating the gradient. 
 		//-> Multiplication with relative_importance[block_id] is postponed
-			
+		
+		for(i = 0; i < (size_t)net->batch_size; i++)
+		{
+			l_sum = 0.0f;
+			for(j = 0; j < nb_features; j++)
+			{
+				l_id = i*nb_features + j;
+				l_sum += n_param->gamma[j] * n_param->d_gamma[l_id] * n_param->relative_importance[l_id];
+			}
+			n_param->mean[i] = l_sum / nb_features;
+		}
+		
 		grn_conv_back_fct(current->input, current->delta_o, 
 			current->previous->delta_o, n_param->gamma, n_param->d_gamma, 
-			n_param->feature_norm, n_param->relative_importance, n_param->residual,
+			n_param->feature_norm, n_param->relative_importance, n_param->mean, n_param->residual,
 			net->length, net->batch_size, nb_features, dim_offset);
 	}
 	
@@ -259,7 +273,7 @@ void backward_grn_layer(layer *current)
 				sum_dbeta  += ((float*)n_param->d_beta)[i*nb_features + j];
 			}
 			((float*)n_param->gamma_grad)[j] = sum_dgamma;
-			((float*)n_param->beta_grad)[j] = sum_dbeta;
+			((float*)n_param->beta_grad)[j]  = sum_dbeta;
 		}
 		
 		net->optim_update_fct(current, 0, 2*nb_features, 2*nb_features);

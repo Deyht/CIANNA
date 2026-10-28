@@ -33,7 +33,7 @@ void blas_backward_dense_layer(layer* current);
 
 void blas_forward_dense_layer(layer *current)
 {
-	int i;
+	size_t i;
 	int nb_neurons;
 	size_t flat_in_size = 1;
 	float *ref_input, *l_weights;
@@ -46,32 +46,31 @@ void blas_forward_dense_layer(layer *current)
 		flat_in_size *= current->prev_dim[i];
 	flat_in_size += 1;
 	
-	if(current->previous == NULL)
+	if(current->previous->type == INPUT)
 	{
-		ref_input = net->input;
+		current->input = current->previous->output;
 		for(i = 0; i < net->batch_size; i++)
-			ref_input[i*(net->input_dim+1) + net->input_dim] = current->bias_value;
-		
-		current->input = net->input;
+			((float*)current->input)[i*flat_in_size + (flat_in_size-1)] = current->bias_value;
+		ref_input = current->input;
+	}
+	else if(current->previous->output_type == FLAT)
+	{
+		for(i = 0; i < net->batch_size; i++)
+			((float*)current->input)[i*flat_in_size + (flat_in_size-1)] = current->bias_value;
+		ref_input = current->input;
 	}
 	else
-		current->input = current->previous->output;
-	
-	ref_input = current->input;
+	{
+		flat_dense(current->input, d_param->flat_input, current->bias_value, 
+			current->prev_dim[0]*current->prev_dim[1]*current->prev_dim[2], flat_in_size, 
+			current->prev_dim[3], net->batch_size, flat_in_size * net->batch_size);
+		ref_input = (float*)d_param->flat_input;
+	}
 	
 	if(net->is_inference == 1 && (net->use_wema && !net->inference_only))
 		l_weights = (void*) current->ema_weights;
 	else
 		l_weights = (void*) current->weights;
-	
-	if(current->previous != NULL && current->previous->output_type != FLAT)
-	{
-		flat_dense(current->input, d_param->flat_input, current->bias_value, 
-			current->prev_dim[0]*current->prev_dim[1]*current->prev_dim[2], flat_in_size, 
-			current->prev_dim[3], net->batch_size, flat_in_size * net->batch_size);
-		
-		ref_input = d_param->flat_input;
-	}
 	
 	cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, nb_neurons+1, 
 		net->batch_size, flat_in_size, 1.0f, l_weights, 
@@ -118,14 +117,31 @@ void blas_backward_dense_layer(layer* current)
 	//Must be done here so all layers can add their contribution to current layer delta_o (merging / branching)
 	current->deriv_activation(current);
 	
+	if(current->previous->type == INPUT)
+	{
+		current->input = current->previous->output;
+		for(i = 0; i < net->batch_size; i++)
+			((float*)current->input)[i*flat_in_size + (flat_in_size-1)] = current->bias_value;
+		ref_input = current->input;
+	}
+	else if(current->previous->output_type == FLAT)
+	{	//must be done at every pass to handle cases where multiple dense layers have the same previous layer
+		for(i = 0; i < net->batch_size; i++)
+			((float*)current->input)[i*flat_in_size + (flat_in_size-1)] = current->bias_value;
+		ref_input = current->input;
+	}
+	else
+	{	//flat_input array is per layer, no need to re set the bias here
+		ref_input = (float*)d_param->flat_input;
+	}
+	
 	if(current->dropout_rate > 0.01f && (net->is_inference == 0 || (net->is_inference == 1 && net->inference_drop_mode == MC_MODEL)))
 		dropout_apply_dense(current->delta_o, current->dropout_mask, (nb_neurons+1)*net->batch_size);
 	
 	//######################## ERROR PROPAGATION ########################
-	ref_input = current->input;
 	
 	//skip error prop if previous is the input layer
-	if(current->previous != NULL)
+	if(current->previous->type != INPUT)
 	{
 		cblas_sgemm(CblasColMajor, CblasTrans, CblasNoTrans, flat_in_size, net->batch_size,
 			nb_neurons+1, 1.0f, current->weights, nb_neurons+1, current->delta_o,
@@ -144,9 +160,6 @@ void blas_backward_dense_layer(layer* current)
 	//########################  WEIGHTS UPDATE   ########################
 	if(!current->frozen)
 	{
-		if(current->previous != NULL && current->previous->output_type != FLAT)
-			ref_input = d_param->flat_input;
-	
 		cblas_sgemm(CblasColMajor, CblasNoTrans, CblasTrans, nb_neurons+1, flat_in_size,
 			current->c_network->batch_size, 1.0f, 
 			current->delta_o, nb_neurons+1, ref_input, flat_in_size, 
@@ -154,7 +167,7 @@ void blas_backward_dense_layer(layer* current)
 		
 		net->optim_update_fct(current, (flat_in_size-1)*(nb_neurons+1), 
 			flat_in_size*(nb_neurons+1), flat_in_size*(nb_neurons+1));
-			
+		
 		if(current->wema_replace_signal > 0)
 		{
 			for(i = 0; i < flat_in_size*(nb_neurons+1); i++)

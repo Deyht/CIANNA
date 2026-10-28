@@ -36,18 +36,38 @@ void cuda_backward_grn_layer(layer *current);
 
 inline __device__ void warpReduce(volatile float *sdata, size_t blockSize, unsigned int tid) 
 {
+	unsigned mask = __activemask();
+	
 	if (blockSize >= 64)
+	{
 		sdata[tid] += sdata[tid + 32];
+		__syncwarp(mask);
+	}
 	if (blockSize >= 32)
+	{
 		sdata[tid] += sdata[tid + 16];
+		__syncwarp(mask);
+	}
 	if (blockSize >= 16)
+	{
 		sdata[tid] += sdata[tid + 8];
+		__syncwarp(mask);
+	}
 	if (blockSize >= 8)
+	{
 		sdata[tid] += sdata[tid + 4];
+		__syncwarp(mask);
+	}
 	if (blockSize >= 4)
+	{
 		sdata[tid] += sdata[tid + 2];
+		__syncwarp(mask);
+	}
 	if (blockSize >= 2)
+	{
 		sdata[tid] += sdata[tid + 1];
+		__syncwarp(mask);
+	}
 }
 
 
@@ -64,7 +84,7 @@ __global__ void reduce_l2norm_conv_kernel_##name(void *idata, float *group_l2nor
 	size_t i = tid;																																\
 	size_t feature_id, batch_id, conv_id;																										\
 	float l_val;																																\
-	double sum = 0.0f;																															\
+	float sum = 0.0f;																															\
 																																				\
 	feature_id = block_id % nb_features;																										\
 	batch_id   = block_id / nb_features;																										\
@@ -98,65 +118,22 @@ __global__ void reduce_l2norm_conv_kernel_##name(void *idata, float *group_l2nor
 }
 
 
-#define reduce_grn_dgamma_conv_kernel(name, type) 																								\
-__global__ void reduce_grn_dgamma_conv_kernel_##name(void *idata, void *i_d_output, void *i_d_gamma,											\
+#define reduce_grn_dgamma_dbeta_conv_kernel(name, type) 																						\
+__global__ void reduce_grn_dgamma_dbeta_conv_kernel_##name(void *idata, void *i_d_output, float *d_gamma, float *d_beta,						\
 	size_t nb_features, size_t flat_a_size, size_t batch_size, size_t sum_size) 																\
 {																																				\
-	__shared__ float sdata[256];																												\
+	__shared__ float sdata_gamma[256];																											\
+	__shared__ float sdata_beta[256];																											\
 	type* input = (type*) idata;																												\
 	type* d_output = (type*) i_d_output;																										\
-	type* d_gamma = (type*) i_d_gamma;																											\
 	size_t tid = threadIdx.x;																													\
 	size_t block_id = blockIdx.x;																												\
 	size_t blockSize = blockDim.x;																												\
 	size_t i = tid;																																\
 	size_t feature_id, batch_id, conv_id;																										\
-	double sum = 0.0f;																															\
-																																				\
-	feature_id = block_id % nb_features;																										\
-	batch_id   = block_id/nb_features;																											\
-	conv_id    = batch_id * flat_a_size + feature_id * flat_a_size * batch_size;																\
-																																				\
-	while (i < sum_size)																														\
-	{																																			\
-		sum += (float)d_output[conv_id + i] * (float)input[conv_id + i];																		\
-		i += blockSize;																															\
-	}																																			\
-	sdata[tid] = sum;																															\
-																																				\
-	__syncthreads();																															\
-	if (blockSize >= 256)																														\
-	{																																			\
-		if (tid < 128) 																															\
-			sdata[tid] += sdata[tid + 128];																										\
-		__syncthreads();																														\
-	}																																			\
-	if (blockSize >= 128)																														\
-	{																																			\
-		if (tid < 64)																															\
-			sdata[tid] += sdata[tid + 64];																										\
-		__syncthreads();																														\
-	}																																			\
-	if (tid < 32) 																																\
-		warpReduce(sdata, blockSize, tid);																										\
-	if (tid == 0) 																																\
-		d_gamma[block_id] = (type) sdata[0];																									\
-}
-
-
-#define reduce_grn_dbeta_conv_kernel(name, type) 																								\
-__global__ void reduce_grn_dbeta_conv_kernel_##name(void *i_d_output, void *i_d_beta,															\
-	size_t nb_features, size_t flat_a_size, size_t batch_size, size_t sum_size) 																\
-{																																				\
-	__shared__ float sdata[256];																												\
-	type* d_output = (type*) i_d_output;																										\
-	type* d_beta = (type*) i_d_beta;																											\
-	size_t tid = threadIdx.x;																													\
-	size_t block_id = blockIdx.x;																												\
-	size_t blockSize = blockDim.x;																												\
-	size_t i = tid;																																\
-	size_t feature_id, batch_id, conv_id;																										\
-	double sum = 0.0f;																															\
+	float l_d_output;																															\
+	float sum_gamma = 0.0f;																														\
+	float sum_beta  = 0.0f;																														\
 																																				\
 	feature_id = block_id % nb_features;																										\
 	batch_id   = block_id / nb_features;																										\
@@ -164,28 +141,43 @@ __global__ void reduce_grn_dbeta_conv_kernel_##name(void *i_d_output, void *i_d_
 																																				\
 	while (i < sum_size)																														\
 	{																																			\
-		sum += (float)d_output[conv_id + i];																									\
+		l_d_output = (float)d_output[conv_id + i];																								\
+		sum_gamma += l_d_output * (float)input[conv_id + i];																					\
+		sum_beta  += l_d_output;																												\
 		i += blockSize;																															\
 	}																																			\
-	sdata[tid] = sum;																															\
+	sdata_gamma[tid] = sum_gamma;																												\
+	sdata_beta[tid]  = sum_beta;																												\
 																																				\
 	__syncthreads();																															\
 	if (blockSize >= 256)																														\
 	{																																			\
 		if (tid < 128)																															\
-			sdata[tid] += sdata[tid + 128];																										\
+		{																																		\
+			sdata_gamma[tid] += sdata_gamma[tid + 128];																							\
+			sdata_beta[tid]  += sdata_beta[tid + 128];																							\
+		}																																		\
 		__syncthreads();																														\
 	}																																			\
 	if (blockSize >= 128)																														\
 	{																																			\
 		if (tid < 64)																															\
-			sdata[tid] += sdata[tid + 64];																										\
+		{																																		\
+			sdata_gamma[tid] += sdata_gamma[tid + 64];																							\
+			sdata_beta[tid]  += sdata_beta[tid + 64];																							\
+		}																																		\
 		__syncthreads();																														\
 	}																																			\
 	if (tid < 32)																																\
-		warpReduce(sdata, blockSize, tid);																										\
+	{																																			\
+		warpReduce(sdata_gamma, blockSize, tid);																								\
+		warpReduce(sdata_beta,  blockSize, tid);																								\
+	}																																			\
 	if (tid == 0)																																\
-		d_beta[block_id] = (type)sdata[0];																										\
+	{																																			\
+		d_gamma[block_id] = sdata_gamma[0];																										\
+		d_beta[block_id]  = sdata_beta[0];																										\
+	}																																			\
 }
 
 
@@ -196,13 +188,56 @@ __global__ void reduce_grn_mean_kernel(float *feature_norm, float *mean, size_t 
 	size_t block_id = blockIdx.x;
 	size_t blockSize = blockDim.x;
 	size_t i = tid;
-	double sum = 0.0;
+	float sum = 0.0;
 	
 	if(block_id < batch_size)
 	{
 		while(i < nb_features)
 		{
 			sum += feature_norm[block_id*nb_features + i];
+			i += blockSize;
+		}
+	}
+	sdata[tid] = sum;
+	
+	__syncthreads();
+	if (blockSize >= 256)
+	{
+		if (tid < 128)
+			sdata[tid] += sdata[tid + 128];
+		__syncthreads();
+	}
+	if (blockSize >= 128)
+	{
+		if (tid < 64)
+			sdata[tid] += sdata[tid + 64];
+		__syncthreads();
+	}
+	if (tid < 32)
+		warpReduce(sdata, blockSize, tid);
+	
+	if (tid == 0)
+		mean[block_id] = sdata[0] / nb_features;
+}
+
+//Compute cross channel mean[b] = 1/C * sum_c (gamma[c] * d_gamma[b,c] * relative_importance[b,c]) for backprop
+__global__ void reduce_grn_mean_back_kernel(float *gamma, float *d_gamma, float *relative_importance,
+	float *mean, size_t nb_features, size_t batch_size)
+{
+	__shared__ float sdata[256];
+	size_t tid = threadIdx.x;
+	size_t block_id = blockIdx.x;
+	size_t blockSize = blockDim.x;
+	size_t i = tid;
+	size_t l_id;
+	float sum = 0.0;
+	
+	if(block_id < batch_size)
+	{
+		while(i < nb_features)
+		{
+			l_id = block_id * nb_features + i;
+			sum += gamma[i] * d_gamma[l_id] * relative_importance[l_id];
 			i += blockSize;
 		}
 	}
@@ -244,14 +279,12 @@ __global__ void compute_relative_importance_kernel(float *feature_norm, float *m
 }
 
 #define reduce_grn_param_grads_kernel(name, type)																								\
-__global__ void reduce_grn_param_grads_kernel_##name(void *i_d_gamma, void *i_d_beta, float *relative_importance,								\
+__global__ void reduce_grn_param_grads_kernel_##name(float *d_gamma, float *d_beta, float *relative_importance,									\
 	void *i_gamma_grad, void *i_beta_grad, size_t nb_features, size_t batch_size)																\
 {																																				\
 	__shared__ float sdata_gamma[256];																											\
 	__shared__ float sdata_beta[256];																											\
 																																				\
-	type* d_gamma = (type*) i_d_gamma;																											\
-	type* d_beta = (type*) i_d_beta;																											\
 	type* gamma_grad = (type*) i_gamma_grad;																									\
 	type* beta_grad = (type*) i_beta_grad;																										\
 	size_t tid = threadIdx.x;																													\
@@ -260,14 +293,14 @@ __global__ void reduce_grn_param_grads_kernel_##name(void *i_d_gamma, void *i_d_
 	size_t i = tid;																																\
 	size_t l_id;																																\
 																																				\
-	double sum_gamma = 0.0;																														\
-	double sum_beta  = 0.0;																														\
+	float sum_gamma = 0.0;																														\
+	float sum_beta  = 0.0;																														\
 																																				\
 	while(i < batch_size)																														\
 	{																																			\
 		l_id = i * nb_features + feature_id;																									\
-		sum_gamma += (float)d_gamma[l_id] * relative_importance[l_id];																			\
-		sum_beta += (float)d_beta[l_id];																										\
+		sum_gamma += d_gamma[l_id] * relative_importance[l_id];																					\
+		sum_beta += d_beta[l_id];																												\
 		i += blockSize;																															\
 	}																																			\
 																																				\
@@ -324,13 +357,13 @@ __global__ void grn_conv_kernel_##name(void *i_output, void *i_input, float *gam
 	if(i < flat_a_size && j < nb_features*b_size)																								\
 	{																																			\
 		feature_id = j % nb_features;																											\
-		batch_id = j / nb_features;																												\
-		conv_id = batch_id*flat_a_size + feature_id*filter_offset + i;																			\
+		batch_id   = j / nb_features;																											\
+		conv_id    = batch_id*flat_a_size + feature_id*filter_offset + i;																		\
 																																				\
 		if(batch_id < b_length)																													\
 		{																																		\
 			l_rel_imp = relative_importance[batch_id*nb_features + feature_id];																	\
-			l_val = (float)input[conv_id];																										\
+			l_val     = (float)input[conv_id];																									\
 																																				\
 			output[conv_id] = (type)(gamma[feature_id] * l_val * l_rel_imp + beta[feature_id]);													\
 			if(residual)																														\
@@ -341,10 +374,9 @@ __global__ void grn_conv_kernel_##name(void *i_output, void *i_input, float *gam
 	}																																			\
 }
 
-
 #define grn_conv_back_kernel(name, type) 																										\
 __global__ void grn_conv_back_kernel_##name(void *i_input, void *i_d_output, void *i_d_input, 													\
-	float *gamma, void *i_d_gamma, float *feature_norm, float *relative_importance, int residual, 												\
+	float *gamma, float *d_gamma, float *feature_norm, float *relative_importance, float *mean, int residual, 									\
 	size_t b_length, size_t b_size, size_t nb_features, size_t flat_a_size)																		\
 {																																				\
 	size_t i = blockIdx.x*blockDim.x + threadIdx.x;																								\
@@ -352,29 +384,28 @@ __global__ void grn_conv_back_kernel_##name(void *i_input, void *i_d_output, voi
 	type* input = (type*) i_input;																												\
 	type* d_input = (type*) i_d_input;																											\
 	type* d_output = (type*) i_d_output;																										\
-	type* d_gamma = (type*) i_d_gamma;																											\
-	float l_d_gamma, l_rel_imp, l_feat_norm, l_mean_eps, l_val, l_grad;																			\
+	float l_d_gamma, l_rel_imp, l_feat_norm, l_mean_eps, l_mean, l_val, l_grad;																	\
 	size_t filter_offset = flat_a_size*b_size;																									\
 	size_t feature_id, batch_id, conv_id;																										\
 																																				\
 	if(i < flat_a_size && j < nb_features*b_size)																								\
 	{																																			\
 		feature_id = j % nb_features;																											\
-		batch_id = j / nb_features;																												\
-		conv_id = batch_id*flat_a_size + feature_id*filter_offset + i;																			\
+		batch_id   = j / nb_features;																											\
+		conv_id    = batch_id*flat_a_size + feature_id*filter_offset + i;																		\
 																																				\
 		if(batch_id < b_length)																													\
 		{																																		\
-			l_d_gamma = d_gamma[batch_id*nb_features + feature_id];																				\
+			l_d_gamma   = d_gamma[batch_id*nb_features + feature_id];																			\
 			l_feat_norm = feature_norm[batch_id*nb_features + feature_id];																		\
-			l_rel_imp = relative_importance[batch_id*nb_features + feature_id];																	\
-			l_mean_eps = l_feat_norm / l_rel_imp;																								\
-			l_val = (float)input[conv_id];																										\
-			l_grad = (float)d_output[conv_id];																									\
+			l_rel_imp   = relative_importance[batch_id*nb_features + feature_id];																\
+			l_mean_eps  = l_feat_norm / l_rel_imp;																								\
+			l_mean      = mean[batch_id];																										\
+			l_val       = (float)input[conv_id];																								\
+			l_grad      = (float)d_output[conv_id];																								\
 																																				\
 			d_input[conv_id] += (type)(gamma[feature_id] * l_rel_imp * l_grad																	\
-				+ gamma[feature_id] * l_d_gamma * l_val																							\
-				* (1.0f/(l_mean_eps*l_feat_norm) - 1.0f/(nb_features*l_mean_eps*l_mean_eps)));													\
+				+ l_val / (l_mean_eps*l_feat_norm) * (gamma[feature_id] * l_d_gamma - l_mean));													\
 				/*refactored to remove un-necessary divisions*/																					\
 			if(residual)																														\
 				d_input[conv_id] += (type) l_grad;																								\
@@ -384,8 +415,7 @@ __global__ void grn_conv_back_kernel_##name(void *i_input, void *i_d_output, voi
 
 
 reduce_l2norm_conv_kernel(FP32, float);
-reduce_grn_dgamma_conv_kernel(FP32, float);
-reduce_grn_dbeta_conv_kernel(FP32, float);
+reduce_grn_dgamma_dbeta_conv_kernel(FP32, float);
 reduce_grn_param_grads_kernel(FP32, float);
 grn_conv_kernel(FP32, float);
 grn_conv_back_kernel(FP32, float);
@@ -393,8 +423,7 @@ grn_conv_back_kernel(FP32, float);
 
 #if defined(GEN_VOLTA) || defined(GEN_AMPERE)
 reduce_l2norm_conv_kernel(FP16, half);
-reduce_grn_dgamma_conv_kernel(FP16, half);
-reduce_grn_dbeta_conv_kernel(FP16, half);
+reduce_grn_dgamma_dbeta_conv_kernel(FP16, half);
 reduce_grn_param_grads_kernel(FP16, half);
 grn_conv_kernel(FP16, half);
 grn_conv_back_kernel(FP16, half);
@@ -402,8 +431,7 @@ grn_conv_back_kernel(FP16, half);
 
 #if defined (GEN_AMPERE)
 reduce_l2norm_conv_kernel(BF16, nv_bfloat16);
-reduce_grn_dgamma_conv_kernel(BF16, nv_bfloat16);
-reduce_grn_dbeta_conv_kernel(BF16, nv_bfloat16);
+reduce_grn_dgamma_dbeta_conv_kernel(BF16, nv_bfloat16);
 reduce_grn_param_grads_kernel(BF16, nv_bfloat16);
 grn_conv_kernel(BF16, nv_bfloat16);
 grn_conv_back_kernel(BF16, nv_bfloat16);
@@ -418,8 +446,7 @@ void cuda_grn_init(network* net)
 		case FP32C_FP32A:
 		case TF32C_FP32A:
 			net->cu_inst.cu_grn_fcts.cu_reduce_l2norm_conv_kernel = reduce_l2norm_conv_kernel_FP32;
-			net->cu_inst.cu_grn_fcts.cu_reduce_grn_dgamma_conv_kernel = reduce_grn_dgamma_conv_kernel_FP32;
-			net->cu_inst.cu_grn_fcts.cu_reduce_grn_dbeta_conv_kernel = reduce_grn_dbeta_conv_kernel_FP32;
+			net->cu_inst.cu_grn_fcts.cu_reduce_grn_dgamma_dbeta_conv_kernel = reduce_grn_dgamma_dbeta_conv_kernel_FP32;
 			net->cu_inst.cu_grn_fcts.cu_reduce_grn_param_grads_kernel = reduce_grn_param_grads_kernel_FP32;
 			net->cu_inst.cu_grn_fcts.cu_grn_conv_kernel = grn_conv_kernel_FP32;
 			net->cu_inst.cu_grn_fcts.cu_grn_conv_back_kernel = grn_conv_back_kernel_FP32;
@@ -429,8 +456,7 @@ void cuda_grn_init(network* net)
 		case FP16C_FP16A:
 			#if defined(GEN_VOLTA) || defined(GEN_AMPERE)
 			net->cu_inst.cu_grn_fcts.cu_reduce_l2norm_conv_kernel = reduce_l2norm_conv_kernel_FP16;
-			net->cu_inst.cu_grn_fcts.cu_reduce_grn_dgamma_conv_kernel = reduce_grn_dgamma_conv_kernel_FP16;
-			net->cu_inst.cu_grn_fcts.cu_reduce_grn_dbeta_conv_kernel = reduce_grn_dbeta_conv_kernel_FP16;
+			net->cu_inst.cu_grn_fcts.cu_reduce_grn_dgamma_dbeta_conv_kernel = reduce_grn_dgamma_dbeta_conv_kernel_FP16;
 			net->cu_inst.cu_grn_fcts.cu_reduce_grn_param_grads_kernel = reduce_grn_param_grads_kernel_FP16;
 			net->cu_inst.cu_grn_fcts.cu_grn_conv_kernel = grn_conv_kernel_FP16;
 			net->cu_inst.cu_grn_fcts.cu_grn_conv_back_kernel = grn_conv_back_kernel_FP16;
@@ -443,8 +469,7 @@ void cuda_grn_init(network* net)
 		case BF16C_FP32A:
 			#if defined (GEN_AMPERE)
 			net->cu_inst.cu_grn_fcts.cu_reduce_l2norm_conv_kernel = reduce_l2norm_conv_kernel_BF16;
-			net->cu_inst.cu_grn_fcts.cu_reduce_grn_dgamma_conv_kernel = reduce_grn_dgamma_conv_kernel_BF16;
-			net->cu_inst.cu_grn_fcts.cu_reduce_grn_dbeta_conv_kernel = reduce_grn_dbeta_conv_kernel_BF16;
+			net->cu_inst.cu_grn_fcts.cu_reduce_grn_dgamma_dbeta_conv_kernel = reduce_grn_dgamma_dbeta_conv_kernel_BF16;
 			net->cu_inst.cu_grn_fcts.cu_reduce_grn_param_grads_kernel = reduce_grn_param_grads_kernel_BF16;
 			net->cu_inst.cu_grn_fcts.cu_grn_conv_kernel = grn_conv_kernel_BF16;
 			net->cu_inst.cu_grn_fcts.cu_grn_conv_back_kernel = grn_conv_back_kernel_BF16;
@@ -488,8 +513,8 @@ size_t cuda_convert_grn_layer(layer *current)
 		n_param->beta_grad = (void*)((unsigned char *)current->gradient + temp_allocated_size/2);
 		vram_approx += temp_allocated_size;
 		
-		vram_approx += cuda_convert_table(net, (void**)&(n_param->d_gamma), nb_features*net->batch_size, 0);
-		vram_approx += cuda_convert_table(net, (void**)&(n_param->d_beta) , nb_features*net->batch_size, 0);		
+		vram_approx += cuda_convert_table_FP32((void**)&(n_param->d_gamma), nb_features*net->batch_size, 0);
+		vram_approx += cuda_convert_table_FP32((void**)&(n_param->d_beta) , nb_features*net->batch_size, 0);		
 	
 		vram_approx += cuda_convert_optimizer_var(current, 2*nb_features);
 	}
@@ -527,14 +552,12 @@ void cuda_free_grn(layer *current)
 
 void cuda_forward_grn_layer(layer *current)
 {
-	size_t i;
+	int i;
 	size_t dim_offset = 1, nb_features;
 	float *l_gamma, *l_beta;
 	
 	network* net = current->c_network;
 	n_param = (grn_param*)current->param;
-	//Previous verification should ensure that it is not the first layer 
-	current->input = current->previous->output;
 	
 	if(current->output_type == SPATIAL)
 	{
@@ -586,7 +609,7 @@ void cuda_forward_grn_layer(layer *current)
 
 void cuda_backward_grn_layer(layer *current)
 {
-	size_t i;
+	int i;
 	size_t dim_offset = 1, nb_features = 1;
 	
 	network* net = current->c_network;
@@ -603,14 +626,16 @@ void cuda_backward_grn_layer(layer *current)
 		
 		cu_blocks = nb_features*net->batch_size;
 		
-		net->cu_inst.cu_grn_fcts.cu_reduce_grn_dbeta_conv_kernel<<<cu_blocks, 256>>>(current->delta_o, n_param->d_beta,
-			nb_features, dim_offset, net->batch_size, dim_offset);
-			
-		net->cu_inst.cu_grn_fcts.cu_reduce_grn_dgamma_conv_kernel<<<cu_blocks, 256>>>(current->input, current->delta_o, 
-			n_param->d_gamma, nb_features, dim_offset, net->batch_size, dim_offset);
+		net->cu_inst.cu_grn_fcts.cu_reduce_grn_dgamma_dbeta_conv_kernel<<<cu_blocks, 256>>>(current->input, current->delta_o, 
+			n_param->d_gamma, n_param->d_beta, nb_features, dim_offset, net->batch_size, dim_offset);
 		//Here d_gamma is missing a multiplication with relative_importance[block_id]
 		//Still, the current reduction is usefull for propagating the gradient. 
 		//-> Multiplication with relative_importance[block_id] is postponed
+		
+		cu_blocks = net->batch_size;
+		
+		reduce_grn_mean_back_kernel<<<cu_blocks, 256>>>(n_param->gamma, n_param->d_gamma,
+			n_param->relative_importance, n_param->mean, nb_features, net->batch_size);
 		
 		dim3 threadsPerBlock(32, 8);
 		dim3 numBlocks((dim_offset + threadsPerBlock.x - 1) / threadsPerBlock.x,
@@ -618,7 +643,7 @@ void cuda_backward_grn_layer(layer *current)
 			
 		net->cu_inst.cu_grn_fcts.cu_grn_conv_back_kernel<<<numBlocks, threadsPerBlock>>>(current->input, current->delta_o, 
 			current->previous->delta_o, n_param->gamma, n_param->d_gamma, 
-			n_param->feature_norm, n_param->relative_importance, n_param->residual,
+			n_param->feature_norm, n_param->relative_importance, n_param->mean, n_param->residual,
 			net->length, net->batch_size, nb_features, dim_offset);
 	}
 	

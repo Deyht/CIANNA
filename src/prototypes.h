@@ -29,30 +29,34 @@
 //   Public variables and functions
 //######################################
 
+#ifdef __cplusplus
+extern "C" { // Allow regular C functions to also be used in .cu files 
+			 //(typically usefull for auxil functions)
+#endif
+
 extern network *networks[MAX_NETWORKS_NB];
+extern int global_current_network_id;
 extern int is_init;
 extern int is_cuda_init;
-extern int verbose;
+extern int auxil_input_id;
 
 
 //auxil.c
-void init_timing(struct timeval *tstart);
-float ellapsed_time(struct timeval tstart);
+void* timer_init(network *net);
+void timer_start(network *net, void *timer);
+double ellapsed_time(network *net, void *timer);
+void timer_free(network *net, void *timer);
 void sig_handler(int signo);
 void print_table(float *tab, int column_size, int nb_column);
-void print_iter_advance(network *net, int c_batch, int nb_batch, float loss, float c_perf, int is_training);
+void print_iter_advance(network *net, int c_batch, int nb_batch, float loss, double c_perf, int is_training);
 int argmax(float *tab, int size);
 int conv_argmax(float *tab, int offset, int size);
 float clip(float n, float lower, float upper);
 double random_uniform(void);
 double random_normal(void);
+size_t random_int_below(size_t n);
 void eval_init(network *net);
-void perf_eval_in(network *net);
-void batch_eval_in(network *net);
-void epoch_eval_in(network *net);
-void perf_eval_out(network *net, int layer_id, float *vect, int *n_vect);
-float batch_eval_out(network *net);
-float epoch_eval_out(network *net);
+void perf_layer_eval(network *net, long long int ellapsed_time, int layer_id, double *vect, size_t *n_vect);
 void perf_eval_display(network *net);
 void print_architecture_tex(network *net, const char *path, const char *file_name,
 	int l_size, int l_in_size, int l_f_size, int l_out_size, int l_stride, int l_padding, 
@@ -60,27 +64,34 @@ void print_architecture_tex(network *net, const char *path, const char *file_nam
 
 
 //dataset.c
-Dataset create_dataset(network *net, int with_target, size_t nb_elem);
-void host_only_shuffle(network *net, Dataset data);
+Dataset create_dataset(network *net, int with_target, size_t nb_elem, 
+	int nb_branch_in, size_t *branch_in_dim, int nb_branch_targ, size_t *branch_targ_dim);
+void host_only_shuffle(network *net, Dataset *data);
 void free_dataset(Dataset *data);
 Dataset* get_dataset_from_type(network *net, const char *dataset_type, int silent);
 
 
 //network.c
-void init_network(int network_number, int u_input_dim[4], int u_output_dim, int u_batch_size, const char *optimizer, int u_wema,
-	const char *compute_method_string, int u_dynamic_load, const char *cuda_TC_string, int inference_only, int no_logo, int adv_size);
-void train_network(network *net, int nb_epochs, int control_interv, float u_begin_learning_rate, float u_end_learning_rate, 
-	float u_decay, float u_weight_decay, int u_decoupled_wdecay, float u_wema_rate, int wema_replace_every, int show_confmat, 
-	int save_net, int save_bin, int save_optim_state, int shuffle_gpu, int shuffle_every, float c_TC_scale_factor, int silent);
+void init_network(int network_number, int u_batch_size, const char *optimizer, 
+	int u_wema, const char *compute_method_string, int u_dynamic_load, const char *cuda_TC_string, 
+	int inference_only, int no_logo, int silent, int adv_size);
+void train_network(network *net, int nb_epochs, int control_interv, float u_begin_learning_rate, 
+	float u_end_learning_rate, float u_decay, float u_weight_decay, int u_decoupled_wdecay, float u_wema_rate, 
+	int wema_replace_every, int show_confmat, int save_net, int save_bin, int save_optim_state, int shuffle_gpu, 
+	int shuffle_every, float c_TC_scale_factor, int silent);
 float* pred_testset(network *net, int saving, int repeat, int drop_mode, int silent, int return_result);
-void pred_network(network *net, Dataset data, int saving, int confusion_matrix, int repeat, int silent, float *result);
+void pred_network(network *net, Dataset *data, int saving, int confusion_matrix, int repeat, int silent, float *result);
 void set_frozen_layers(network *net, int *tab, int dim);
-void fprint_layer_params(network *net, FILE *f, void *params, size_t param_size, size_t return_dim, size_t padding, int stay_on_host, int f_bin);
-void save_layer_weights(FILE *f, layer *current, size_t param_size, size_t return_dim, size_t padding, int stay_on_host, int save_optim_state, int f_bin);
+void fprint_layer_params(network *net, FILE *f, void *params, size_t param_size, size_t return_dim, 
+	size_t padding, int stay_on_host, int f_bin);
+void save_layer_weights(FILE *f, layer *current, size_t param_size, size_t return_dim, size_t padding, 
+	int stay_on_host, int save_optim_state, int f_bin);
 void fread_layer_params(network *net, FILE *f, void *params, size_t param_size, size_t return_dim, size_t padding, int f_bin);
-void load_layer_weights(FILE *f, layer *current, size_t param_size, size_t return_dim, size_t padding, int save_optim_state, int f_bin);
+void skip_layer_weights(FILE *f, int f_bin);
+void load_layer_weights(FILE *f, layer *current, size_t param_size, size_t return_dim, 
+	size_t padding, int load_optim_state, int f_bin);
 void save_network(network *net, const char *filename, int save_optim_state, int f_bin);
-void load_network(network *net, const char *filename, int iter, int nb_layers, int nb_skip_layers, int f_bin);
+void load_network(network *net, const char *filename, int iter, int nb_layers, int nb_skip_layers, int f_bin, int silent);
 void free_network(network *net);
 
 
@@ -92,7 +103,7 @@ void set_optimizer_update_function(network *net);
 int fread_optim_save_state(FILE *f, network *net, int f_bin, int silent);
 void fprint_optimizer_header(FILE *f, network *net, int f_bin);
 void save_optimizer_state(FILE *f, layer *current, size_t param_size, size_t return_dim, 
-	size_t padding, int stay_on_host, int f_bin);
+size_t padding, int stay_on_host, int f_bin);
 void load_optimizer_state(FILE *f, layer *current, size_t param_size, size_t return_dim, 
 	size_t padding, int f_bin);
 void free_optimizer_var(layer *current);
@@ -107,74 +118,84 @@ void fill_string_activ_param(layer *current, char *activ, int no_param);
 void print_activ_param(FILE *f, layer *current, int f_bin);
 void load_activation_type(layer *current, const char *activ);
 
-int set_yolo_config(network *net, size_t nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, const char *IoU_type_char, 
-	const char *prior_dist_type_char, float *prior_size, float *yolo_noobj_prob_prior, int fit_dim, 
-	int strict_box_size, int rand_startup, float rand_prob_best_box_assoc, float rand_prob, float min_prior_forced_scaling, float *scale_tab, 
-	float **slopes_and_maxes_tab, float *param_ind_scale, float *IoU_limits, int *fit_parts, int class_softmax, 
-	int diff_flag, const char *error_type, int no_override, int raw_output);
+int set_yolo_config(network *net, size_t nb_box, int nb_class, int nb_param, int max_nb_obj_per_image, 
+	const char *IoU_type_char, const char *prior_dist_type_char, float *prior_size, float *yolo_noobj_prob_prior, 
+	int fit_dim, int strict_box_size, int regret_based, int rand_startup, float rand_prob_best_box_assoc, float rand_prob, 
+	float min_prior_forced_scaling, float *scale_tab, float **slopes_and_maxes_tab, float *param_ind_scale, 
+	float *IoU_limits, int *fit_parts, int class_softmax, float label_smoothing,
+	int diff_flag, const char *error_type, int no_override, int raw_output, int input_branch_id);
 void free_yolo_params(network *net);
 
 
+//input_layer.c
+int input_create(network *net, int *spatial_shape, int nb_features, int silent);
+void input_save(FILE *f, layer *current, int f_bin);
+void input_load(network *net, FILE *f, int f_bin, int skip_layer, int silent);
+void free_input(layer *current);
+
 //dense_layer.c
-int dense_create(network *net, layer *previous, int nb_neurons, const char *activation, float *bias,
-	float drop_rate, int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin);
+int dense_create(network *net, int prev_layer, int nb_neurons, const char *activation, float *bias, float drop_rate, 
+	int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin, int silent);
 void dense_save(FILE *f, layer *current, int save_optim_state, int f_bin);
-void dense_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer);
+void dense_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer, int silent);
 void free_dense(layer *current);
 
 
 //conv_layer.c
 int nb_area_comp(int size, int f_size, int padding, int int_padding, int stride);
-int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, size_t nb_groups, int *stride, int *padding, 
-	int *int_padding, int *in_shape, const char *activation, float *bias, float drop_rate, 
-	const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin);
+int conv_create(network *net, int prev_layer, int *f_size, size_t nb_filters, size_t nb_groups, int group_param_sharing, 
+	int *stride, int *padding, int *int_padding, int *in_shape, const char *activation, float *bias, float drop_rate, 
+	const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin, int silent);
 void conv_save(FILE *f, layer *current, int save_optim_state, int f_bin);
-void conv_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer);
+void conv_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer, int silent);
 void free_conv();
 
 
 //pool_layer.c
-int pool_create(network *net, layer *previous, int *pool_size, int *stride, int *padding, 
-	const char *char_pool_type, const char *activation, int global, float drop_rate);
+int pool_create(network *net, int prev_layer, int *pool_size, int *stride, int *padding, 
+	const char *char_pool_type, const char *activation, int global, float drop_rate, int silent);
 void pool_save(FILE *f, layer *current, int f_bin);
-void pool_load(network *net, FILE *f, int f_bin, int skip_layer);
+void pool_load(network *net, FILE *f, int f_bin, int skip_layer, int silent);
 void free_pool(layer *current);
 
 
 //norm_layer.c
-int norm_create(network *net, layer *previous, const char *norm_type, const char *activation, 
-	int group_size, float gamme_init, FILE *f_load, int load_optim_state, int f_bin);
+int norm_create(network *net, int prev_layer, const char *activation, int group_size, 
+	float gamma_start, int cond_layer_id, FILE *f_load, int load_optim_state,  int f_bin, int silent);
 void norm_save(FILE *f, layer *current, int save_optim_state, int f_bin);
-void norm_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer);
+void norm_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer, int silent);
 void free_norm(layer *current);
 
 
 //lrn_layer.c
-int lrn_create(network *net, layer *previous, const char *activation, int range, float k, float alpha, float beta);
+int lrn_create(network *net, int prev_layer, const char *activation, int range, float k, float alpha, float beta, int silent);
 void lrn_save(FILE *f, layer *current, int f_bin);
-void lrn_load(network *net, FILE *f, int f_bin, int skip_layer);
+void lrn_load(network *net, FILE *f, int f_bin, int skip_layer, int silent);
 void free_lrn(layer *current);
 
 
 //grn_layer.c
-int grn_create(network *net, layer *previous, const char *activation, int residual, float gamma_init, FILE *f_load, int load_optim_state, int f_bin);
+int grn_create(network *net, int prev_layer, const char *activation, int residual, 
+	float gamma_start, FILE *f_load, int load_optim_state, int f_bin, int silent);
 void grn_save(FILE *f, layer *current, int save_optim_state, int f_bin);
-void grn_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer);
+void grn_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer, int silent);
 void free_grn(layer *current);
 
 
 //merge_layer.c
-int merge_create(network *net, int previous_id_a, int previous_id_b, int merge_type, const char *activation);
+int merge_create(network *net, int nb_previous, int *prev_list_id, int merge_type, const char *activation, int silent);
 void merge_save(FILE *f, layer *current, int f_bin);
-void merge_load(network *net, FILE *f, int f_bin, int skip_layer);
+void merge_load(network *net, FILE *f, int f_bin, int skip_layer, int silent);
 void free_merge(layer *current);
 
 
 //weights_initializers.c
 int get_init_type(const char *s_init);
 void initialize_weights(const char *init_fct, void *weights, int dim_in, int dim_out, 
-	int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+	int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent);
 
+//naiv_input_layer.c
+void naiv_input_define(layer *current);
 
 //naiv_conv_layer.c
 void im2col_fct(void* i_output, void* i_input,
@@ -191,6 +212,7 @@ void rotate_filter_matrix_fct(void* i_in, void* i_out, size_t nb_rows, size_t de
 void dropout_select_conv(float *mask, size_t size, float drop_rate);
 void dropout_apply_conv(void *i_table, float *mask, size_t size);
 void dropout_scale_conv(void *i_table, size_t size, float drop_rate);
+void reduce_shared_group_gradient(void *i_group_grad, void *i_shared_grad, size_t param_size, size_t nb_groups);
 void naiv_conv_define(layer *current);
 
 //naiv_dense_layer.c
@@ -239,7 +261,6 @@ void dropout_scale_pool(void *i_table, size_t size, float drop_rate);
 void pool_define(layer *current);
 
 
-
 #ifdef BLAS
 void blas_dense_define(layer *current);
 void blas_conv_define(layer *current);
@@ -254,8 +275,7 @@ void blas_conv_define(layer *current);
 #ifdef comp_CUDA
 //When compiled by nvcc, variables and global functions must be exported as 
 //regular C prototypes so they can be linked by gcc
-extern "C"
-{
+
 //cuda_auxil.cu
 extern int cu_threads;
 extern void *cu_alpha, *cu_beta;
@@ -286,7 +306,7 @@ void cuda_create_host_table(network *net, void **tab, size_t size);
 size_t cuda_convert_table(network *net, void **tab, size_t size, int keep_host);
 size_t cuda_convert_table_FP32(void **tab, size_t size, int keep_host);
 size_t cuda_convert_table_int(int **tab, size_t size, int keep_host);
-void cuda_float_memset(void* table, float value, size_t size);
+void cuda_float_memset(network *net, void* table, size_t offset, float value, size_t size);
 void cuda_typed_memset_FP32(void* i_table, int value, size_t size);
 void cuda_create_table_FP32(void **tab, size_t size);
 void cuda_get_table_FP32_to_FP32(void *cuda_table, float *table, size_t size, void *buffer);
@@ -301,27 +321,23 @@ void cuda_host_FP32_to_device_typed_inplace_copy(network *net, void *cuda_table,
 void cuda_convert_dataset(network *net, Dataset *data);
 void cuda_get_batched_dataset(network *net, Dataset *data);
 void cuda_convert_host_dataset(network *net, Dataset *data);
-Dataset cuda_create_dataset(network *net, int with_target, size_t nb_elem);
+Dataset cuda_create_dataset(network *net, int with_target, size_t nb_elem, 
+	int nb_branch_in, size_t *branch_in_dim, int nb_branch_targ, size_t *branch_targ_dim);
 void cuda_free_dataset(Dataset *data);
 void cuda_master_weight_copy(network *net, float *master, void *copy, size_t size);
 void cuda_print_table_FP32(void *tab, size_t size, int return_every);
 void cuda_print_table(network *net, void *tab, size_t size, int return_every);
 void cuda_print_table_int(network *net, int *tab, size_t size, int return_every);
 void cuda_print_table_host_FP16(network *net, void *tab, size_t size, int return_every);
-void cuda_perf_eval_init(void);
-void cuda_batch_eval_init(void);
-void cuda_epoch_eval_init(void);
-void cuda_perf_eval_in(void);
-void cuda_batch_eval_in(void);
-void cuda_epoch_eval_in(void);
-float cuda_perf_eval_out(void);
-float cuda_batch_eval_out(void);
-float cuda_epoch_eval_out(void);
-void cuda_shuffle(network *net, Dataset data, Dataset duplicate, int *index_shuffle, int *index_shuffle_device);
-void cuda_host_shuffle(network *net, Dataset data, Dataset duplicate);
-void cuda_host_only_shuffle(network *net, Dataset data);
-void init_cuda(network *net);
-void free_cuda_network(void);
+void* cuda_timer_init(void);
+void cuda_timer_start(void* timer);
+double cuda_ellapsed_time(void *timer);
+void cuda_timer_free(void *timer);
+void cuda_shuffle(network *net, Dataset *data, Dataset *duplicate, int *index_shuffle, int *index_shuffle_device);
+void cuda_host_shuffle(network *net, Dataset *data, Dataset *duplicate);
+void cuda_host_only_shuffle(network *net, Dataset *data);
+void cuda_init(network* net, char* string_comp, const char* cuda_TC_string, int dynamic_load);
+void cuda_free_network(network *net);
 
 
 //cuda_optimizes.cu
@@ -387,13 +403,11 @@ size_t cuda_convert_merge_layer(layer *current);
 void cuda_free_merge(layer *current);
 void cuda_merge_define(layer *current);
 
+#endif /*CUDA*/
 
-#ifdef comp_CUDA
-}
+#ifdef __cplusplus
+} /* extern "C" */
 #endif
-
-#endif // CUDA
-
 
 #endif //PROTOTYPES_H
 

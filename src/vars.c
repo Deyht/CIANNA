@@ -22,6 +22,7 @@
 #include "structs.h"
 
 network *networks[MAX_NETWORKS_NB];
+int global_current_network_id = 0;
 int is_init = 0, is_cuda_init = 0;
-int output_layers_forward_results = 0;
+int auxil_input_id = -1 * MAX_LAYERS_NB - 1;
 

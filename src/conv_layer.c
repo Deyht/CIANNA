@@ -52,9 +52,9 @@ an integer number of conv/pool regions\n\
 }
 
 
-int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, size_t nb_groups, int *stride, int *padding, 
-	int *int_padding, int *in_shape, const char *activation, float *bias, float drop_rate, 
-	const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin)
+int conv_create(network *net, int prev_layer, int *f_size, size_t nb_filters, size_t nb_groups, int group_param_sharing, 
+	int *stride, int *padding, int *int_padding, int *in_shape, const char *activation, float *bias, float drop_rate, 
+	const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin, int silent)
 {
 	size_t i, k;
 	size_t subdim_a, subdim_b;
@@ -70,14 +70,25 @@ int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, s
 	net->nb_layers++;
 	batch_size = net->batch_size;
 	
-	printf("L:%d - CREATING CONVOLUTIONAL LAYER ...\n", net->nb_layers);
+	if(!silent)
+		printf("L:%d - CREATING CONVOLUTIONAL LAYER ...\n", net->nb_layers - 1);
 	
 	current->type                = CONV;
+	current->layer_id            = net->nb_layers-1;
 	current->output_type         = SPATIAL;
 	current->frozen              = 0;
 	current->wema_replace_signal = 0;
 	current->dropout_rate        = drop_rate;
-	current->previous            = previous;
+	
+	if(prev_layer < 0 && prev_layer + net->nb_layers-1 >= 0)
+		current->previous = net->net_layers[current->layer_id + prev_layer];
+	else if(prev_layer >= 0 && prev_layer < net->nb_layers-1)
+		current->previous = net->net_layers[prev_layer];
+	else
+	{
+		printf("\n ERROR: Invalid previous layer id provided!\n");
+		exit(EXIT_FAILURE);
+	}
 	
 	current->output_dim = (int*) calloc(4, sizeof(int));
 	
@@ -100,65 +111,63 @@ int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, s
 	spatial_f_size = f_size[0] * f_size[1] * f_size[2];
 	
 	//Compute the number of areas to be convolved in the input image
-	if(previous == NULL)
+	if(current->previous->output_type == SPATIAL || current->previous->type == INPUT)
 	{
-		current->prev_dim = net->in_dims;
-		current->input = net->input;
+		current->prev_dim = current->previous->output_dim;
 	}
-	else
+	else //FLAT
 	{
-		if(previous->output_type == SPATIAL)
+		if(in_shape == NULL)
 		{
-			current->prev_dim = previous->output_dim;
+			printf("\n ERROR: dense to conv conversion requires input_shape argument to be defined.\n\n");
+			exit(EXIT_FAILURE);
 		}
-		else //FLAT
+		if(current->previous->output_dim[3] != in_shape[0]*in_shape[1]*in_shape[2]*in_shape[3])
 		{
-			if(in_shape == NULL)
-			{
-				printf("\n ERROR: dense to conv conversion requires input_shape argument to be defined.\n\n");
-				exit(EXIT_FAILURE);
-			}
-			if(previous->output_dim[3] != in_shape[0]*in_shape[1]*in_shape[2]*in_shape[3])
-			{
-				printf("\n ERROR: dense to conv input_shape mismatch.\n\n");
-				exit(EXIT_FAILURE);
-			}
-			//in shape vector might be destroyed especially if called from the python inteface. Must be copied in a stable memory space.
-			current->prev_dim = (int*) calloc(4,sizeof(int));
-			for(k = 0; k < 3; k++)
-				current->prev_dim[k] = in_shape[k];
+			printf("\n ERROR: dense to conv input_shape mismatch.\n\n");
+			exit(EXIT_FAILURE);
 		}
-		current->input = previous->output;
+		//in shape vector might be destroyed especially if called from the python inteface. Must be copied in a stable memory space.
+		current->prev_dim = (int*) calloc(4,sizeof(int));
+		for(k = 0; k < 4; k++)
+			current->prev_dim[k] = in_shape[k];
 	}
+	current->input = current->previous->output;
+	
+	if(nb_groups < 1)
+		nb_groups = 1;
+	c_param->nb_groups = nb_groups;
+	c_param->group_param_sharing = group_param_sharing;
 	
 	for(k = 0; k < 3; k++)
 		current->output_dim[k] = nb_area_comp(current->prev_dim[k], c_param->f_size[k], 
 			c_param->padding[k], c_param->int_padding[k], c_param->stride[k]);
-	current->output_dim[3] = nb_filters;
 	
 	nb_regions_out   = current->output_dim[0] * current->output_dim[1] * current->output_dim[2];
 	nb_regions_in    =   current->prev_dim[0] *   current->prev_dim[1] *   current->prev_dim[2];
 	prev_nb_channels =   current->prev_dim[3];
 	
-	if(nb_groups < 1)
-		nb_groups = 1;
-	c_param->nb_groups = nb_groups;
-	if(prev_nb_channels % nb_groups != 0 || nb_filters % nb_groups != 0)
+	if(prev_nb_channels % nb_groups != 0 || (!group_param_sharing && nb_filters % nb_groups != 0))
 	{
 		printf("\n ERROR: invalid nb_groups setting. Both number of input and output channels must be a multiple of nb_groups.\n");
 		exit(EXIT_FAILURE);
 	}
 	chan_per_group_in  = prev_nb_channels / nb_groups;
-	chan_per_group_out = nb_filters       / nb_groups;
+	if(group_param_sharing)
+		chan_per_group_out = nb_filters;
+	else
+		chan_per_group_out = nb_filters / nb_groups;
+	
+	current->output_dim[3] = chan_per_group_out * nb_groups;
 	
 	c_param->TC_padding = 0;
 	#ifdef CUDA
 	if(net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC != FP32C_FP32A)
-		c_param->TC_padding = 8 - (spatial_f_size * chan_per_group_in + 1) % 8;
+		c_param->TC_padding = (8 - (spatial_f_size * chan_per_group_in + 1) % 8) % 8;
 	#endif
 	
 	//Activation related pre-computed sizes and shapes
-	current->a_size       = nb_regions_out * nb_filters * batch_size; //here nb_filters = chan_per_group_out * nb_groups
+	current->a_size       = nb_regions_out * chan_per_group_out * nb_groups * batch_size;
 	current->a_dim        = nb_regions_out;
 	current->a_biased_dim = nb_regions_out;
 	current->a_offset     = batch_size;
@@ -167,7 +176,6 @@ int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, s
 	
 	if(bias != NULL)
 		current->bias_value = *bias;
-	
 	
 	//#############################################
 	
@@ -193,28 +201,34 @@ int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, s
 	//######## Weights related data arrays ########
 	
 	subdim_a = spatial_f_size * chan_per_group_in + 1 + c_param->TC_padding;
-	subdim_b = chan_per_group_out;
+	subdim_b = nb_filters; //equivalent to nb_group * chan_per_group_out
 	
-	current->weights = (float*) calloc(nb_groups * subdim_a * subdim_b, sizeof(float));
+	current->weights = (float*) calloc(subdim_a * subdim_b, sizeof(float));
 	current->FP32_weights = current->weights;
-	mem_approx += nb_groups * subdim_a * subdim_b * sizeof(float);
+	mem_approx += subdim_a * subdim_b * sizeof(float);
 	
-	current->nb_params = nb_groups * chan_per_group_out * (spatial_f_size * chan_per_group_in + 1); //no padding
+	current->nb_params = subdim_b * (spatial_f_size * chan_per_group_in + 1); //no padding
 	
 	if(!net->inference_only)
 	{
 		if(net->use_wema)
 		{
-			current->ema_weights = (float*) calloc(nb_groups * subdim_a * subdim_b, sizeof(float));
-			mem_approx += nb_groups * subdim_a * subdim_b * sizeof(float);
+			current->ema_weights = (float*) calloc(subdim_a * subdim_b, sizeof(float));
+			mem_approx += subdim_a * subdim_b * sizeof(float);
 		}
 	
 		//allocate the weight gradient space
-		current->gradient = (float*) calloc(nb_groups * subdim_a * subdim_b, sizeof(float));
-		mem_approx += nb_groups * subdim_a * subdim_b * sizeof(float);
+		current->gradient = (float*) calloc(subdim_a * subdim_b, sizeof(float));
+		mem_approx += subdim_a * subdim_b * sizeof(float);
+		
+		if(group_param_sharing && nb_groups > 1)
+		{
+			c_param->shared_group_gradient = (float*) calloc(nb_groups * subdim_a * subdim_b, sizeof(float));
+			mem_approx += nb_groups * subdim_a * subdim_b * sizeof(float);
+		}
 	
 		//Create optimize data arrays based on the weights dimensions
-		mem_approx += define_optimizer_var(current, nb_groups * subdim_a * subdim_b);
+		mem_approx += define_optimizer_var(current, subdim_a * subdim_b);
 	}
 	
 	if(f_load == NULL)
@@ -222,17 +236,18 @@ int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, s
 		if(init_scaling < 0)
 			init_scaling = 1.0f;
 		
-		initialize_weights(init_fct, current->weights, subdim_a - c_param->TC_padding, nb_groups * subdim_b, 
-			0, 0.0, c_param->TC_padding, init_scaling);
+		initialize_weights(init_fct, current->weights, subdim_a - c_param->TC_padding, subdim_b, 
+			0, 0.0, c_param->TC_padding, init_scaling, silent);
 	}
 	else
-		load_layer_weights(f_load, current, nb_groups * subdim_a * subdim_b, subdim_a - c_param->TC_padding, 
+		load_layer_weights(f_load, current, (subdim_a - c_param->TC_padding) * subdim_b, subdim_a - c_param->TC_padding, 
 			c_param->TC_padding, load_optim_state, f_bin);
 	
 	if(net->use_wema && !net->inference_only && (f_load == NULL || !load_optim_state))
 	{
 		//printf("Copying regular weights into EMA weights\n");
-		for(i = 0; i < nb_groups * subdim_a * subdim_b; i++)
+		//exit(EXIT_FAILURE);
+		for(i = 0; i < subdim_a * subdim_b; i++)
 			current->ema_weights[i] = ((float*)current->weights)[i];
 	}
 	
@@ -241,24 +256,24 @@ int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, s
 	//######## Output related data arrays #########
 	
 	subdim_a = batch_size * nb_regions_out;
-	subdim_b = chan_per_group_out;
+	subdim_b = nb_groups * chan_per_group_out;
 	
 	//Activation maps are not continuous for each image : 
 	//	A1_im1, A1_im2, A1_im3, ... , A2_im1, A2_im2, A2_im3, ... 
-	current->output = (float*) calloc(nb_groups * subdim_a * subdim_b, sizeof(float));
-	mem_approx += nb_groups * subdim_a * subdim_b * sizeof(float);
+	current->output = (float*) calloc(subdim_a * subdim_b, sizeof(float));
+	mem_approx += subdim_a * subdim_b * sizeof(float);
 	
 	if(drop_rate > 0.01f)
 	{
-		current->dropout_mask = (float*) calloc(nb_groups * subdim_a * subdim_b, sizeof(float));
-		mem_approx += nb_groups * subdim_a * subdim_b * sizeof(float);
+		current->dropout_mask = (float*) calloc(subdim_a * subdim_b, sizeof(float));
+		mem_approx += subdim_a * subdim_b * sizeof(float);
 	}
 	
 	if(!net->inference_only)
 	{
 		//allocate output error comming from next layers
-		current->delta_o = (float*) calloc(nb_groups * subdim_a * subdim_b, sizeof(float));
-		mem_approx += nb_groups * subdim_a * subdim_b * sizeof(float);
+		current->delta_o = (float*) calloc(subdim_a * subdim_b, sizeof(float));
+		mem_approx += subdim_a * subdim_b * sizeof(float);
 	}
 	
 	//#############################################
@@ -282,7 +297,7 @@ int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, s
 		mem_approx += nb_groups * subdim_a * subdim_b * sizeof(float);
 	
 		//temporary output error used for dense to conv link backprop / no groups
-		if(previous != NULL && previous->output_type == FLAT)
+		if(current->previous->type != INPUT && current->previous->output_type == FLAT)
 		{
 			subdim_a = prev_nb_channels * nb_regions_in;
 			subdim_b = batch_size;
@@ -318,40 +333,44 @@ int conv_create(network *net, layer *previous, int *f_size, size_t nb_filters, s
 			break;
 	}
 	
-	char activ[40];
-	fill_string_activ_param(current, activ,0);
-	printf("      Input: %dx%dx%dx%ld, Output: %dx%dx%dx%ld \n\
+	if(!silent)
+	{
+		char activ[40];
+		fill_string_activ_param(current, activ,0);
+	
+		printf("      Input: %dx%dx%dx%ld, Output: %dx%dx%dx%d \n\
       Nb_groups: %ld, Filters: %ldf %dx%dx%dx%ld,\n\
       Stride: %d:%d:%d, padding: %d:%d:%d, int_padding: %d:%d:%d,  \n\
       Activation: %s, Bias: %0.2f, dropout rate: %0.2f\n\
       Nb. weights: %ld, Approx layer RAM/VRAM requirement: %d MB\n",
-		current->prev_dim[0], current->prev_dim[1], current->prev_dim[2], prev_nb_channels,
-		current->output_dim[0], current->output_dim[1], current->output_dim[2], nb_filters,
-		nb_groups, nb_filters, c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], chan_per_group_in, 
-		c_param->stride[0], c_param->stride[1], c_param->stride[2], 
-		c_param->padding[0], c_param->padding[1], c_param->padding[2],
-		c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2],
-		activ, current->bias_value, current->dropout_rate,
-		current->nb_params, (int)(mem_approx/1000000));
-	net->total_nb_param += current->nb_params;
-	net->memory_footprint += mem_approx;
-	
-	#ifdef CUDA
-	if(net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC != FP32C_FP32A)
-	{
-		if((batch_size * nb_regions_out) % 8 != 0 || chan_per_group_out % 8 != 0)
-			printf(" WARNING: Forward gemm TC data misalignement due to layer size mismatch\n");
-		if(current->previous != NULL && !net->inference_only && 
-			( (batch_size * nb_regions_in) % 8 != 0 
-			|| (spatial_f_size * chan_per_group_out) % 8 != 0
-			|| chan_per_group_in % 8 != 0))
-			printf(" WARNING: Backprop gemm TC data misalignment due to layer size mismatch\n");
-		if(!net->inference_only && 
-			( (batch_size * nb_regions_out) % 8 != 0 
-			|| chan_per_group_out % 8))
-			printf(" WARNING: Weights update gemm TC data misalignment due to layer size mismatch\n");
+			current->prev_dim[0], current->prev_dim[1], current->prev_dim[2], prev_nb_channels,
+			current->output_dim[0], current->output_dim[1], current->output_dim[2], current->output_dim[3],
+			nb_groups, nb_filters, c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], chan_per_group_in, 
+			c_param->stride[0], c_param->stride[1], c_param->stride[2], 
+			c_param->padding[0], c_param->padding[1], c_param->padding[2],
+			c_param->int_padding[0], c_param->int_padding[1], c_param->int_padding[2],
+			activ, current->bias_value, current->dropout_rate,
+			current->nb_params, (int)(mem_approx/1000000));
+		net->total_nb_param += current->nb_params;
+		net->memory_footprint += mem_approx;
+		
+		#ifdef CUDA
+		if(net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC != FP32C_FP32A)
+		{
+			if((batch_size * nb_regions_out) % 8 != 0 || chan_per_group_out % 8 != 0)
+				printf(" WARNING: Forward gemm TC data misalignement due to layer size mismatch\n");
+			if(current->previous->type != INPUT && !net->inference_only && 
+				( (batch_size * nb_regions_in) % 8 != 0 
+				|| (spatial_f_size * chan_per_group_out) % 8 != 0
+				|| chan_per_group_in % 8 != 0))
+				printf(" WARNING: Backprop gemm TC data misalignment due to layer size mismatch\n");
+			if(!net->inference_only && 
+				( (batch_size * nb_regions_out) % 8 != 0 
+				|| chan_per_group_out % 8))
+				printf(" WARNING: Weights update gemm TC data misalignment due to layer size mismatch\n");
+		}
+		#endif
 	}
-	#endif
 
 	return net->nb_layers - 1;
 }
@@ -361,22 +380,31 @@ void conv_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 {
 	size_t i, j;
 	size_t subdim_a, subdim_b;
-	size_t spatial_f_size, chan_per_group_in, chan_per_group_out;
+	size_t spatial_f_size, chan_per_group_in;
 	char layer_type = 'C';
-	int nb_filters, prev_nb_channels;
+	int nb_filters, prev_nb_channels, prev_id = -1;
 	network *net;
-
+	
 	c_param = (conv_param*)current->param;
 	net = current->c_network;
+	
+	prev_id = current->previous->layer_id - current->layer_id;
+	
 	yolo_param *y_param = NULL;
-	nb_filters = current->output_dim[3];
 	prev_nb_channels = current->prev_dim[3];
+	
+	if(c_param->group_param_sharing)
+		nb_filters = current->output_dim[3] / c_param->nb_groups;
+	else
+		nb_filters = current->output_dim[3];
 	
 	if(f_bin)
 	{
 		fwrite(&layer_type, sizeof(char), 1, f);
+		fwrite(&prev_id, sizeof(int), 1, f);
 		fwrite(&nb_filters, sizeof(int), 1, f);
 		fwrite(&c_param->nb_groups, sizeof(int), 1, f);
+		fwrite(&c_param->group_param_sharing, sizeof(int), 1, f);
 		fwrite(c_param->f_size, sizeof(int), 3, f);
 		fwrite(c_param->stride, sizeof(int), 3, f);
 		fwrite(c_param->padding, sizeof(int), 3, f);
@@ -403,9 +431,9 @@ void conv_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 	}
 	else
 	{
-		fprintf(f,"C");
-		fprintf(f, "%df%dg%dx%dx%d.%dx%dx%ds%dx%dx%dp%dx%dx%dip%dx%dx%dx%didim%fd%fb", 
-			nb_filters, c_param->nb_groups,
+		fprintf(f,"C prev%d ", prev_id);
+		fprintf(f, "%df %dg %dgrshr %dx%dx%d %dx%dx%ds %dx%dx%dp %dx%dx%dip %dx%dx%dx%didim %fd %fb ", 
+			nb_filters, c_param->nb_groups, c_param->group_param_sharing,
 			c_param->f_size[0], c_param->f_size[1], c_param->f_size[2], 
 			c_param->stride[0], c_param->stride[1], c_param->stride[2], 
 			c_param->padding[0], c_param->padding[1], c_param->padding[2], 
@@ -437,22 +465,20 @@ void conv_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 	
 	spatial_f_size = c_param->f_size[0] * c_param->f_size[1] * c_param->f_size[2];
 	chan_per_group_in = prev_nb_channels / c_param->nb_groups;
-	chan_per_group_out = nb_filters / c_param->nb_groups;
 	
 	subdim_a = spatial_f_size * chan_per_group_in + 1 + c_param->TC_padding;
-	subdim_b = chan_per_group_out;
+	subdim_b = nb_filters;
 	
-	save_layer_weights(f, current, c_param->nb_groups * subdim_a * subdim_b,
+	save_layer_weights(f, current, (subdim_a - c_param->TC_padding) * subdim_b,
 		subdim_a - c_param->TC_padding, c_param->TC_padding, 0, save_optim_state, f_bin);
 }
 
-void conv_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer)
+void conv_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_layer, int silent)
 {
 	size_t i, j;
-	int nb_filters, nb_groups;
-	size_t nb_parameters;
+	int nb_filters, nb_groups, prev_id, group_param_sharing;
 	int f_size[3], stride[3], padding[3], int_padding[3], input_shape[4];
-	float dropout_rate, bias, temp_read;
+	float dropout_rate, bias;
 	
 	int nb_box, nb_class, nb_yolo_param, fit_dim, class_softmax;
 	float *prior_size = NULL;
@@ -460,17 +486,18 @@ void conv_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_
 	
 	char activ_type[40];
 	char display_class_type[60];
-	layer *previous;
 	yolo_param* y_param = NULL;
 	const char *IoU_type_char = "empty", *prior_dist_type_char = "empty", *error_type = "empty";
 	
-	if(!skip_layer)
-		printf("Loading conv layer, L:%d\n", net->nb_layers+1);
+	if(!skip_layer && !silent)
+		printf("Loading conv layer, L:%d\n", net->nb_layers);
 	
 	if(f_bin)
 	{
+		fread(&prev_id, sizeof(int), 1, f);
 		fread(&nb_filters, sizeof(int), 1, f);
 		fread(&nb_groups, sizeof(int), 1, f);
+		fread(&group_param_sharing, sizeof(int), 1, f);
 		fread(f_size, sizeof(int), 3, f);
 		fread(stride, sizeof(int), 3, f);
 		fread(padding, sizeof(int), 3, f);
@@ -497,8 +524,8 @@ void conv_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_
 	}
 	else
 	{
-		fscanf(f, "%df%dg%dx%dx%d.%dx%dx%ds%dx%dx%dp%dx%dx%dip%dx%dx%dx%didim%fd%fb%s\n", 
-			&nb_filters, &nb_groups,
+		fscanf(f, " prev%d %df %dg %dgrshr %dx%dx%d %dx%dx%ds %dx%dx%dp %dx%dx%dip %dx%dx%dx%didim %fd %fb %s\n", 
+			&prev_id, &nb_filters, &nb_groups, &group_param_sharing,
 			&f_size[0], &f_size[1], &f_size[2],
 		 	&stride[0], &stride[1], &stride[2], 
 		 	&padding[0], &padding[1], &padding[2], 
@@ -522,15 +549,19 @@ void conv_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_
 	{
 		if(net->y_param == NULL)
 		{
-			printf(" WARNING: Loading a YOLO layer with no prior call to the set_yolo_config function.\n");
-			printf(" Loading will proceed with available parameters from the saved model (not suited for further training).\n");
+			if(!silent)
+			{
+				printf(" WARNING: Loading a YOLO layer with no prior call to the set_yolo_config function.\n");
+				printf(" Loading will proceed with available parameters from the saved model (not suited for further training).\n");
+			}
 			
 			/*To compare with python_module.c*/
 			set_yolo_config(net, 0/*nb_box*/, 0/*nb_class*/, 0/*nb_yolo_param*/, /*max_nb_obj_per_image*/0, 
-				IoU_type_char, prior_dist_type_char, NULL/*C_prior_size*/, NULL/*C_prior_noobj_prob*/, 0/*fit_dim*/, 0/*strict_box_size_association*/, 
-				0/*rand_startup*/, 0.0f/*rand_prob_best_box_assoc*/, 0.0f/*rand_prob*/, 0.0f/*min_prior_forced_scaling*/, NULL/*error_scales*/, NULL/*slopes_and_maxes*/, 
-				NULL/*param_ind_scales*/, NULL/*IoU_limits*/, NULL/*fit_parts*/, 0/*class_softmax*/, 0/*diff_flag*/, error_type, 0/*no_override*/, 0/*raw_output*/);
-			
+				IoU_type_char, prior_dist_type_char, NULL/*C_prior_size*/, NULL/*C_prior_noobj_prob*/, 0/*fit_dim*/, 
+				0/*strict_box_size_association*/, 0/*regret_based*/, 0/*rand_startup*/, 0.0f/*rand_prob_best_box_assoc*/, 
+				0.0f/*rand_prob*/, 0.0f/*min_prior_forced_scaling*/, NULL/*error_scales*/, NULL/*slopes_and_maxes*/, 
+				NULL/*param_ind_scales*/, NULL/*IoU_limits*/, NULL/*fit_parts*/, 0/*class_softmax*/, 0.0f/*label_smoothing*/, 
+				0/*diff_flag*/, error_type, 0/*no_override*/, 0/*raw_output*/, 0);
 		}
 		
 		if(net->y_param->no_override != 1)
@@ -554,28 +585,31 @@ void conv_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_
 			else
 				sprintf(display_class_type,"softmax-CrossEntropy");
 			
-			printf(" WARNING: Overriding the following YOLO parameters from save file:\n");
-			printf(" Nboxes = %d, Nclasses = %d, Nparams = %d\n",
-			y_param->nb_box, y_param->nb_class, y_param->nb_param);
-			printf(" Classification type: %s\n", display_class_type);
-			printf(" Nb dim fitted : %d\n\n", y_param->fit_dim);
-			printf(" W priors = [");
-			for(i = 0; i < net->y_param->nb_box; i++)
-				printf("%4.4f ", net->y_param->prior_size[i*3+0]);
-			printf("]\n H priors = [");
-			for(i = 0; i < net->y_param->nb_box; i++)
-				printf("%4.4f ", net->y_param->prior_size[i*3+1]);
-			printf("]\n D priors = [");
-			for(i = 0; i < net->y_param->nb_box; i++)
-				printf("%4.4f ", net->y_param->prior_size[i*3+2]);
-			printf("]\n");
-			printf("\n Activation slopes and limits: \n   = ");
-			for(i = 0; i < 6; i++)
-				printf("[%6.2f %6.2f %6.2f]\n     ", 
-				net->y_param->slopes_and_maxes_tab[i][0],
-				net->y_param->slopes_and_maxes_tab[i][1],
-				net->y_param->slopes_and_maxes_tab[i][2]);
-			printf("\n");
+			if(!silent)
+			{
+				printf(" WARNING: Overriding the following YOLO parameters from save file:\n");
+				printf(" Nboxes = %d, Nclasses = %d, Nparams = %d\n",
+				y_param->nb_box, y_param->nb_class, y_param->nb_param);
+				printf(" Classification type: %s\n", display_class_type);
+				printf(" Nb dim fitted : %d\n\n", y_param->fit_dim);
+				printf(" W priors = [");
+				for(i = 0; i < net->y_param->nb_box; i++)
+					printf("%4.4f ", net->y_param->prior_size[i*3+0]);
+				printf("]\n H priors = [");
+				for(i = 0; i < net->y_param->nb_box; i++)
+					printf("%4.4f ", net->y_param->prior_size[i*3+1]);
+				printf("]\n D priors = [");
+				for(i = 0; i < net->y_param->nb_box; i++)
+					printf("%4.4f ", net->y_param->prior_size[i*3+2]);
+				printf("]\n");
+				printf("\n Activation slopes and limits: \n   = ");
+				for(i = 0; i < 6; i++)
+					printf("[%6.2f %6.2f %6.2f]\n     ", 
+					net->y_param->slopes_and_maxes_tab[i][0],
+					net->y_param->slopes_and_maxes_tab[i][1],
+					net->y_param->slopes_and_maxes_tab[i][2]);
+				printf("\n");
+			}
 		}
 	}
 	else
@@ -585,31 +619,10 @@ void conv_load(network *net, FILE *f, int load_optim_state, int f_bin, int skip_
 	}
 	
 	if(!skip_layer)
-	{
-		if(net->nb_layers <= 0)
-			previous = NULL;
-		else
-			previous = net->net_layers[net->nb_layers-1];
-		
-		conv_create(net, previous, f_size, nb_filters, nb_groups, stride, padding, int_padding, 
-			input_shape, activ_type, &bias, dropout_rate, NULL, -1.0f, f, load_optim_state, f_bin);
-	}
+		conv_create(net, prev_id, f_size, nb_filters, nb_groups, group_param_sharing, stride, padding, int_padding, 
+			input_shape, activ_type, &bias, dropout_rate, NULL, -1.0f, f, load_optim_state, f_bin, silent);
 	else
-	{
-		nb_parameters = (size_t)(f_size[0] * f_size[1] * f_size[2]) * (input_shape[3]/nb_groups) + 1;
-		nb_parameters *= (size_t)nb_filters;
-		
-		if(f_bin)
-			fseek(f, nb_parameters, SEEK_CUR);
-		else
-			for(i = 0; i < nb_parameters; i++)
-				fscanf(f, "%f", &temp_read);
-		
-		for(int i = 0; i < 3; i++)
-			net->skip_in_dims[i] = nb_area_comp(net->skip_in_dims[i], f_size[i], padding[i], int_padding[i], stride[i]);
-		
-		net->skip_in_dims[3] = nb_filters;
-	}
+		skip_layer_weights(f, f_bin);
 }
 
 
@@ -618,7 +631,7 @@ void free_conv(layer *current)
 	c_param = (conv_param*) current->param;
 	yolo_param *y_param = NULL;
 	
-	if(current->previous != NULL && current->previous->output_type == FLAT)
+	if(current->previous->type != INPUT  && current->previous->output_type == FLAT)
 		free(current->prev_dim);
 	free(current->output_dim);
 	free(c_param->f_size);
@@ -645,10 +658,12 @@ void free_conv(layer *current)
 			if(current->c_network->use_wema)
 				free(current->ema_weights);
 			free(current->gradient);
+			if(c_param->group_param_sharing && c_param->nb_groups > 1)
+				free(c_param->shared_group_gradient);
 			free(c_param->rotated_filters);
 			free(current->delta_o);
 			free(c_param->im2col_delta_o);
-			if(current->previous != NULL && current->previous->output_type == FLAT)
+			if(current->previous->type != INPUT && current->previous->output_type == FLAT)
 				free(c_param->temp_delta_o);
 			
 			free_optimizer_var(current);
@@ -672,8 +687,9 @@ void free_conv(layer *current)
 			free(y_param->prior_size);
 			free(y_param->cell_size);
 			free(y_param->IoU_monitor);
-			free(y_param->target_cell_mask);
 			free(y_param->IoU_table);
+			free(y_param->prior_assigned_target);
+			free(y_param->box_ids);
 			free(y_param->dist_prior);
 			free(y_param->box_locked);
 			free(y_param->box_in_pix);

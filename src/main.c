@@ -189,6 +189,7 @@ int main()
 		f_size, 							/*f_size*/
 		8, 									/*nb_filters*/
 		1, 									/*nb_groups*/
+		0,                                  /*group_param_sharing*/
 		stride, 							/*stride*/
 		padding, 							/*padding*/
 		int_pad, 							/*int_padding*/
@@ -219,6 +220,7 @@ int main()
 		f_size, 							/*f_size*/ 
 		16, 								/*nb_filters*/
 		1, 									/*nb_groups*/
+		0,                                  /*group_param_sharing*/
 		stride, 							/*stride*/
 		padding, 							/*padding*/
 		int_pad, 							/*int_padding*/

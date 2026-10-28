@@ -28,12 +28,11 @@ static dense_param *d_param;
 
 // Private prototypes
 
-
-int dense_create(network *net, layer* previous, int nb_neurons, const char *activation, float *bias,
-	float drop_rate, int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin)
+int dense_create(network *net, int prev_layer, int nb_neurons, const char *activation, float *bias, float drop_rate, 
+	int strict_size, const char *init_fct, float init_scaling, FILE *f_load, int load_optim_state, int f_bin, int silent)
 {
 	int i;
-	size_t flat_in_size = 1, prev_weight_matrix_size = 1;
+	size_t flat_in_size = 1;
 	size_t mem_approx = 0;
 	layer* current;
 	
@@ -48,14 +47,30 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	current->c_network = net;
 	net->nb_layers++;
 	
-	printf("L:%d - CREATING DENSE LAYER ...\n", net->nb_layers);
+	if(prev_layer != auxil_input_id && !silent)
+		printf("L:%d - CREATING DENSE LAYER ...\n", net->nb_layers - 1);
 	
-	current->type = DENSE;
-	current->output_type = FLAT;
-	current->frozen = 0;
+	current->type                = DENSE;
+	current->layer_id            = net->nb_layers-1;
+	current->output_type         = FLAT;
+	current->frozen              = 0;
 	current->wema_replace_signal = 0;
-	current->dropout_rate = drop_rate;
-	current->previous = previous;
+	current->dropout_rate        = drop_rate;
+
+	if(prev_layer == auxil_input_id) //used for unconditional norm layers
+	{
+		current->previous = net->auxil_input;
+		silent = 1;
+	}
+	else if(prev_layer < 0 && prev_layer + net->nb_layers-1 >= 0)
+		current->previous = net->net_layers[current->layer_id + prev_layer];
+	else if(prev_layer >= 0 && prev_layer < net->nb_layers-1)
+		current->previous = net->net_layers[prev_layer];
+	else
+	{
+		printf("\n ERROR: Invalid previous layer id provided!\n");
+		exit(EXIT_FAILURE);
+	}
 	
 	current->output_dim = (int*) calloc(4, sizeof(int));
 	for(i = 0; i < 3; i++)
@@ -65,22 +80,14 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	d_param = (dense_param*) malloc(sizeof(dense_param));
 	current->param = d_param;
 	
-	if(previous == NULL)
-	{
-		current->prev_dim = net->in_dims;
-		current->input = net->input;
-	}
-	else
-	{
-		current->prev_dim = previous->output_dim;
-		current->input = previous->output;
-	}
+	current->prev_dim = current->previous->output_dim;
+	current->input = current->previous->output;
 	
 	for(i = 0; i < 4; i++)
 		flat_in_size *= current->prev_dim[i];
 	flat_in_size += 1;
 	
-	if(previous != NULL && previous->output_type == SPATIAL)
+	if(current->previous->type != INPUT && current->previous->output_type == SPATIAL)
 	{
 		if(!net->inference_only)
 		{
@@ -91,10 +98,10 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 		mem_approx += flat_in_size*net->batch_size * sizeof(float);
 	}
 	
-	if(previous != NULL && previous->output_type == FLAT)
-		d_param->flat_delta_o = previous->delta_o;
+	if(current->previous->type != INPUT && current->previous->output_type == FLAT)
+		d_param->flat_delta_o = current->previous->delta_o;
 
-	current->weights = (float*) malloc(flat_in_size * (nb_neurons+1)*sizeof(float));
+	current->weights = (float*) malloc(flat_in_size * (nb_neurons+1) * sizeof(float));
 	current->FP32_weights = current->weights;
 	mem_approx += flat_in_size * (nb_neurons+1) * sizeof(float);
 	
@@ -111,7 +118,7 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	{
 		if(net->use_wema)
 		{
-			current->ema_weights = (float*) malloc(flat_in_size * (nb_neurons+1)*sizeof(float));
+			current->ema_weights = (float*) malloc(flat_in_size * (nb_neurons+1) * sizeof(float));
 			mem_approx += flat_in_size * (nb_neurons+1) * sizeof(float);
 		}
 	
@@ -131,17 +138,18 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 		if(init_scaling < 0)
 			init_scaling = 1.0f;
 		
-		initialize_weights(init_fct, current->weights, nb_neurons, flat_in_size, 1, 0.0f, 0, init_scaling);
+		initialize_weights(init_fct, current->weights, nb_neurons, flat_in_size, 1, 0.0f, 0, init_scaling, silent);
 	}
 	else
 		load_layer_weights(f_load, current, flat_in_size * (nb_neurons+1), nb_neurons+1, 0, load_optim_state, f_bin);
-	
+		
 	if(net->use_wema && !net->inference_only && (f_load == NULL || !load_optim_state))
 	{
+		//printf("Copying regular weights into EMA weights\n");
+		//exit(EXIT_FAILURE);
 		for(i = 0; i < flat_in_size * (nb_neurons+1); i++)
 			current->ema_weights[i] = ((float*)current->weights)[i];
 	}
-	
 	
 	current->a_size       = (nb_neurons + 1) * net->batch_size;
 	current->a_dim        =  nb_neurons;
@@ -152,36 +160,6 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 	
 	if(bias != NULL)
 		current->bias_value = *bias;
-	
-	//Set pivot value in previous layer weight matrix to generate current layer input bias automatically
-	if(current->previous != NULL && previous->output_type == FLAT)
-	{
-		for(i = 0; i < 4; i++)
-			prev_weight_matrix_size *= previous->prev_dim[i];
-		prev_weight_matrix_size += 1;
-		prev_weight_matrix_size *= (previous->output_dim[3]+1);
-		
-		if(net->compute_method == C_CUDA)
-		{
-			//Previous layer weights have already been moved to GPU, need a cuda kernel to update the pivot.
-			#ifdef CUDA
-			cuda_float_memset(((float*)previous->FP32_weights + prev_weight_matrix_size - 1),
-				(float)current->bias_value/current->previous->bias_value, 1);
-			if(!net->inference_only && net->use_wema)
-				cuda_float_memset(((float*)previous->ema_weights + prev_weight_matrix_size - 1),
-					(float)current->bias_value/current->previous->bias_value, 1);
-			#endif
-		}
-		else
-		{
-			*((float*)previous->weights + prev_weight_matrix_size - 1) = 
-				(float) current->bias_value/current->previous->bias_value;
-			if(!net->inference_only && net->use_wema)
-				*((float*)previous->ema_weights + prev_weight_matrix_size - 1) = 
-					(float) current->bias_value/current->previous->bias_value;
-		}
-	} //For spatial layers, the bias is added at flattening time, no need for the pivot trick
-	
 	
 	switch(net->compute_method)
 	{
@@ -209,30 +187,33 @@ int dense_create(network *net, layer* previous, int nb_neurons, const char *acti
 			break;
 	}
 	
-	char activ[40];
-	fill_string_activ_param(current, activ,0);
-	printf("      Input: %ld, Nb. Neurons: %d\n\
+	if(!silent)
+	{
+		char activ[40];
+		fill_string_activ_param(current, activ,0);
+		printf("      Input: %ld, Nb. Neurons: %d\n\
       Activation: %s, Bias: %0.2f, dropout rate: %0.2f\n\
       Nb. weights: %ld, Approx layer RAM/VRAM requirement: %d MB\n",
-		flat_in_size,  nb_neurons, activ, current->bias_value, current->dropout_rate,
-		(nb_neurons+1)*flat_in_size, (int)(mem_approx/1000000));
+			flat_in_size,  nb_neurons, activ, current->bias_value, current->dropout_rate,
+			(nb_neurons+1)*flat_in_size, (int)(mem_approx/1000000));
+		
+		#ifdef CUDA
+		if(net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC)
+		{
+			if(flat_in_size % 8 != 0 || net->batch_size % 8 != 0 
+					|| (nb_neurons+1) % 8 != 0)
+				printf(" WARNING: Forward gemm TC data misalignment due to layer size mismatch\n");
+			if(current->previous != NULL && current->previous->type != INPUT && (flat_in_size % 8 != 0 || net->batch_size % 8 != 0 
+					|| (nb_neurons+1) % 8 != 0))
+				printf(" WARNING: Backprop gemm TC data misalignment due to layer size mismatch\n");
+			if(flat_in_size % 8 != 0 || net->batch_size % 8 != 0 
+					|| (nb_neurons+1) % 8 != 0)
+				printf(" WARNING: Weights update gemm TC data misalignment due to layer size mismatch\n");
+		}
+		#endif
+	}
 	net->total_nb_param += (nb_neurons+1)*flat_in_size;
 	net->memory_footprint += mem_approx;
-	
-	#ifdef CUDA
-	if(net->compute_method == C_CUDA && net->cu_inst.use_cuda_TC)
-	{
-		if(flat_in_size % 8 != 0 || net->batch_size % 8 != 0 
-				|| (nb_neurons+1) % 8 != 0)
-			printf(" WARNING: Forward gemm TC data misalignment due to layer size mismatch\n");
-		if(current->previous != NULL && (flat_in_size % 8 != 0 || net->batch_size % 8 != 0 
-				|| (nb_neurons+1) % 8 != 0))
-			printf(" WARNING: Backprop gemm TC data misalignment due to layer size mismatch\n");
-		if(flat_in_size % 8 != 0 || net->batch_size % 8 != 0 
-				|| (nb_neurons+1) % 8 != 0)
-			printf(" WARNING: Weights update gemm TC data misalignment due to layer size mismatch\n");
-	}
-	#endif
 	
 	return net->nb_layers - 1;
 }
@@ -242,8 +223,10 @@ void dense_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 {
 	int i;
 	char layer_type = 'D';
-	int nb_neurons;
+	int nb_neurons, prev_id = -1;
 	size_t flat_in_size = 1;
+	
+	prev_id = current->previous->layer_id - current->layer_id;
 	
 	nb_neurons = current->output_dim[3];
 	for(i = 0; i < 4; i++)
@@ -253,6 +236,7 @@ void dense_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 	if(f_bin)
 	{
 		fwrite(&layer_type, sizeof(char), 1, f);
+		fwrite(&prev_id, sizeof(int), 1, f);
 		fwrite(&nb_neurons, sizeof(int), 1, f);
 		fwrite(&current->dropout_rate, sizeof(float), 1, f);
 		fwrite(&current->bias_value, sizeof(float), 1, f);
@@ -260,8 +244,8 @@ void dense_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 	}
 	else
 	{	
-		fprintf(f,"D");
-		fprintf(f, "%dn%fd%fb", nb_neurons, current->dropout_rate, current->bias_value);
+		fprintf(f,"D prev%d ", prev_id);
+		fprintf(f, "%dn %fd %fb ", nb_neurons, current->dropout_rate, current->bias_value);
 		print_activ_param(f, current, f_bin);
 		fprintf(f,"\n");
 	}
@@ -269,51 +253,31 @@ void dense_save(FILE *f, layer *current, int save_optim_state, int f_bin)
 	save_layer_weights(f, current, flat_in_size * (nb_neurons+1), nb_neurons+1, 0, 0, save_optim_state, f_bin);
 }
 
-void dense_load(network *net, FILE* f, int load_optim_state, int f_bin, int skip_layer)
+void dense_load(network *net, FILE* f, int load_optim_state, int f_bin, int skip_layer, int silent)
 {
-	int nb_neurons;
-	size_t in_size;
-	float dropout_rate, bias, temp_read;
+	int nb_neurons, prev_id;
+	float dropout_rate, bias;
 	char activ_type[40];
-	layer *previous;
 	
-	if(!skip_layer)
-		printf("Loading dense layer, L:%d\n", net->nb_layers+1);
+	if(!skip_layer && !silent)
+		printf("Loading dense layer, L:%d\n", net->nb_layers);
 	
 	if(f_bin)
 	{
+		fread(&prev_id, sizeof(int), 1, f);
 		fread(&nb_neurons, sizeof(int), 1, f);
 		fread(&dropout_rate, sizeof(float), 1, f);
 		fread(&bias, sizeof(float), 1, f);
 		fread(activ_type, sizeof(char), 40, f);
 	}
 	else
-		fscanf(f, "%dn%fd%fb%s\n", &nb_neurons, &dropout_rate, &bias, activ_type);
+		fscanf(f, " prev%d %dn %fd %fb %s\n", &prev_id, &nb_neurons, &dropout_rate, &bias, activ_type);
 
 	if(!skip_layer)
-	{
-		if(net->nb_layers <= 0)
-			previous = NULL;
-		else
-			previous = net->net_layers[net->nb_layers-1];
-		
-		dense_create(net, previous, nb_neurons, activ_type, &bias, dropout_rate, 1, NULL, -1.0, f, load_optim_state, f_bin);
-	}
+		dense_create(net, prev_id, nb_neurons, activ_type, &bias, dropout_rate, 
+			1, NULL, -1.0, f, load_optim_state, f_bin, silent);
 	else
-	{
-		in_size = net->skip_in_dims[0]*net->skip_in_dims[1]*net->skip_in_dims[2]*net->skip_in_dims[3]+1;
-		
-		if(f_bin)
-			fseek(f, in_size*(nb_neurons+1), SEEK_CUR);
-		else
-			for(int i = 0; i < in_size*(nb_neurons+1); i++)
-				fscanf(f, "%f", &temp_read);
-	
-		net->skip_in_dims[0] = nb_neurons;
-		
-		for(int i = 1; i < 4; i++)
-			net->skip_in_dims[i] = 1;
-	}
+		skip_layer_weights(f, f_bin);
 }
 
 
@@ -334,7 +298,7 @@ void free_dense(layer *current)
 		if(current->dropout_rate > 0.01f)
 			free(current->dropout_mask);
 		
-		if(current->previous != NULL && current->previous->output_type != FLAT)
+		if(current->previous->type != INPUT && current->previous->output_type != FLAT)
 			free(d_param->flat_input);
 		
 		if(!current->c_network->inference_only)
@@ -343,7 +307,7 @@ void free_dense(layer *current)
 				free(current->ema_weights);
 			free(current->gradient);
 			free(current->delta_o);
-			if(current->previous != NULL && current->previous->output_type != FLAT)
+			if(current->previous->type != INPUT && current->previous->output_type != FLAT)
 				free(d_param->flat_delta_o);
 			
 			free_optimizer_var(current);

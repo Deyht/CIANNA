@@ -86,12 +86,13 @@ void set_sgd_param_from_string(network *net, const char* string)
 	if(temp != NULL)
 		sscanf(temp, "_mom%f", &momentum);
 	
-	if(net->nb_layers > 0 && (momentum > 0.01f && temp_param->momentum <= 0.01f))
+	if(net->nb_layers > 0 && (momentum > 0.01f && temp_param->momentum <= 0.01f) && !net->inference_only)
 		printf(" Warning: SGD momentum cannot be activated after some layers have been initialized!\n");
 	else
 		temp_param->momentum = momentum;
 	
-	printf("SGD optimizer set with momentum: %0.4f\n", temp_param->momentum);
+	if(!net->inference_only)
+		printf("SGD optimizer set with momentum: %0.4f\n", temp_param->momentum);
 }
 
 
@@ -104,7 +105,7 @@ size_t define_sgd_var(layer *current, size_t param_size)
 	if(o_param->momentum < 0.01f)
 		return 0;
 	
-	o_var->velocity = (float*) calloc(param_size, sizeof(float*));
+	o_var->velocity = (float*) calloc(param_size, sizeof(float));
 	
 	return param_size;
 }
@@ -155,7 +156,7 @@ void update_weights_sgd(layer *current, size_t bias_weight_offset, size_t flat_d
 	sgd_param *o_param = (sgd_param*) net->optimizer_param;
 	sgd_var *o_var = (sgd_var*) current->optimizer_var;
 	
-	update_weights_sgd_fct(current->weights, current->ema_weights, current->gradient, 
+	update_weights_sgd_fct(current->FP32_weights, current->ema_weights, current->gradient, 
 		net->weight_decay, net->decoupled_wdecay, net->wema_rate, net->learning_rate, net->length, 
 		o_param->momentum, o_var->velocity, bias_weight_offset, flat_dim_offset, nb_weights);
 }
@@ -276,7 +277,6 @@ void set_adam_param_from_string(network *net, const char* string)
 	temp_param->eps = 0.00000001f;
 	temp_param->ams_grad = 0;
 	
-	
 	temp = strstr(string, "_b1");
 	if(temp != NULL)
 		sscanf(temp, "_b1%f", &temp_param->beta_1);
@@ -290,13 +290,14 @@ void set_adam_param_from_string(network *net, const char* string)
 	if(temp != NULL)
 		sscanf(temp, "_ams%d", &ams_grad);
 	
-	if(net->nb_layers > 0 && ams_grad != temp_param->ams_grad)
+	if(net->nb_layers > 0 && ams_grad != temp_param->ams_grad && !net->inference_only)
 		printf(" Warning: ams_grad cannot be activated after some layers have been initialized!\n");
 	else
 		temp_param->ams_grad = ams_grad;
 	
-	printf("ADAM optimizer set with beta_1: %0.4f, beta_2: %0.4f, eps: %g, ams_grad: %d\n",
-		temp_param->beta_1, temp_param->beta_2, temp_param->eps, temp_param->ams_grad);
+	if(!net->inference_only)
+		printf("ADAM optimizer set with beta_1: %0.4f, beta_2: %0.4f, eps: %g, ams_grad: %d\n",
+			temp_param->beta_1, temp_param->beta_2, temp_param->eps, temp_param->ams_grad);
 	
 }
 
@@ -308,12 +309,12 @@ size_t define_adam_var(layer *current, size_t param_size)
 	current->optimizer_var = o_var;
 	
 	o_var->opt_step = 0;
-	o_var->first_mom = (float*) calloc(param_size, sizeof(float*));
-	o_var->second_mom = (float*) calloc(param_size, sizeof(float*));
+	o_var->first_mom = (float*) calloc(param_size, sizeof(float));
+	o_var->second_mom = (float*) calloc(param_size, sizeof(float));
 	if(o_param->ams_grad <= 0)
 		return 2*param_size;
 	
-	o_var->max_second_mom = (float*) calloc(param_size, sizeof(float*));
+	o_var->max_second_mom = (float*) calloc(param_size, sizeof(float));
 	
 	return 3*param_size;
 }
@@ -331,7 +332,7 @@ void update_weights_adam_fct(float *weights, float *ema_weights, void *gradient,
 	int decay_mask = 1;
 	float l_grad, moving_first_mom, moving_second_mom;
 	
-	#pragma omp parallel for private(decay_mask, l_grad,  moving_first_mom, moving_second_mom) schedule(guided,4) if(size>=128)
+	//#pragma omp parallel for private(decay_mask, l_grad,  moving_first_mom, moving_second_mom) schedule(guided,4) if(size>=128)
 	for(i = 0; i < size; i++) 
 	{
 		decay_mask = 1;
@@ -376,7 +377,7 @@ void update_weights_adam(layer *current, size_t bias_weight_offset, size_t flat_
 	if(o_var->opt_step < SIZE_MAX)
 		o_var->opt_step += 1;
 	
-	update_weights_adam_fct(current->weights, current->ema_weights, current->gradient, 
+	update_weights_adam_fct(current->FP32_weights, current->ema_weights, current->gradient, 
 		net->weight_decay, net->decoupled_wdecay, net->wema_rate, net->learning_rate, net->length,
 		o_param->beta_1, o_param->beta_2, o_param->eps, o_param->ams_grad, o_var->opt_step,
 		o_var->first_mom, o_var->second_mom, o_var->max_second_mom,
@@ -410,12 +411,12 @@ void save_adam_state(FILE *f, layer *current, size_t param_size, size_t return_d
 	adam_param *o_param = (adam_param*)current->c_network->optimizer_param;
 	adam_var *o_var = (adam_var*) current->optimizer_var;
 	
-	unsigned long long int opt_step = o_var->opt_step;
+	uint64_t opt_step = o_var->opt_step;
 	
 	if(f_bin)
-		fwrite(&opt_step, sizeof(unsigned long long int), 1, f);
+		fwrite(&opt_step, sizeof(uint64_t), 1, f);
 	else
-		fprintf(f, "OptStep %ld\n", o_var->opt_step);
+		fprintf(f, "OptStep %" PRIu64 "\n", o_var->opt_step);
 	
 	fprint_layer_params(net, f, o_var->first_mom, param_size, return_dim, padding, stay_on_host, f_bin);
 	fprint_layer_params(net, f, o_var->second_mom, param_size, return_dim, padding, stay_on_host, f_bin);
@@ -476,13 +477,14 @@ void load_adam_state(FILE *f, layer *current, size_t param_size, size_t return_d
 	adam_param *o_param = (adam_param*)current->c_network->optimizer_param;
 	adam_var *o_var = (adam_var*) current->optimizer_var;
 	
-	unsigned long long int opt_step = o_var->opt_step;
+	uint64_t opt_step;
 	
 	if(f_bin)
-		fread(&opt_step, sizeof(unsigned long long int), 1, f);
+		fread(&opt_step, sizeof(uint64_t), 1, f);
 	else
-		fscanf(f, "\nOptStep %ld\n", &(o_var->opt_step));
+		fscanf(f, "\nOptStep %" SCNu64 "\n", &opt_step);
 	
+	o_var->opt_step = opt_step;
 	fread_layer_params(net, f, o_var->first_mom, param_size, return_dim, padding, f_bin);
 	fread_layer_params(net, f, o_var->second_mom, param_size, return_dim, padding, f_bin);
 	
@@ -544,18 +546,19 @@ void set_rmsprop_param_from_string(network *net, const char* string)
 	if(temp != NULL)
 		sscanf(temp, "_cent%d", &centered);
 	
-	if(net->nb_layers > 0 && centered != temp_param->centered)
+	if(net->nb_layers > 0 && centered != temp_param->centered && !net->inference_only)
 		printf(" Warning: ams_grad cannot be activated after some layers have been initialized!\n");
 	else
 		temp_param->centered = centered;
 	
-	if(net->nb_layers > 0 && momentum != temp_param->centered)
+	if(net->nb_layers > 0 && momentum != temp_param->centered && !net->inference_only)
 		printf(" Warning: momentum cannot be activated after some layers have been initialized!\n");
 	else
 		temp_param->momentum = momentum;
 	
-	printf("RMSprop optimizer set with alpha: %0.4f, momentum: %0.4f, eps: %g, centered: %d\n",
-		temp_param->alpha, temp_param->momentum, temp_param->eps, temp_param->centered);
+	if(!net->inference_only)
+		printf("RMSprop optimizer set with alpha: %0.4f, momentum: %0.4f, eps: %g, centered: %d\n",
+			temp_param->alpha, temp_param->momentum, temp_param->eps, temp_param->centered);
 }
 
 
@@ -567,17 +570,17 @@ size_t define_rmsprop_var(layer *current, size_t param_size)
 	rmsprop_var *o_var = (rmsprop_var*) malloc(sizeof(rmsprop_var));
 	current->optimizer_var = o_var;
 	
-	o_var->sqrt_avg = (float*) calloc(param_size, sizeof(float*));
+	o_var->sqrt_avg = (float*) calloc(param_size, sizeof(float));
 
 	if(o_param->momentum >= 0.01f)
 	{
-		o_var->velocity = (float*) calloc(param_size, sizeof(float*));
+		o_var->velocity = (float*) calloc(param_size, sizeof(float));
 		alloc_size += param_size;
 	}	
 	
 	if(o_param->centered > 0)
 	{
-		o_var->grad_avg = (float*) calloc(param_size, sizeof(float*));
+		o_var->grad_avg = (float*) calloc(param_size, sizeof(float));
 		alloc_size += param_size;
 	}
 	
@@ -642,7 +645,7 @@ void update_weights_rmsprop(layer *current, size_t bias_weight_offset, size_t fl
 	rmsprop_param *o_param = (rmsprop_param*) net->optimizer_param;
 	rmsprop_var *o_var = (rmsprop_var*) current->optimizer_var;
 	
-	update_weights_rmsprop_fct(current->weights, current->ema_weights, current->gradient,
+	update_weights_rmsprop_fct(current->FP32_weights, current->ema_weights, current->gradient,
 		net->weight_decay, net->decoupled_wdecay, net->wema_rate, net->learning_rate, net->length,
 		o_param->alpha, o_param->momentum, o_param->eps, o_param->centered,
 		o_var->sqrt_avg, o_var->velocity, o_var->grad_avg,
@@ -1038,6 +1041,8 @@ int fread_optim_save_state(FILE *f, network *net, int f_bin, int silent)
 			}
 			set_optimizer_param_from_string(net, optim_config_string);
 		}
+		
+		set_optimizer_update_function(net);
 	}
 	
 	return optim_save_format;

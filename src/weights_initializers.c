@@ -24,12 +24,12 @@
 // Public are in prototypes.h
 
 // Private prototypes
-void xavier_normal( void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
-void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
-void lecun_normal(  void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
-void lecun_uniform( void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
-void rand_normal(   void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
-void rand_uniform(  void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling);
+void xavier_normal( void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent);
+void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent);
+void lecun_normal(  void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent);
+void lecun_uniform( void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent);
+void rand_normal(   void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent);
+void rand_uniform(  void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent);
 
 
 int get_init_type(const char *s_init)
@@ -51,28 +51,28 @@ int get_init_type(const char *s_init)
 }
 
 void initialize_weights(const char *init_fct, void *weights, int dim_in, int dim_out, 
-	int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling)
+	int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent)
 {
 	switch(get_init_type(init_fct))
 	{
 		default:
 		case N_XAVIER:
-			xavier_normal( weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			xavier_normal( weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling, silent);
 			break;
 		case U_XAVIER:
-			xavier_uniform(weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			xavier_uniform(weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling, silent);
 			break;
 		case N_LECUN:
-			lecun_normal(  weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			lecun_normal(  weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling, silent);
 			break;
 		case U_LECUN:
-			lecun_uniform( weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			lecun_uniform( weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling, silent);
 			break;
 		case N_RAND:
-			rand_normal(   weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			rand_normal(   weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling, silent);
 			break;
 		case U_RAND:
-			rand_uniform(  weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling);
+			rand_uniform(  weights, dim_in, dim_out, bias_padding, bias_padding_value, zero_padding, manual_scaling, silent);
 			break;
 	}
 }
@@ -80,7 +80,7 @@ void initialize_weights(const char *init_fct, void *weights, int dim_in, int dim
 
 //Indices computation is identical, could be merged into a single function with only a function pointer to the appropriate numerical init
 
-void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling)
+void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent)
 {
 	int i;
 	int size;
@@ -88,7 +88,8 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 	
 	float* f_tab = (float*) tab;
 
-	printf("      Xavier Normal weight initialization\n");
+	if(!silent)
+		printf("      Xavier Normal weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
@@ -116,7 +117,7 @@ void xavier_normal(void *tab, int dim_in, int dim_out, int bias_padding, float b
 
 }
 
-void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling)
+void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent)
 {
 	int i;
 	int size;
@@ -124,7 +125,8 @@ void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float 
 	
 	float* f_tab = (float*) tab;
 
-	printf("      Xavier Uniform weight initialization\n");
+	if(!silent)
+		printf("      Xavier Uniform weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
@@ -150,7 +152,7 @@ void xavier_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float 
 }
 
 
-void lecun_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling)
+void lecun_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent)
 {
 	int i;
 	int size;
@@ -158,7 +160,8 @@ void lecun_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bi
 	
 	float* f_tab = (float*) tab;
 	
-	printf("      LeCun Normal weight initialization\n");
+	if(!silent)
+		printf("      LeCun Normal weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
@@ -185,7 +188,7 @@ void lecun_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bi
 		f_tab[size-1] = bias_padding_value;
 }
 
-void lecun_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling)
+void lecun_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent)
 {
 	int i;
 	int size;
@@ -193,7 +196,8 @@ void lecun_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float b
 	
 	float* f_tab = (float*) tab;
 	
-	printf("      LeCun Uniform weight initialization\n");
+	if(!silent)
+		printf("      LeCun Uniform weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
@@ -221,7 +225,7 @@ void lecun_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float b
 }
 
 
-void rand_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling)
+void rand_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent)
 {
 	int i;
 	int size;
@@ -229,7 +233,8 @@ void rand_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bia
 	
 	float* f_tab = (float*) tab;
 	
-	printf("      Random Normal (user scale) weight initialization\n");
+	if(!silent)
+		printf("      Random Normal (user scale) weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
@@ -257,7 +262,7 @@ void rand_normal(void *tab, int dim_in, int dim_out, int bias_padding, float bia
 
 }
 
-void rand_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling)
+void rand_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bias_padding_value, int zero_padding, float manual_scaling, int silent)
 {
 	int i;
 	int size;
@@ -265,7 +270,8 @@ void rand_uniform(void *tab, int dim_in, int dim_out, int bias_padding, float bi
 	
 	float* f_tab = (float*) tab;
 	
-	printf("      Random Uniform (user scale) weight initialization\n");
+	if(!silent)
+		printf("      Random Uniform (user scale) weight initialization\n");
 	
 	size = (dim_in+zero_padding)*dim_out;
 	if(bias_padding)
