@@ -24,7 +24,7 @@ fwd_step_*.dat
 *.log
 *.dat
 *.nvvp
-*.tar.gz
+#*.tar.gz #removed as data are not accessible through share.obspm at the moment
 *.zip
 error.txt
 prof.txt
