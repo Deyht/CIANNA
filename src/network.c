@@ -284,7 +284,7 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 	double batch_error = 0.0, total_error = 0.0;
 	char net_save_file_name[200];
 	float items_per_s = 0.0;
-	int batch_loc;
+	int batch_loc, cuda_dyn_bool = 0;
 	int batch_offset, filter_offset, nb_filters;
 	
 	void *t_perf_eval, *t_batch_eval, *t_epoch_eval;
@@ -362,7 +362,7 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 	net->decoupled_wdecay = u_decoupled_wdecay;
 	//default wema_rate is negative to indicate that it should not be changed.
 	//useful when loading complete optimizer state from a save file.
-	if(net->use_wema && u_wema_rate > -0.01f)
+	if(net->use_wema && u_wema_rate > 0.01f)
 		net->wema_rate = u_wema_rate;
 	
 	net->wema_replace_every = wema_replace_every;
@@ -451,7 +451,11 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 					net->net_layers[k]->wema_replace_signal = 1;
 			}
 			
-			if(net->compute_method != C_CUDA || (net->compute_method == C_CUDA && !net->cu_inst.dynamic_load))
+			#ifdef CUDA
+			cuda_dyn_bool = net->compute_method == C_CUDA && !net->cu_inst.dynamic_load;
+			#endif
+			
+			if(net->compute_method != C_CUDA || cuda_dyn_bool)
 			{
 				for(b = 0; b < net->train.nb_branch_in; b++)
 					net->dyn_input[b] = net->train.input[b][batch_loc];

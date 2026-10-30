@@ -450,12 +450,12 @@ if(NOT BUILD_MODULE)
     # C compilation flags handling
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     target_compile_options(cianna PRIVATE
-        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-deprecated-declarations -Wno-unknown-pragmas>
+        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-deprecated-declarations -Wno-unknown-pragmas -Wno-unused-variable>
         $<$<COMPILE_LANGUAGE:CUDA>:-Wno-deprecated-gpu-targets --generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
         #$<$<COMPILE_LANGUAGE:CUDA>:-O3>
     )
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-        target_compile_options(cianna PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=3 -Wno-unused-result -Wno-uninitialized>)
+        target_compile_options(cianna PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=3 -Wno-unused-result -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable>)
     endif()
 
     target_include_directories(cianna PRIVATE src)
@@ -506,12 +506,12 @@ if(BUILD_MODULE)
     # C compilation flags handling
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     target_compile_options(cianna_module PRIVATE
-        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-deprecated-declarations -Wno-unknown-pragmas>
+        $<$<COMPILE_LANGUAGE:C>:-Wall -Werror -Wno-deprecated-declarations -Wno-unknown-pragmas -Wno-unused-variable>
         $<$<COMPILE_LANGUAGE:CUDA>:-Wno-deprecated-gpu-targets --generate-code=arch=compute_${CUDA_ARCH},code=[compute_${CUDA_ARCH},sm_${CUDA_ARCH}]>
         #$<$<COMPILE_LANGUAGE:CUDA>:-O3>
     )
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-        target_compile_options(cianna_module PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=3 -Wno-unused-result -Wno-uninitialized>)
+        target_compile_options(cianna_module PRIVATE $<$<COMPILE_LANGUAGE:C>:-fmax-errors=3 -Wno-unused-result -Wno-uninitialized -Wno-unused-but-set-parameter -Wno-unused-but-set-variable>)
     endif()
 
     if(USE_BLAS)
