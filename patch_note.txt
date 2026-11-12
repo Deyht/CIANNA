@@ -38,6 +38,10 @@
   and ensure compatibility between 32-bit and 64-bit systems. Some other saved arguments should follow.
 - Update MERGE to support input layers as well.
 - Fix an error in freeing GRN layers
+- Fix an error with modern GCC16 compilation
+- Add a decay rate on v_max in amsgrad adam to prevent practicaly stuck parameters (same fix as d-amsgrad). Hard coded 0.9998f decay.
+- Add hard coded (by-value) gradient clipping to all optimizers with a limit of 10. Prevent divergence in some extreme cases.
+  Will be modified into more advanced and controllable clipping method at some point.
 
 ********************************************
 ===== V-1.1.0.3_dev =====

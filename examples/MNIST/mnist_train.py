@@ -58,6 +58,7 @@ else:
 	cnn.norm(group_size=4)
 
 	cnn.conv(f_size=(5,5), nb_filters=16, padding=(2,2), activation=a_relu)
+	cnn.conv(f_size=(5,5), nb_filters=8, nb_groups=4, group_param_sharing=1, padding=(2,2), activation=a_relu)
 	cnn.pool(p_size=(2,2), p_type="MAX")
 	cnn.norm(group_size=4)
 

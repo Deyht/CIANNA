@@ -118,7 +118,6 @@ void define_activation_param(layer *current, const char *activ)
 			set_linear_param(current);
 			break;
 	}
-
 }
 
 
