@@ -10,22 +10,15 @@
 	<a href="https://github.com/Deyht/CIANNA/releases" alt="Release-version">
 		<img src="https://img.shields.io/badge/Latest%20release-1.0-green" /></a>
 	<a href="https://github.com/Deyht/CIANNA/" alt="Current-version">
-		<img src="https://img.shields.io/badge/Current%20version-1.0-green" /></a>
-	<a href="https://github.com/Deyht/CIANNA/wiki" alt="Wiki-read">
-		<img src="https://img.shields.io/badge/Wiki-Read-blue" /></a>
+		<img src="https://img.shields.io/badge/Latest%20stable-1.0.1.4-green" /></a>
+	<a href="https://cianna.obspm.fr" alt="doc-website">
+		<img src="https://img.shields.io/badge/doc-website-blue" /></a>
 </p>
 <p align="left">
 	<a href="https://doi.org/10.5281/zenodo.12806324" alt="DOI-ref">
 		<img src="https://img.shields.io/badge/DOI-10.5281/zenodo.12806324-blue" /></a>
 	<a href="https://ascl.net/2501.005" alt="ascl-id">
 		<img src="https://img.shields.io/badge/ascl-2501.005-blue.svg?colorB=262255" alt="ascl:2501.005" /></a>
-</p>
-<p align="left">
-	<a href="https://github.com/Deyht/CIANNA/wiki/2)-Installation-instructions#dockerfile-installer" alt="Docker">
-		<img src="https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white" /></a>
-  	<a href="https://launchpad.net/~dcornu/+archive/ubuntu/cianna" alt="ppa_ref">
-		<img src="https://img.shields.io/badge/ppa:-dcornu/cianna-orange" /></a>
-
 </p>
 
 ## CIANNA - Convolutional Interactive Artificial Neural Networks by/for Astrophysicists
@@ -54,19 +47,29 @@ See Copyright &copy; and [License](#License) terms at the end.
 
 &nbsp;
 
-**CIANNA status update (03/2026)**  
+**CIANNA status update (11/2026)**
+* The stable branch (now V-1.0.1.4) received a few minor updates and can be installed with the new simplified CMake installer (recommended).
+* The new [CIANNA V-1.1.0.4](https://github.com/Deyht/CIANNA/tree/experimental) is available in the experimental branch. Here are a few highlights of the new functionalities.
+  * Rework the Python interface. All dimension arguments can now be provided as lists and tuples in addition to the previous int np.array format. All "prev_layer" or "cond_layer" keywords now support both absolute and relative network position. Moved many default configuration settings from the Python library to the C code.
+  * Rework all CIANNA input design. Add a new INPUT layer. Move input size declaration from cnn.init to cnn.input. Support multiple input layers. Create dataset now supports providing a 
+list of NumPy arrays corresponding to the data from each input branch (must match the number of declared input layers in the architecture). Provide support for much more complex architectures.
+  * Add support for Adaptive Group Normalization (AdaGN). Added to the existing GN. Takes an extra conditioning layer and declares a hidden dense projection layer to learn gamma and beta. Y = gamma(X, C)*GN(X) + beta(X,C). Gradient propagates (accumulated) to the conditioning layer if it is not an input layer.
+  * Rework CIANNA's signature pivot-bias propagation in FLAT style layers to allow more flexible architecture (multi-branch).
+  * Improve bin saving format robustness across systems. Also improve partial architecture loading scheme.
+  * Rework YOLO-CIANNA assignment process: simplified and removed undesired correlations between refinement steps. Also add a new "regret-based" assignment, as an alternative to best fIoU.
+  * Rework merge to allow > 2 previous layers and extend previous layer type compatibility.
+  * Rework Conv layer to allow cross-group parameter sharing (similar to a 4D convolution) as opt-in, enable some new architectures like "MLP-MIXER".
+
+
+**CIANNA status update (03/2026)** 
 * CIANNA now has a dedicated website: [cianna.obspm.fr](https://cianna.obspm.fr) (thanks to the hard work of Aristide Doussot). This website aims to improve the framework's visibility and provide a more flexible interface to host content from the GitHub Wiki page. This includes installation instructions, application examples, tutorials, a dev blog, known publications, contact information, ...
-* A new "experimental" branch has been added. This branch will be used to accumulate new functionalities that have reached a reasonable level of maturity in preparation for the next CIANNA release. This branch can be used for testing and prototyping using new features and reworked interfaces. Highlight of the recently added functionalities (see the experimental patch note for more details):
-  * Optimizer choice and a high-level interface to interact with them (SGD, ADAM, RMSprop). Also add decoupled weight decay for all optimizers.
-  * New merge layer (Add and concatenate) and reworked gradient flow. Enable the creation of residual blocks and U-net style architectures.
+* A new "experimental" branch has been added. This branch will be used to accumulate new functionalities that have reached a reasonable level of maturity in preparation for the next CIANNA release. This branch can be used for testing and prototyping using new features and reworked interfaces. Highlights of the recently added functionalities (see the experimental patch note for more details):
+  * Optimizer choice and a high-level interface to interact with them (SGD, ADAM, RMSprop). Also added decoupled weight decay for all optimizers.
+  * New merge layer (Add and concatenate) and reworked gradient flow. Enables the creation of residual blocks and U-Net-style architectures.
   * Weight Exponential Moving Average (WEMA) support.
-  * Rework of model saving to keep optimizer and ema states. Enable clean model training to restart from a saved state.
-  * The conv layer is now a grouped convolution. Classical convolution corresponds to a single group. Also provide access to depth-wise convolution.
-  * The forward function now returns a numpy array with the network prediction directly (writing of a prediction result file is still possible, but optional).
-
-
-**CIANNA status update (01/2026)**  
-Minor update V-1.0.1 patches some identified bugs and adds a few functionalities in the stable version (see the patch note for more details). This update also prepares the distribution of the experimental branch of CIANNA (including merge/skip layers, multiple optimizers, etc) and other planned changes and new functionalities to the framework.
+  * Reworked model saving to keep optimizer and EMA states. Enable clean model training to restart from a saved state.
+  * The conv layer is now a grouped convolution. Classical convolution corresponds to a single group. Also provides access to depth-wise convolution.
+  * The forward function now returns a NumPy array with the network prediction directly (writing a prediction result file is still possible, but optional).
 
 
 *Older status updates have been moved to [cianna's dev blog](https://cianna.obspm.fr/content/Dev_Blog/StatusUpdate.html)*
@@ -149,6 +152,7 @@ These files are Copyright &copy; 2026-- [David Cornu](https://vm-weblerma.obspm.
 - *To the fullest extent permitted, you agree not to assert all of your "moral rights" in or relating to your contributions to the benefit of the present CIANNA framework.*
 
 - *Your contribution was created in whole or in part by you and you have the right to submit it under the open source license indicated in the LICENSE file; or the contribution is based upon previous work that, to the best of your knowledge, is covered under an appropriate open source license and you have the right to submit that work with modifications.*
+
 
 
 
