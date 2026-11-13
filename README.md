@@ -49,16 +49,16 @@ See Copyright &copy; and [License](#License) terms at the end.
 
 **CIANNA status update (11/2026)**
 * The stable branch (now V-1.0.1.4) received a few minor updates and can be installed with the new simplified CMake installer (recommended).
-* The new [CIANNA V-1.1.0.4](https://github.com/Deyht/CIANNA/tree/experimental) is available in the experimental branch. Here are a few highlights of the new functionalities.
-  * Rework the Python interface. All dimension arguments can now be provided as lists and tuples in addition to the previous int np.array format. All "prev_layer" or "cond_layer" keywords now support both absolute and relative network position. Moved many default configuration settings from the Python library to the C code.
-  * Rework all CIANNA input design. Add a new INPUT layer. Move input size declaration from cnn.init to cnn.input. Support multiple input layers. Create dataset now supports providing a 
-list of NumPy arrays corresponding to the data from each input branch (must match the number of declared input layers in the architecture). Provide support for much more complex architectures.
-  * Add support for Adaptive Group Normalization (AdaGN). Added to the existing GN. Takes an extra conditioning layer and declares a hidden dense projection layer to learn gamma and beta. Y = gamma(X, C)*GN(X) + beta(X,C). Gradient propagates (accumulated) to the conditioning layer if it is not an input layer.
+* The new [CIANNA V-1.1.0.4](https://github.com/Deyht/CIANNA/tree/experimental) is available in the experimental branch. Here are a few highlights of the new functionalities:
+  * **Rework the Python interface**. All dimension arguments can now be provided as lists and tuples in addition to the previous int np.array format. All "prev_layer" or "cond_layer" keywords now support both absolute and relative network positions. Moved many default configuration settings from the Python library to the C code.
+  * Rework all CIANNA input design. **Add a new INPUT layer**. Move input size declaration from cnn.init to cnn.input. **Support multiple input layers**. Create dataset now supports providing a 
+list of NumPy arrays corresponding to the data from each input branch (must match the number of declared input layers in the architecture). **Provide support for much more complex architectures**.
+  * Add support for **Adaptive Group Normalization (AdaGN)**. Added to the existing GN. Takes an extra conditioning layer and declares a hidden dense projection layer to learn gamma and beta. Y = gamma(X, C)*GN(X) + beta(X,C). Gradient propagates (accumulated) to the conditioning layer if it is not an input layer.
   * Rework CIANNA's signature pivot-bias propagation in FLAT style layers to allow more flexible architecture (multi-branch).
   * Improve bin saving format robustness across systems. Also improve partial architecture loading scheme.
-  * Rework YOLO-CIANNA assignment process: simplified and removed undesired correlations between refinement steps. Also add a new "regret-based" assignment, as an alternative to best fIoU.
-  * Rework merge to allow > 2 previous layers and extend previous layer type compatibility.
-  * Rework Conv layer to allow cross-group parameter sharing (similar to a 4D convolution) as opt-in, enable some new architectures like "MLP-MIXER".
+  * **Rework YOLO-CIANNA assignment process**: simplified and removed undesired correlations between refinement steps. Also add a new "regret-based" assignment, as an alternative to best fIoU.
+  * **Rework merge to allow > 2 previous layers** and extend previous layer type compatibility.
+  * Rework Conv layer to allow **cross-group parameter sharing** (similar to a 4D convolution) as opt-in, enable some new architectures like "MLP-MIXER".
 
 
 **CIANNA status update (03/2026)** 
