@@ -40,8 +40,13 @@
 - Fix an error in freeing GRN layers
 - Fix an error with modern GCC16 compilation
 - Add a decay rate on v_max in amsgrad adam to prevent practicaly stuck parameters (same fix as d-amsgrad). Hard coded 0.9998f decay.
-- Add hard coded (by-value) gradient clipping to all optimizers with a limit of 10. Prevent divergence in some extreme cases.
+- Add hard coded (by-value) gradient clipping to all optimizers with a limit of 2. Prevent divergence in some extreme cases.
   Will be modified into more advanced and controllable clipping method at some point.
+- Change progress bar behavior (training and inference) so the display update frequency match the bar size (adv_size). 
+  Until now, the progress bar was updated for every mini batch, which could cause loggin files to grow large for small batch_sizes.
+  Also changed the display of some elements to %e format (average and per-batch loss terms).
+- Small fix in warp reduce that affect NORM and GRN layers.
+- Add basic form of error handling feedback to python. Ensure better support of notebooks.
 
 ********************************************
 ===== V-1.1.0.3_dev =====

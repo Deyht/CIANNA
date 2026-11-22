@@ -49,8 +49,6 @@ int main()
 	#endif
 	
 	init_network(0, 	/*network_number*/
-		dims, 			/*u_input_dim*/
-		out_dim, 		/*u_output_dim*/
 		16, 			/*u_batch_size*/
 		"ADAM",			/*optimizer*/
 		1,				/*use_wema*/
@@ -59,14 +57,21 @@ int main()
 		"off", 			/*cuda_TC_string*/
 		0, 				/*inference_only*/
 		0, 				/*no_logo*/
-		0				/*adv_size*/);
+		0,				/*silent*/
+		10				/*adv_size*/);
 	
 	net = networks[0];
 	
+	size_t data_in_dims[1];
+	size_t target_dims[1];
+	
+	data_in_dims[0] = dims[0]*dims[1]*dims[2];
+	target_dims[0] = out_dim;
+	
 	/*Create CIANNA dataset structures*/
-	net->train = create_dataset(net, 1, train_size);
-	net->valid = create_dataset(net, 1, valid_size);
-	net->test  = create_dataset(net, 0, test_size );
+	net->train = create_dataset(net, 1, train_size, 1, data_in_dims, 1, target_dims);
+	net->valid = create_dataset(net, 1, valid_size, 1, data_in_dims, 1, target_dims);
+	net->test  = create_dataset(net, 0, test_size , 1, data_in_dims, 1, NULL);
 	
 	//For testing on closed systems or environments without access to network
 	#if !defined TEST_MODE
@@ -88,7 +93,7 @@ int main()
 	}
 	
 	/*Fill CIANNA datasets*/
-	temp = (float*) malloc(net->input_dim*sizeof(float));
+	temp = (float*) malloc(data_in_dims[0]*sizeof(float));
 	
 	for(i = 0; i < net->train.nb_batch; i++)
 	{
@@ -96,8 +101,8 @@ int main()
 		{
 			if(i*net->batch_size + j >= net->train.size)
 				continue;
-			fread(temp, sizeof(float), net->input_dim, f);
-			net->train.cont_copy(temp, net->train.input[i], j*(net->input_dim + 1), net->input_dim);
+			fread(temp, sizeof(float), data_in_dims[0], f);
+			net->train.cont_copy(temp, net->train.input[0][i], j*(data_in_dims[0] + 1), data_in_dims[0]);
 		}
 	}
 
@@ -107,8 +112,8 @@ int main()
 		{
 			if(i*net->batch_size + j >= net->valid.size)
 				continue;
-			fread(temp, sizeof(float), net->input_dim, f);
-			net->valid.cont_copy(temp, net->valid.input[i], j*(net->input_dim + 1), net->input_dim);
+			fread(temp, sizeof(float), data_in_dims[0], f);
+			net->valid.cont_copy(temp, net->valid.input[0][i], j*(data_in_dims[0] + 1), data_in_dims[0]);
 		}
 	}
 	
@@ -118,21 +123,21 @@ int main()
 		{
 			if(i*net->batch_size + j >= net->test.size)
 				continue;
-			fread(temp, sizeof(float), net->input_dim, f);
-			net->test.cont_copy(temp, net->test.input[i], j*(net->input_dim + 1), net->input_dim);
+			fread(temp, sizeof(float), data_in_dims[0], f);
+			net->test.cont_copy(temp, net->test.input[0][i], j*(data_in_dims[0] + 1), data_in_dims[0]);
 		}
 	}
 	
 	fclose(f);
 	free(temp);
 	
-	f = fopen("examples/MNIST/mnist_dat/mnist_target.dat", "rb+");
+	f = fopen("mnist_dat/mnist_target.dat", "rb+");
 	if(f == NULL)
 	{
 		printf("ERROR: Can not open input file ...\n");
 		exit(1);
 	}
-	temp = (float*) malloc(net->output_dim*sizeof(float));
+	temp = (float*) malloc(target_dims[0]*sizeof(float));
 	
 	for(i = 0; i < net->train.nb_batch; i++)
 	{
@@ -140,8 +145,8 @@ int main()
 		{
 			if(i*net->batch_size + j >= net->train.size)
 				continue;
-			fread(temp, sizeof(float), net->output_dim, f);
-			net->train.cont_copy(temp, net->train.target[i], j*net->output_dim, net->output_dim);
+			fread(temp, sizeof(float), target_dims[0], f);
+			net->train.cont_copy(temp, net->train.target[0][i], j*target_dims[0], target_dims[0]);
 		}
 	}
 	
@@ -151,8 +156,8 @@ int main()
 		{
 			if(i*net->batch_size + j >= net->valid.size)
 				continue;
-			fread(temp, sizeof(float), net->output_dim, f);
-			net->valid.cont_copy(temp, net->valid.target[i], j*net->output_dim, net->output_dim);
+			fread(temp, sizeof(float),target_dims[0], f);
+			net->valid.cont_copy(temp, net->valid.target[0][i], j*target_dims[0], target_dims[0]);
 		}
 	}
 	
@@ -172,6 +177,7 @@ int main()
 	#endif
 	
 	/*Generic layer configurations*/
+	int input_size[3] = {dims[0],dims[1],dims[2]};
 	int f_size[3]  = {5,5,1};
 	int stride[3]  = {1,1,1};
 	int padding[3] = {2,2,0};
@@ -183,9 +189,15 @@ int main()
 	
 	/*########## Sequential backbone creation ##########*/
 
+	//Input Layer
+	input_create(net,						/*network*/
+		input_size,							/*spatial_shape*/
+		1,									/*nb_features*/
+		0									/*silent*/);
+
 	//CONV 1
 	conv_create(net,						/*network*/
-		NULL, 								/*previous_layer*/ 
+		-1, 								/*previous_layer*/ 
 		f_size, 							/*f_size*/
 		8, 									/*nb_filters*/
 		1, 									/*nb_groups*/
@@ -201,22 +213,24 @@ int main()
 		-1.0, 								/*init_scaling*/
 		NULL, 								/*file_load*/
 		0,									/*load_optim_state*/
-		0 									/*f_bin*/);
+		0, 									/*f_bin*/
+		0									/*silent*/);
 	
 	//POOL 1
 	pool_create(net,						/*network*/
-		net->net_layers[net->nb_layers-1],	/*previous_layer*/
+		-1,									/*previous_layer*/
 		pooling, 							/*pool_size*/
 		pool_stride, 						/*stride*/
 		pool_padding, 						/*padding*/
 		"MAX", 								/*char_pool_type*/
 		NULL, 								/*activation*/
 		0, 									/*global*/
-		0.0									/*drop_rate*/);
+		0.0,								/*drop_rate*/
+		0									/*silent*/);
 	
 	//CONV 2
 	conv_create(net,						/*network*/
-		net->net_layers[net->nb_layers-1],	/*previous_layer*/ 
+		-1,									/*previous_layer*/ 
 		f_size, 							/*f_size*/ 
 		16, 								/*nb_filters*/
 		1, 									/*nb_groups*/
@@ -232,22 +246,24 @@ int main()
 		-1.0, 								/*init_scaling*/
 		NULL, 								/*file_load*/
 		0,									/*load_optim_state*/
-		0 									/*f_bin*/);
+		0, 									/*f_bin*/
+		0									/*silent*/);
 	
 	//POOL 2
 	pool_create(net,						/*network*/
-		net->net_layers[net->nb_layers-1],	/*previous_layer*/
+		-1,									/*previous_layer*/
 		pooling, 							/*pool_size*/
 		pool_stride, 						/*stride*/
 		pool_padding, 						/*padding*/
 		"MAX", 								/*char_pool_type*/
 		NULL, 								/*activation*/
 		0, 									/*global*/
-		0.0									/*drop_rate*/);
+		0.0,								/*drop_rate*/
+		0									/*silent*/);
 	
 	//DENSE 1
 	dense_create(net, 						/*network*/
-		net->net_layers[net->nb_layers-1],	/*previous_layer*/
+		-1,									/*previous_layer*/
 		256, 								/*nb_neurons*/
 		"RELU", 							/*activation*/
 		NULL, 								/*bias*/
@@ -257,10 +273,11 @@ int main()
 		-1.0,  								/*init_scaling*/
 		NULL,  								/*f_load*/
 		0,									/*load_optim_state*/
-		0 									/*f_bin*/);
+		0, 									/*f_bin*/
+		0									/*silent*/);
 	
 	dense_create(net, 						/*network*/
-		net->net_layers[net->nb_layers-1],	/*previous_layer*/
+		-1,									/*previous_layer*/
 		128, 								/*nb_neurons*/
 		"RELU", 							/*activation*/
 		NULL, 								/*bias*/
@@ -270,11 +287,12 @@ int main()
 		-1.0,  								/*init_scaling*/
 		NULL,  								/*f_load*/
 		0,									/*load_optim_state*/
-		0 									/*f_bin*/);
+		0, 									/*f_bin*/
+		0									/*silent*/);
 	
 	dense_create(net, 						/*network*/
-		net->net_layers[net->nb_layers-1],	/*previous_layer*/
-		net->output_dim,					/*nb_neurons*/
+		-1,									/*previous_layer*/
+		out_dim,							/*nb_neurons*/
 		"SMAX", 							/*activation*/
 		NULL, 								/*bias*/
 		0.0,  								/*drop_rate*/
@@ -283,7 +301,8 @@ int main()
 		-1.0,  								/*init_scaling*/
 		NULL,  								/*f_load*/
 		0,									/*load_optim_state*/
-		0 									/*f_bin*/);
+		0, 									/*f_bin*/
+		0									/*silent*/);
 	
 	/*##################################################*/
 	
@@ -314,8 +333,8 @@ int main()
 	#if defined TEST_MODE
 	printf("\nCOMPILE TEST PASSED !\n");
 	#endif
-
-	exit(EXIT_SUCCESS);
+	
+	_Exit(EXIT_SUCCESS);
 }
 
 

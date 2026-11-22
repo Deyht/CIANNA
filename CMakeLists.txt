@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(CIANNA LANGUAGES C)
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # ==========================================================
@@ -20,6 +20,10 @@ if(DEFINED ENV{CUDA_PATH})
     set(CUDA_PATH $ENV{CUDA_PATH})
 else()
     set(CUDA_PATH "" CACHE PATH "Manual CUDA path override. Should point to the CUDA toolkit root (e.g. /usr/local/cuda).")
+endif()
+
+if(BUILD_MODULE)
+	add_definitions(-D_PY_MODULE=1)
 endif()
 
 # ==========================================================

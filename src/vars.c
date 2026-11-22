@@ -25,4 +25,6 @@ network *networks[MAX_NETWORKS_NB];
 int global_current_network_id = 0;
 int is_init = 0, is_cuda_init = 0;
 int auxil_input_id = -1 * MAX_LAYERS_NB - 1;
+_Thread_local jmp_buf error_jump;
+volatile sig_atomic_t interrupt_signal = 0;
 

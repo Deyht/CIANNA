@@ -35,6 +35,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <locale.h>
+#include <setjmp.h>
+
+#ifdef _PY_MODULE
+#define exit(status) lib_exit(status)
+#endif
 
 #ifdef comp_CUDA
 #ifdef CUDA
@@ -62,6 +67,8 @@
 #endif
 
 static const double two_pi = 2.0*3.14159265358979323846;
+static const double inv_rand_max_p1 = (1.0 / ((double)RAND_MAX + 1.0));
+
 #endif //DEFS_H
 
 

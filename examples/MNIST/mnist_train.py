@@ -13,8 +13,7 @@ import CIANNA as cnn
 
 
 if(not os.path.isdir("mnist_dat")):
-	#share.obspm not available currently, so mnist.tar.gz is store in git for now 
-	#os.system("wget https://share.obspm.fr/s/EkYR5B2Wc2gNis3/download/mnist.tar.gz")
+	os.system("wget https://share.obspm.fr/s/EkYR5B2Wc2gNis3/download/mnist.tar.gz")
 	os.system("tar -xvzf mnist.tar.gz")
 
 mnist_data = np.fromfile("mnist_dat/mnist_input.dat", dtype="float32")
@@ -36,7 +35,7 @@ target_test  = mnist_targets[70000:80000,:]*0.9 + 0.1/10
 # Optimizer selection and configuration is available in init
 # Input shape is no longer an option of init
 cnn.init(b_size=16, optimizer=cnn.adam(beta1=0.90, beta2=0.999), wema=1,
-		comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP16C_FP32A")
+		comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP16C_FP32A", adv_size=10)
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)
@@ -88,7 +87,7 @@ for i in range(0,cycle_length): #adjust the number of cycle here
     # Some new optimization-related keywords. Also allow saving an optimizer complete save state for warm restart
     cnn.train(nb_iter=1, learning_rate=l_r,
         weight_decay=0.05, decoupled_wdecay=1, wema_rate=0.998, wema_replace_every=cycle_length,
-    	confmat=3, control_interv=1, save_every=10, save_optim_every=10, save_bin=1)
+    	confmat=1, control_interv=1, save_every=10, save_optim_every=10, save_bin=1)
     if(i == 0):
         cnn.perf_eval()
 

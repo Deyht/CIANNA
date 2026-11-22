@@ -30,8 +30,11 @@
 //######################################
 
 #ifdef __cplusplus
+#define THREAD_LOCAL thread_local
 extern "C" { // Allow regular C functions to also be used in .cu files 
 			 //(typically usefull for auxil functions)
+#else
+#define THREAD_LOCAL _Thread_local
 #endif
 
 extern network *networks[MAX_NETWORKS_NB];
@@ -39,6 +42,8 @@ extern int global_current_network_id;
 extern int is_init;
 extern int is_cuda_init;
 extern int auxil_input_id;
+extern THREAD_LOCAL jmp_buf error_jump;
+extern volatile sig_atomic_t interrupt_signal;
 
 
 //auxil.c
@@ -47,6 +52,7 @@ void timer_start(network *net, void *timer);
 double ellapsed_time(network *net, void *timer);
 void timer_free(network *net, void *timer);
 void sig_handler(int signo);
+void lib_exit(int status);
 void print_table(float *tab, int column_size, int nb_column);
 void print_iter_advance(network *net, int c_batch, int nb_batch, float loss, double c_perf, int is_training);
 int argmax(float *tab, int size);

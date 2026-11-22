@@ -65,7 +65,7 @@ void init_network(int network_number, int u_batch_size, const char* optimizer_st
     
     if(!silent)
 		printf("#######################################################################\n\
-     CIANNA V-1.1.0.4 /!\\ EXPERIMENTAL build /!\\ (07/2026), by D.Cornu\n\
+     CIANNA V-1.1.0.4 /!\\ EXPERIMENTAL build /!\\ (11/2026), by D.Cornu\n\
 #######################################################################\n\n");
 	}
 	
@@ -289,6 +289,10 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 	
 	void *t_perf_eval, *t_batch_eval, *t_epoch_eval;
 	
+	//Re-initialize sig handlers in case the code was already interupted before
+	signal(SIGINT, sig_handler);
+	signal(SIGTERM, sig_handler);
+	
 	t_perf_eval = timer_init(net);
 	t_batch_eval = timer_init(net);
 	t_epoch_eval = timer_init(net);
@@ -397,9 +401,12 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 		remove("error.txt");
 	
 	for(i = 0; i < nb_iter; i++)
-	{
+	{	
+		if(interrupt_signal)
+			break;
 		if(silent < 1)
 			printf("\n");
+		
 		net->learning_rate = end_learn_rate + (begin_learn_rate - end_learn_rate) * expf(-net->lr_decay*net->iter);
 		net->iter++;
 	
@@ -434,6 +441,8 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
         
 		for(j = 0; j < net->train.nb_batch; j++)
 		{
+			if(interrupt_signal)
+				break;
 			timer_start(net, t_batch_eval);
 			if(j == net->train.nb_batch-1 && net->train.size%net->batch_size > 0)
 				net->length = net->train.size%net->batch_size;
@@ -560,14 +569,14 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 		
 		items_per_s = net->train.size/(ellapsed_time(net, t_epoch_eval)/1000000.0);
 		
-		if(control_interv > 0 && (net->iter) % control_interv == 0)
+		if(control_interv > 0 && (net->iter) % control_interv == 0 && !interrupt_signal)
 		{
 			if(silent < 1)
 			{
 				printf("\n%*s", 14, " ");
-				printf("Average Training perf: %0.2f it/s |", items_per_s);
-				printf(" Mean Loss: %.5g |", total_error/net->train.size);
-				printf(" Learning rate: %.5g | Weight decay: %.5g\n", net->learning_rate, net->weight_decay);
+				printf("Average Training perf.: %.2f it/s |", items_per_s);
+				printf(" Mean Loss: %.5e |", total_error/net->train.size);
+				printf(" Learning rate: %.5e | Weight decay: %.5f\n", net->learning_rate, net->weight_decay);
 			}
 			net->is_inference = 1;
 			net->no_error = 0;
@@ -589,13 +598,13 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 			}
 		}
 		
-		if(save_every > 0 && ((net->iter) % save_every) == 0)
+		if(save_every > 0 && ((net->iter) % save_every) == 0 && !interrupt_signal)
 		{
 			sprintf(net_save_file_name, "net_save/net%d_s%04d.dat", net->id, net->iter);
 			printf("Saving network for iteration: %d (mode: %d)\n", net->iter, save_bin);
 			save_network(net, net_save_file_name, 0, save_bin);
 		}
-		if(save_optim_every > 0 && ((net->iter) % save_optim_every) == 0)
+		if(save_optim_every > 0 && ((net->iter) % save_optim_every) == 0 && !interrupt_signal)
 		{
 			sprintf(net_save_file_name, "optim_save/net_optim%d_s%04d.dat", net->id, net->iter);
 				printf("Saving optim state for iteration: %d (mode: %d)\n", net->iter, save_bin);
@@ -634,6 +643,12 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 	timer_free(net, t_perf_eval);
 	timer_free(net, t_batch_eval);
 	timer_free(net, t_epoch_eval);
+	
+	if(interrupt_signal)
+	{
+		interrupt_signal = 0;
+		exit(130);
+	}
 }
 
 
@@ -745,6 +760,10 @@ void pred_network(network *net, Dataset *data, int saving, int confusion_matrix,
 	
 	void *t_perf_eval, *t_batch_eval, *t_epoch_eval;
 	
+	//Re-initialize sig handlers in case the code was already interupted before
+	signal(SIGINT, sig_handler);
+	signal(SIGTERM, sig_handler);
+	
 	t_perf_eval = timer_init(net);
 	t_batch_eval = timer_init(net);
 	t_epoch_eval = timer_init(net);
@@ -829,6 +848,8 @@ void pred_network(network *net, Dataset *data, int saving, int confusion_matrix,
 	
 	for(j = 0; j < data->nb_batch; j++)
 	{
+		if(interrupt_signal)
+			break;
 		timer_start(net, t_batch_eval);
 		
 		//##########################################################
@@ -1157,18 +1178,18 @@ void pred_network(network *net, Dataset *data, int saving, int confusion_matrix,
 	//better to display the item time as the time for all repeat / item
 	items_per_s = data->size/(ellapsed_time(net, t_epoch_eval)/1000000.0);
 	
-	if(silent != 1)
+	if(silent != 1 && !interrupt_signal)
 	{
 		printf("\n%*s", 14, " ");
-		printf("Average forward perf : %0.2f it/s ", items_per_s);
+		printf("Average forward perf.: %.2f it/s ", items_per_s);
 		if(net->no_error != 1)
 		{	
-			printf("| Mean Loss: %.5g", total_error/(data->size*repeat));
+			printf("| Mean Loss: %.5e", total_error/(data->size*repeat));
 			if(net->net_layers[net->nb_layers-1]->output_type == SPATIAL)
 			{
 				if(net->net_layers[net->nb_layers-1]->activation_type == YOLO)
 				{
-					printf("\nLoss dist. ||Pos: %.5f |Size: %.5f |Prob: %.5f |Obj: %.5f |Class: %.5f |Param: %.5f ||M IoU = %.4f |M Obj = %0.4f |P Good = %0.4f",
+					printf("\nLoss dist. ||Pos: %.5e |Size: %.5e |Prob: %.5e |Obj: %.5e |Class: %.5e |Param: %.5e ||M IoU = %.4f |M Obj = %0.4f |P Good = %0.4f",
 					pos_error/(data->size*repeat), size_error/(data->size*repeat), prob_error/(data->size*repeat), 
 					objectness_error/(data->size*repeat), class_error/(data->size*repeat), param_error/(data->size*repeat), 
 					sum_IoU/nb_IoU, sum_objectness/nb_IoU, (float)nb_good_IoU/(float)nb_IoU);
@@ -1238,7 +1259,7 @@ void pred_network(network *net, Dataset *data, int saving, int confusion_matrix,
 	if(saving > 0)
 		fclose(f_save);
 	
-	if(confusion_matrix > 0 && net->no_error == 0 && repeat <= 1)
+	if(confusion_matrix > 0 && net->no_error == 0 && repeat <= 1 && !interrupt_signal)
 	{
 		if(silent != 1)
 		{
@@ -1346,6 +1367,12 @@ void pred_network(network *net, Dataset *data, int saving, int confusion_matrix,
 	timer_free(net, t_perf_eval);
 	timer_free(net, t_batch_eval);
 	timer_free(net, t_epoch_eval);
+	
+	if(interrupt_signal)
+	{
+		interrupt_signal = 0;
+		exit(130);
+	}
 }
 
 

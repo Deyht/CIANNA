@@ -137,7 +137,7 @@ void update_weights_sgd_fct(float *weights, float *ema_weights, void *gradient,
 			l_grad = c_gradient[i]/batch_size + decay_mask*weight_decay*weights[i];
 		
 		/* grad clipping by value - negligible compute cost */
-		l_grad = fminf(fmaxf(l_grad, -10.0f), 10.0f);
+		l_grad = fminf(fmaxf(l_grad, -2.0f), 2.0f);
 		
 		if(momentum >= 0.01f) //else, velocity is NULL (unallocated)
 		{
@@ -351,7 +351,7 @@ void update_weights_adam_fct(float *weights, float *ema_weights, void *gradient,
 			l_grad = c_gradient[i]/batch_size + decay_mask*weight_decay*weights[i];
 		
 		/* grad clipping by value - negligible compute cost */
-		l_grad = fminf(fmaxf(l_grad, -10.0f), 10.0f);
+		l_grad = fminf(fmaxf(l_grad, -2.0f), 2.0f);
 		
 		first_mom[i]  = beta_1*first_mom[i]  + (1.0-beta_1)*l_grad;
 		second_mom[i] = beta_2*second_mom[i] + (1.0-beta_2)*l_grad*l_grad;
@@ -623,7 +623,7 @@ void update_weights_rmsprop_fct(float *weights, float *ema_weights, void *gradie
 			l_grad = c_gradient[i]/batch_size + decay_mask*weight_decay*weights[i];
 		
 		/* grad clipping by value - negligible compute cost */
-		l_grad = fminf(fmaxf(l_grad, -10.0f), 10.0f);
+		l_grad = fminf(fmaxf(l_grad, -2.0f), 2.0f);
 		
 		sqrt_avg[i] = alpha*sqrt_avg[i] + (1.0 - alpha)*l_grad*l_grad;
 		l_sqrt_avg_centered = sqrt_avg[i];

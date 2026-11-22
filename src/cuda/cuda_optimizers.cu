@@ -72,7 +72,7 @@ __global__ void cuda_update_weights_sgd_kernel_##name(float *weights, float *ema
 		l_grad = ((float)c_gradient[i]/batch_size)/TC_scale_factor + decay_mask*weight_decay*weights[i];										\
 																																				\
 	/* grad clipping by value - negligible compute cost */																						\
-	l_grad = fminf(fmaxf(l_grad, -10.0f), 10.0f);																								\
+	l_grad = fminf(fmaxf(l_grad, -2.0f), 2.0f);																									\
 																																				\
 	if(momentum >= 0.01)																														\
 	{																																			\
@@ -165,7 +165,7 @@ __global__ void cuda_update_weights_adam_kernel_##name(float *weights, float *em
 		l_grad = ((float)c_gradient[i]/batch_size)/TC_scale_factor + decay_mask*weight_decay*weights[i];										\
 																																				\
 	/* grad clipping by value - negligible compute cost */																						\
-	l_grad = fminf(fmaxf(l_grad, -10.0f), 10.0f);																								\
+	l_grad = fminf(fmaxf(l_grad, -2.0f), 2.0f);																									\
 																																				\
 	first_mom[i]  = beta_1*first_mom[i]  + (1.0-beta_1)*l_grad;																					\
 	second_mom[i] = beta_2*second_mom[i] + (1.0-beta_2)*l_grad*l_grad;																			\
@@ -279,7 +279,7 @@ __global__ void cuda_update_weights_rmsprop_kernel_##name(float *weights, float 
 		l_grad = ((float)c_gradient[i]/batch_size)/TC_scale_factor + decay_mask*weight_decay*weights[i];										\
 																																				\
 	/* grad clipping by value - negligible compute cost */																						\
-	l_grad = fminf(fmaxf(l_grad, -10.0f), 10.0f);																								\
+	l_grad = fminf(fmaxf(l_grad, -2.0f), 2.0f);																									\
 																																				\
 	sqrt_avg[i] = alpha*sqrt_avg[i] + (1.0 - alpha)*l_grad*l_grad;																				\
 	l_sqrt_avg_centered = sqrt_avg[i];																											\

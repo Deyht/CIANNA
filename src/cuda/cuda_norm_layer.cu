@@ -45,27 +45,32 @@ inline __device__ void warpReduce(volatile float *sdata, size_t blockSize, unsig
 	}
 	if (blockSize >= 32)
 	{
-		sdata[tid] += sdata[tid + 16];
+		if(tid < 16)
+			sdata[tid] += sdata[tid + 16];
 		__syncwarp(mask);
 	}
 	if (blockSize >= 16)
 	{
-		sdata[tid] += sdata[tid + 8];
+		if(tid < 8)
+			sdata[tid] += sdata[tid + 8];
 		__syncwarp(mask);
 	}
 	if (blockSize >= 8)
 	{
-		sdata[tid] += sdata[tid + 4];
+		if(tid < 4)
+			sdata[tid] += sdata[tid + 4];
 		__syncwarp(mask);
 	}
 	if (blockSize >= 4)
 	{
-		sdata[tid] += sdata[tid + 2];
+		if(tid < 2)
+			sdata[tid] += sdata[tid + 2];
 		__syncwarp(mask);
 	}
 	if (blockSize >= 2)
 	{
-		sdata[tid] += sdata[tid + 1];
+		if(tid < 1)
+			sdata[tid] += sdata[tid + 1];
 		__syncwarp(mask);
 	}
 }

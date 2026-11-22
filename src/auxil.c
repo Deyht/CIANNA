@@ -98,9 +98,30 @@ void timer_free(network *net, void *timer)
 void sig_handler(int signo)
 {
 	if(signo == SIGINT || signo == SIGTERM)
+	{
 		printf("\n WARNING: program interrupted\n");
-	//Could handle exit more gracefully by freeing everything (postponed ATM)
-	exit(EXIT_SUCCESS);
+		
+		if (signo == SIGINT)
+		{
+        	interrupt_signal = 1;
+        	#ifndef _PY_MODULE
+        	_Exit(EXIT_SUCCESS);
+        	#endif
+        }
+
+    	if (signo == SIGTERM)
+        	_Exit(EXIT_SUCCESS);
+	}
+}
+
+
+void lib_exit(int status)
+{
+	printf("ENTER lib_exit\n");
+	fflush(stdout);
+	if(status == 0)
+		status = 1;
+    longjmp(error_jump, status);
 }
 
 
@@ -124,20 +145,26 @@ void print_iter_advance(network *net, int c_batch, int nb_batch, float loss, dou
 {
 	int i;
 	int size = net->adv_size, l_size = 0;
+	float adv_step_size;
 	
-	//Must check for case where the total number of tick change
-	printf("\e[?25l");
-	if(is_training)
-		printf("\rIter: %5d [", net->iter);
-	else
-		printf("\rFwd : %5d [", net->iter);
-	l_size = size*((float)c_batch/nb_batch);
-	for(i = 0; i < l_size; i++)
-		printf("#");
-	for(i = l_size; i < size; i++)
-		printf("-");
-	printf("] %4d / %4d | B.Loss: %.5f | B.perf.: %.0f it/s ", c_batch, nb_batch, loss, c_perf);
-	printf("\e[?25h");
+	adv_step_size = ((float)nb_batch)/size;
+	l_size = size*c_batch/nb_batch;
+	
+	if(c_batch - (int)(c_batch/adv_step_size)*adv_step_size < 1 || c_batch == nb_batch)
+	{
+		printf("\e[?25l");
+		if(is_training)
+			printf("\rIter: %5d [", net->iter);
+		else
+			printf("\rFwd : %5d [", net->iter);
+		for(i = 0; i < l_size; i++)
+			printf("#");
+		for(i = l_size; i < size; i++)
+			printf("-");
+		printf("] %4d / %4d | B.Loss: %.5e | B.perf.: %.2f it/s ", c_batch, nb_batch, loss, c_perf);
+		printf("\e[?25h");
+		fflush(stdout);
+	}
 }
 
 
@@ -204,8 +231,8 @@ double random_normal(void)
 	// non optimized box muller normal distribution generator
 	double U1, U2;
 	
-	U1 = rand()*(1.0/RAND_MAX);
-	U2 = rand()*(1.0/RAND_MAX);
+	U1 = (rand() + 1.0) * inv_rand_max_p1;
+	U2 = rand() * inv_rand_max_p1;
 	
 	return sqrt(-2.0*log(U1))*cos(two_pi*U2);
 }

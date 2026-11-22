@@ -39,7 +39,8 @@ static void parse_int_sequence(PyObject *obj, int *output, int min_size, int max
 	if(!PyList_Check(obj) && !PyTuple_Check(obj) && !PyArray_Check(obj))
 	{
 		printf("\n ERROR: %s argument must be a list, tuple, or Numpy array.\n", arg_name);
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return;
 	}
 	
 	array = (PyArrayObject *)PyArray_FROM_OTF(obj, NPY_INT, NPY_ARRAY_IN_ARRAY | NPY_ARRAY_FORCECAST);
@@ -47,20 +48,23 @@ static void parse_int_sequence(PyObject *obj, int *output, int min_size, int max
 	if(array == NULL)
 	{
 		printf("\n ERROR: %s argument could not be converted to integers.\n", arg_name);
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return;
 	}
 	
 	if(PyArray_NDIM(array) != 1)
 	{
 		printf("\n ERROR: %s argument must be one-dimensional.\n", arg_name);
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return;
 	}
 	
 	size = PyArray_SIZE(array);
 	if(size < min_size || size > max_size)
 	{
 		printf("\n ERROR: %s argument size should be between %d and %d.\n", arg_name, min_size, max_size);
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return;
 	}
 
 	data = (int *)PyArray_DATA(array);
@@ -81,7 +85,8 @@ static PyArrayObject* get_array_from_float_sequence(PyObject *obj, const char *a
 	if(!PyList_Check(obj) && !PyTuple_Check(obj) && !PyArray_Check(obj))
 	{
 		printf("\n ERROR: %s argument must be a list, tuple, or Numpy array.\n", arg_name);
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 	
 	array = (PyArrayObject *)PyArray_FROM_OTF(obj, NPY_FLOAT32, NPY_ARRAY_IN_ARRAY | NPY_ARRAY_FORCECAST);
@@ -89,7 +94,8 @@ static PyArrayObject* get_array_from_float_sequence(PyObject *obj, const char *a
 	if(array == NULL)
 	{
 		printf("\n ERROR: %s argument could not be converted to floats.\n", arg_name);
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 	
 	return array;
@@ -115,6 +121,17 @@ static PyObject* py_init_network(PyObject* self, PyObject *args, PyObject *kwarg
 		&optimizer, &wema, &comp_meth, &network_id, &dynamic_load, &mixed_precision, &inference_only, &no_logo, &silent, &adv_size))
 		return NULL;
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+	
 	init_network(network_id, b_size, optimizer, wema, comp_meth, dynamic_load, mixed_precision, inference_only, no_logo, silent, adv_size);
 	
 	Py_RETURN_NONE;
@@ -131,6 +148,17 @@ static PyObject* py_free_network(PyObject* self, PyObject *args, PyObject *kwarg
 	if(network_id == -1)
 		network_id = global_current_network_id;
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+	
 	free_network(networks[network_id]);
 	
 	Py_RETURN_NONE;
@@ -140,7 +168,7 @@ static PyObject* py_free_network(PyObject* self, PyObject *args, PyObject *kwarg
 static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	setlocale(LC_ALL, "C");
-	int i, j;
+	int i, j, status;
 	size_t b, k;
 	Dataset *data = NULL;
 	const char *dataset_type;
@@ -163,7 +191,8 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	if(!PyList_Check(py_input) && !PyTuple_Check(py_input) && !PyArray_Check(py_input))
 	{
 		printf("\n ERROR: input argument must be a list, tuple, or Numpy array of data arrays.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 
 	if(PyArray_Check(py_input) && PyArray_TYPE((PyArrayObject*)py_input) != NPY_OBJECT)
@@ -183,7 +212,8 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 		if(PyArray_NDIM(branch_input[b]) != 2)
 		{
 			printf("\n ERROR: input branch %ld must be two-dimensional.\n", b);
-			exit(EXIT_FAILURE);
+			PyErr_Format(PyExc_RuntimeError, "C library error");
+			return NULL;
 		}
 		branch_in_dim[b] = (size_t)PyArray_DIM(branch_input[b], 1);
 	}
@@ -193,7 +223,8 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 		if(!PyList_Check(py_target) && !PyTuple_Check(py_target) && !PyArray_Check(py_target))
 		{
 			printf("\n ERROR: target argument must be a list, tuple, or Numpy array of data arrays.\n");
-			exit(EXIT_FAILURE);
+			PyErr_Format(PyExc_RuntimeError, "C library error");
+			return NULL;
 		}
 		
 		if(PyArray_Check(py_target) && PyArray_TYPE((PyArrayObject*)py_target) != NPY_OBJECT)
@@ -213,7 +244,8 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 			if(PyArray_NDIM(branch_target[b]) != 2)
 			{
 				printf("\n ERROR: target branch %ld must be two-dimensional.\n", b);
-				exit(EXIT_FAILURE);
+				PyErr_Format(PyExc_RuntimeError, "C library error");
+				return NULL;
 			}
 			branch_targ_dim[b] = (size_t)PyArray_DIM(branch_target[b], 1);
 		}
@@ -225,35 +257,17 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	   Still, this function is not considered thread safe. Arrays provided as argument are expected to remain untouched
 	   for the duration of the function! */
 	
-	data = get_dataset_from_type(networks[network_id], dataset_type, silent);
-	*data = create_dataset(networks[network_id], with_target, size, nb_branch_in, branch_in_dim, nb_branch_targ, branch_targ_dim);
+	status = setjmp(error_jump);
 	
-	for(b = 0; b < nb_branch_in; b++)
+	if(status == 0)
 	{
-		branch_data = (float*)PyArray_DATA(branch_input[b]);
-		py_cont_array = (float*) calloc(branch_in_dim[b], sizeof(float));
+		data = get_dataset_from_type(networks[network_id], dataset_type, silent);
+		*data = create_dataset(networks[network_id], with_target, size, nb_branch_in, branch_in_dim, nb_branch_targ, branch_targ_dim);
 		
-		for(i = 0; i < data->nb_batch; i++)
+		for(b = 0; b < nb_branch_in; b++)
 		{
-			for(j = 0; j < networks[network_id]->batch_size; j++)
-			{
-				k = i*networks[network_id]->batch_size + j;
-				if(k >= data->size)
-					continue;
-				
-				memcpy(py_cont_array, branch_data + k * branch_in_dim[b], branch_in_dim[b] * sizeof(float));
-				data->cont_copy(py_cont_array, data->input[b][i], j*(branch_in_dim[b] + 1), branch_in_dim[b]);
-			}
-		}
-		free(py_cont_array);
-	}
-	
-	if(with_target)
-	{
-		for(b = 0; b < nb_branch_targ; b++)
-		{
-			branch_data = (float*)PyArray_DATA(branch_target[b]);
-			py_cont_array = (float*) calloc(branch_targ_dim[b], sizeof(float));
+			branch_data = (float*)PyArray_DATA(branch_input[b]);
+			py_cont_array = (float*) calloc(branch_in_dim[b], sizeof(float));
 			
 			for(i = 0; i < data->nb_batch; i++)
 			{
@@ -263,20 +277,44 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 					if(k >= data->size)
 						continue;
 					
-					memcpy(py_cont_array, branch_data + k * branch_targ_dim[b], branch_targ_dim[b] * sizeof(float));
-					data->cont_copy(py_cont_array, data->target[b][i], j*branch_targ_dim[b], branch_targ_dim[b]);
+					memcpy(py_cont_array, branch_data + k * branch_in_dim[b], branch_in_dim[b] * sizeof(float));
+					data->cont_copy(py_cont_array, data->input[b][i], j*(branch_in_dim[b] + 1), branch_in_dim[b]);
 				}
 			}
 			free(py_cont_array);
 		}
+		
+		if(with_target)
+		{
+			for(b = 0; b < nb_branch_targ; b++)
+			{
+				branch_data = (float*)PyArray_DATA(branch_target[b]);
+				py_cont_array = (float*) calloc(branch_targ_dim[b], sizeof(float));
+				
+				for(i = 0; i < data->nb_batch; i++)
+				{
+					for(j = 0; j < networks[network_id]->batch_size; j++)
+					{
+						k = i*networks[network_id]->batch_size + j;
+						if(k >= data->size)
+							continue;
+						
+						memcpy(py_cont_array, branch_data + k * branch_targ_dim[b], branch_targ_dim[b] * sizeof(float));
+						data->cont_copy(py_cont_array, data->target[b][i], j*branch_targ_dim[b], branch_targ_dim[b]);
+					}
+				}
+				free(py_cont_array);
+			}
+		}
+		
+		#ifdef CUDA
+		if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->cu_inst.dynamic_load == 0)
+			cuda_get_batched_dataset(networks[network_id], data);
+		#endif
 	}
 	
-	#ifdef CUDA
-	if(networks[network_id]->compute_method == C_CUDA && networks[network_id]->cu_inst.dynamic_load == 0)
-		cuda_get_batched_dataset(networks[network_id], data);
-	#endif
-	
 	Py_END_ALLOW_THREADS;
+	
 	if(silent == 0)
 		printf("\n");
 	
@@ -295,6 +333,16 @@ static PyObject* py_create_dataset(PyObject* self, PyObject *args, PyObject *kwa
 
 		free(branch_target);
 		Py_DECREF(seq_target);
+	}
+	
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
 	}
 
 	Py_RETURN_NONE;
@@ -357,6 +405,8 @@ static PyObject* py_delete_dataset(PyObject* self, PyObject *args, PyObject *kwa
 	{
 		printf("Warning: No matching dataset to delete!\n");
 	}
+
+	//No C error to raise
 
 	if(data != NULL)
 		free_dataset(data);
@@ -422,6 +472,17 @@ static PyObject* py_set_optimizer_param(PyObject* self, PyObject *args, PyObject
 	if(network_id == -1)
 		network_id = global_current_network_id;
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+
 	set_optimizer_param_from_string(networks[network_id], string);
 	
 	Py_RETURN_NONE;
@@ -603,6 +664,17 @@ static PyObject* py_input(PyObject* self, PyObject *args, PyObject *kwargs)
 	if(py_dims != NULL && py_dims != Py_None)
 		parse_int_sequence(py_dims, spatial_shape, 1, 3, "spatial_shape");
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+
 	current_layer_id = input_create(networks[network_id], spatial_shape, nb_features, silent);
 	
 	return PyLong_FromLong(current_layer_id);
@@ -635,9 +707,21 @@ static PyObject* py_dense(PyObject* self, PyObject *args, PyObject *kwargs)
 	if((strcmp(init_fct,"normal") == 0 || strcmp(init_fct,"uniform") == 0) && init_scaling < 0.0)
 	{
 		printf("\n ERROR: init_scaling keywork is mandatory when using custom normal or uniform weight initialisation.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
+	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
 		
+		return NULL;
+	}
+
 	current_layer_id = dense_create(networks[network_id], prev_layer, nb_neurons, activation, C_bias, drop_rate, 
 		strict_size, init_fct, init_scaling, NULL, 0, 0, silent);
 	
@@ -670,7 +754,8 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 	if(py_f_size == Py_None)
 	{
 		printf("\n ERROR: f_size is mandatory, cannot be None.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 
 	parse_int_sequence(py_f_size, C_f_size, 1, 3, "f_size");
@@ -696,7 +781,19 @@ static PyObject* py_conv(PyObject* self, PyObject *args, PyObject *kwargs)
 	if((strcmp(init_fct, "normal") == 0 || strcmp(init_fct, "uniform") == 0) && init_scaling < 0.0)
 	{
 		printf("\n ERROR: init_scaling keywork is mandatory when using custom normal or uniform weight initialisation.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
+	}
+	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
 	}
 
 	current_layer_id = conv_create(networks[network_id], prev_layer, C_f_size, nb_filters, nb_groups, group_param_sharing, 
@@ -730,7 +827,8 @@ static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 	if(py_pool_size == Py_None)
 	{
 		printf("\n ERROR: p_size is mandatory, cannot be None.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 	
 	parse_int_sequence(py_pool_size, C_pool_size, 1, 3, "p_size");
@@ -743,7 +841,18 @@ static PyObject* py_pool(PyObject* self, PyObject *args, PyObject *kwargs)
 	
 	if(py_pool_padding != NULL && py_pool_padding != Py_None)
 		parse_int_sequence(py_pool_padding, C_pool_padding, 1, 3, "padding");
+	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
 		
+		return NULL;
+	}
+
 	current_layer_id = pool_create(networks[network_id], prev_layer, C_pool_size, C_pool_stride, C_pool_padding,
 		s_pool_type, activation, global, drop_rate, silent);
 	
@@ -767,6 +876,17 @@ static PyObject* py_norm(PyObject* self, PyObject *args, PyObject *kwargs)
 	if(network_id == -1)
 		network_id = global_current_network_id;
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+
 	current_layer_id = norm_create(networks[network_id], prev_layer, activation, group_size, gamma_start, cond_layer, NULL, 0, 0, silent);
 	
 	return PyLong_FromLong(current_layer_id);
@@ -789,6 +909,17 @@ static PyObject* py_lrn(PyObject* self, PyObject *args, PyObject *kwargs)
 	if(network_id == -1)
 		network_id = global_current_network_id;
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+
 	current_layer_id = lrn_create(networks[network_id], prev_layer, activation, range, k, alpha, beta, silent);
 	
 	return PyLong_FromLong(current_layer_id);
@@ -810,6 +941,17 @@ static PyObject* py_grn(PyObject* self, PyObject *args, PyObject *kwargs)
 	if(network_id == -1)
 		network_id = global_current_network_id;
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+
 	current_layer_id = grn_create(networks[network_id], prev_layer, activation, residual, gamma_start, NULL, 0, 0, silent);
 	
 	return PyLong_FromLong(current_layer_id);
@@ -836,19 +978,22 @@ static PyObject* py_merge(PyObject* self, PyObject *args, PyObject *kwargs)
 	if(py_prev_list == Py_None)
 	{
 		printf("\n ERROR: prev_list is mandatory, cannot be None.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 	
 	array = (PyArrayObject *)PyArray_FROM_OTF(py_prev_list, NPY_INT, NPY_ARRAY_IN_ARRAY | NPY_ARRAY_FORCECAST);
 	if(array == NULL)
 	{
 		printf("\n ERROR: prev_list argument could not be converted to integers.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 	if(PyArray_NDIM(array) != 1)
 	{
 		printf("\n ERROR: prev_list argument must be one-dimensional.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 	
 	nb_previous = PyArray_SIZE(array); //Check on nb_previous >= 2 is included in merge_create
@@ -859,6 +1004,17 @@ static PyObject* py_merge(PyObject* self, PyObject *args, PyObject *kwargs)
 	else if(strcmp(merge_type,"CONCAT") == 0)
 		c_merge_type = CONCAT_merge;
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+
 	current_layer_id = merge_create(networks[network_id], nb_previous, C_prev_list, c_merge_type, activation, silent);
 	
 	Py_DECREF(array);
@@ -885,23 +1041,37 @@ static PyObject* py_set_frozen_layers(PyObject* self, PyObject *args, PyObject *
 	if(py_froz_array == Py_None)
 	{
 		printf("\n ERROR: froz_array is mandatory, cannot be None.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 	
 	array = (PyArrayObject *)PyArray_FROM_OTF(py_froz_array, NPY_INT, NPY_ARRAY_IN_ARRAY | NPY_ARRAY_FORCECAST);
 	if(array == NULL)
 	{
 		printf("\n ERROR: prev_list argument could not be converted to integers.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 	if(PyArray_NDIM(array) != 1)
 	{
 		printf("\n ERROR: prev_list argument must be one-dimensional.\n");
-		exit(EXIT_FAILURE);
+		PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 	}
 	
 	size = PyArray_SIZE(array);
 	c_froz_array = (int *)PyArray_DATA(array);
+	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
 
 	set_frozen_layers(networks[network_id], c_froz_array, size);
 	
@@ -1078,7 +1248,7 @@ static PyObject* py_set_slopes_and_maxes(PyObject* self, PyObject *args, PyObjec
 static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	setlocale(LC_ALL, "C");
-	int i,j;
+	int i,j, nb_yolo_filters;
 	int nb_box = 0, nb_class = 0, nb_param = 0, max_nb_obj_per_image = 0;
 	int strict_box_size_association = 0, regret_based = 0, fit_dim = 0, rand_startup = -1, network_id = -1;
 	int class_softmax = 0, diff_flag = 0, no_override = 0, raw_output = 0, input_branch_id = -1;
@@ -1117,13 +1287,15 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 		else if(fit_dim > array_prior_size->dimensions[0])
 		{
 			printf("\n ERROR: fit_dim parameter cannot be larger than the number of dimensions of prior_size!\n");
-			exit(EXIT_FAILURE);
+			PyErr_Format(PyExc_RuntimeError, "C library error");
+			return NULL;
 		}
 		
 		if(array_prior_size->dimensions[1] != nb_box)
 		{
 			printf("\n ERROR: The prior_size array must have nb_box elements!");
-			exit(EXIT_FAILURE);
+			PyErr_Format(PyExc_RuntimeError, "C library error");
+			return NULL;
 		}
 	
 		C_prior_size = (float*) calloc(3*nb_box,sizeof(float));
@@ -1149,7 +1321,8 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 		if(array_prior_noobj_prob->dimensions[0] != nb_box)
 		{
 			printf("ERROR: The prior_noobj_prob array must have nb_box elements!");
-			exit(EXIT_FAILURE);
+			PyErr_Format(PyExc_RuntimeError, "C library error");
+		return NULL;
 		}
 		C_prior_noobj_prob = (float*) calloc(nb_box,sizeof(float));
 		for(i = 0; i < nb_box; i++)
@@ -1190,7 +1363,8 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 		if(array_param_ind_scales->dimensions[0] != nb_param)
 		{
 			printf("ERROR: The param_ind_scales array must have nb_param elements!");
-			exit(EXIT_FAILURE);
+			PyErr_Format(PyExc_RuntimeError, "C library error");
+			return NULL;
 		}
 		param_ind_scales = (float*) calloc(nb_param, sizeof(float));
 		for(i = 0; i < nb_param; i++)
@@ -1218,10 +1392,23 @@ static PyObject* py_set_yolo_params(PyObject* self, PyObject *args, PyObject *kw
 		Py_DECREF(array_fit_parts);
 	}
 	
-	return PyLong_FromLong(set_yolo_config(networks[network_id], nb_box, nb_class, nb_param, max_nb_obj_per_image, 
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+	
+	nb_yolo_filters = set_yolo_config(networks[network_id], nb_box, nb_class, nb_param, max_nb_obj_per_image, 
 		IoU_type_char, prior_dist_type_char, C_prior_size, C_prior_noobj_prob, fit_dim, strict_box_size_association, 
 		regret_based, rand_startup, rand_prob_best_box_assoc, rand_prob, min_prior_forced_scaling, error_scales, slopes_and_maxes, 
-		param_ind_scales, IoU_limits, fit_parts, class_softmax, label_smoothing, diff_flag, error_type, no_override, raw_output, input_branch_id));
+		param_ind_scales, IoU_limits, fit_parts, class_softmax, label_smoothing, diff_flag, error_type, no_override, raw_output, input_branch_id);
+
+	return PyLong_FromLong(nb_yolo_filters);
 }
 
 static PyObject* perf_eval(PyObject* self, PyObject* args)
@@ -1233,6 +1420,17 @@ static PyObject* perf_eval(PyObject* self, PyObject* args)
 
 	if(network_id == -1)
 		network_id = global_current_network_id;
+	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
 
 	perf_eval_display(networks[network_id]);
 	
@@ -1253,6 +1451,17 @@ static PyObject* py_load_network(PyObject* self, PyObject *args, PyObject *kwarg
 	if(network_id == -1)
 		network_id = global_current_network_id;
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+
 	load_network(networks[network_id], file, iter, nb_layers, nb_skip_layers, f_bin, silent);
 	
 	return PyLong_FromLong(networks[network_id]->nb_layers - 1);
@@ -1271,6 +1480,17 @@ static PyObject* py_save_network(PyObject* self, PyObject *args, PyObject *kwarg
 	if(network_id == -1)
 		network_id = global_current_network_id;
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+
 	save_network(networks[network_id], file, save_optim, f_bin);
 	
 	Py_RETURN_NONE;
@@ -1283,6 +1503,7 @@ static PyObject* py_save_network(PyObject* self, PyObject *args, PyObject *kwarg
 static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	setlocale(LC_ALL, "C");
+	int status;
 	int nb_iter, control_interv = 1, wema_replace_every = 0, decoupled_wdecay = 0, network_id = -1;
 	int confmat = 0, save_every = 0, shuffle_gpu = 1, shuffle_every = 1, silent = 0, save_bin = 0, save_optim_every = 0;
 	double learning_rate = 0.0, momentum = 0.0, decay = 0.0, end_learning_rate = 0.0;
@@ -1305,11 +1526,24 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 	// GIL MACRO : Allow to serialize C thread with python threads
 	Py_BEGIN_ALLOW_THREADS;
 	
-	train_network(networks[network_id], nb_iter, control_interv, learning_rate, end_learning_rate, 
-		decay, weight_decay, decoupled_wdecay, wema_rate, wema_replace_every, confmat, save_every, 
-		save_optim_every, save_bin, shuffle_gpu, shuffle_every, TC_scale_factor, silent);
-		
+	status = setjmp(error_jump);
+
+	if(status == 0)
+		train_network(networks[network_id], nb_iter, control_interv, learning_rate, end_learning_rate, 
+			decay, weight_decay, decoupled_wdecay, wema_rate, wema_replace_every, confmat, save_every, 
+			save_optim_every, save_bin, shuffle_gpu, shuffle_every, TC_scale_factor, silent);
+	
 	Py_END_ALLOW_THREADS;
+
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
 
 	Py_RETURN_NONE;
 }
@@ -1318,7 +1552,7 @@ static PyObject* py_train_network(PyObject* self, PyObject *args, PyObject *kwar
 static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kwargs)
 {
 	setlocale(LC_ALL, "C");
-	size_t i, j;
+	size_t i, j, status;
 	size_t nb_data, out_size;
 	int repeat = 1, network_id = -1, C_drop_mode = AVG_MODEL, no_error = 1, saving = 1, silent = 0, return_output = 0;
 	float *c_output = NULL, *arr_data;
@@ -1340,9 +1574,22 @@ static PyObject* py_forward_network(PyObject* self, PyObject *args, PyObject *kw
 	
 	Py_BEGIN_ALLOW_THREADS;
 	
-	c_output = pred_testset(networks[network_id], saving, repeat, C_drop_mode, silent, return_output);
+	status = setjmp(error_jump);
+
+	if(status == 0)
+		c_output = pred_testset(networks[network_id], saving, repeat, C_drop_mode, silent, return_output);
 	
 	Py_END_ALLOW_THREADS;
+	
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
 	
 	if(return_output)
 	{
@@ -1382,6 +1629,17 @@ static PyObject* py_print_architecture_tex(PyObject* self, PyObject *args, PyObj
 	if(network_id == -1)
 		network_id = global_current_network_id;
 	
+	int status = setjmp(error_jump);
+	if(status != 0)
+	{
+		if(status == 130)
+			PyErr_SetNone(PyExc_KeyboardInterrupt);
+		else
+			PyErr_Format(PyExc_RuntimeError,"C library error: %d", status);
+		
+		return NULL;
+	}
+
 	print_architecture_tex(networks[network_id], path, file_name,
 		l_size, l_in_size, l_f_size, l_out_size, l_stride, l_padding, 
 		l_in_padding, l_activation, l_bias, l_dropout, l_param_count);
