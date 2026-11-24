@@ -316,6 +316,9 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 	
 	eval_init(net);
 	
+	net->dyn_input  = (void**) malloc(net->train.nb_branch_in*sizeof(void*));
+	net->dyn_target = (void**) malloc(net->train.nb_branch_targ*sizeof(void*));
+	
 	#ifdef CUDA
 	Dataset shuffle_duplicate;
 	void *temp_error = NULL;
@@ -328,9 +331,6 @@ void train_network(network* net, int nb_iter, int control_interv, float u_begin_
 		printf("\n ERROR: mismatch between the number of input layers in network and the number of input branches in dataset!\n");
 		exit(EXIT_FAILURE);
 	}
-	
-	net->dyn_input  = (void**) malloc(net->train.nb_branch_in*sizeof(void*));
-	net->dyn_target = (void**) malloc(net->train.nb_branch_targ*sizeof(void*));
 	
 	if(net->compute_method == C_CUDA)
 	{

@@ -31,11 +31,10 @@ target_valid = mnist_targets[60000:70000,:]*0.9 + 0.1/10
 target_test  = mnist_targets[70000:80000,:]*0.9 + 0.1/10
 
 
-
 # Optimizer selection and configuration is available in init
 # Input shape is no longer an option of init
 cnn.init(b_size=16, optimizer=cnn.adam(beta1=0.90, beta2=0.999), wema=1,
-		comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP16C_FP32A", adv_size=10)
+		comp_meth="C_CUDA", dynamic_load=1, mixed_precision="FP32C_FP32A", adv_size=10)
 
 cnn.create_dataset("TRAIN", size=60000, input=data_train, target=target_train)
 cnn.create_dataset("VALID", size=10000, input=data_valid, target=target_valid)

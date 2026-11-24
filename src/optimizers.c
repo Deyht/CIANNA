@@ -335,7 +335,7 @@ void update_weights_adam_fct(float *weights, float *ema_weights, void *gradient,
 	int decay_mask = 1;
 	float l_grad, moving_first_mom, moving_second_mom;
 	
-	//#pragma omp parallel for private(decay_mask, l_grad,  moving_first_mom, moving_second_mom) schedule(guided,4) if(size>=128)
+	#pragma omp parallel for private(decay_mask, l_grad, moving_first_mom, moving_second_mom) schedule(guided,4) if(size>=128)
 	for(i = 0; i < size; i++) 
 	{
 		decay_mask = 1;
